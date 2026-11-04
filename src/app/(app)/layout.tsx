@@ -27,17 +27,16 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { href: "/", rotulo: "Painel", icone: Icones.painel },
     { href: "/agenda", rotulo: "Agenda de pagamentos", icone: Icones.agenda },
     { href: "/pagamentos", rotulo: "Pagamentos", icone: Icones.pagamentos },
+    { href: "/ops", rotulo: u.perfil === "engenheiro" ? "Minhas solicitações (OP)" : "Solicitações de OP", icone: Icones.op },
     ...(assinante ? [{ href: "/aprovacoes", rotulo: "Aprovações e assinaturas", icone: Icones.aprovacoes, contador: pend.count ?? 0 }] : []),
     { href: "/obras", rotulo: "Obras", icone: Icones.obras },
     ...(fin || sup ? [{ href: "/fornecedores", rotulo: "Fornecedores", icone: Icones.fornecedores }] : []),
+    { href: "/relatorios", rotulo: "Relatórios", icone: Icones.relatorios },
+    ...(fin || sup ? [{ href: "/compras", rotulo: "Inteligência de Compras", icone: Icones.compras }] : []),
     ...(fin ? [{ href: "/usuarios", rotulo: "Usuários e permissões", icone: Icones.usuarios }] : []),
     ...(fin ? [{ href: "/auditoria", rotulo: "Histórico de atividades", icone: Icones.auditoria }] : []),
   ];
-  const futuro: ItemMenu[] = [
-    { href: "#op", rotulo: "Solicitações de OP", icone: Icones.op, emBreve: true },
-    { href: "#compras", rotulo: "Inteligência de Compras", icone: Icones.compras, emBreve: true },
-    { href: "#relatorios", rotulo: "Relatórios", icone: Icones.relatorios, emBreve: true },
-  ];
+  const futuro: ItemMenu[] = [];
 
   return (
     <div className="min-h-screen">

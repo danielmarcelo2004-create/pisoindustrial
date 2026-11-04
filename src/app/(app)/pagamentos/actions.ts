@@ -77,6 +77,7 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
   for (const a of anexos) {
     const r = await enviarDocumento(supabase, { id, obra_id: obra }, a.tipo, a.arquivo);
     if (r.erro) falhas.push(r.erro);
+    if (r.aviso) falhas.push(r.aviso);
   }
 
   revalidatePath("/", "layout");
@@ -111,15 +112,18 @@ export async function anexarDocumento(id: string, _: Estado, fd: FormData): Prom
   if (arquivos.length === 0) return { erro: "Selecione o arquivo." };
 
   const supabase = await createClient();
+  const avisos: string[] = [];
   for (const arq of arquivos) {
     const r = await enviarDocumento(supabase, p, tipo, arq);
     if (r.erro) {
       revalidatePath(`/pagamentos/${id}`);
       return { erro: r.erro };
     }
+    if (r.aviso) avisos.push(r.aviso);
   }
   revalidatePath(`/pagamentos/${id}`);
-  return { ok: arquivos.length > 1 ? `${arquivos.length} documentos anexados.` : "Documento anexado." };
+  const ok = arquivos.length > 1 ? `${arquivos.length} documentos anexados.` : "Documento anexado.";
+  return avisos.length ? { erro: `${ok} Atenção: ${avisos.join(" ")}` } : { ok };
 }
 
 export async function substituirDocumento(id: string, documentoId: string, _: Estado, fd: FormData): Promise<Estado> {
@@ -136,6 +140,7 @@ export async function substituirDocumento(id: string, documentoId: string, _: Es
   if (!doc) return { erro: "Documento não encontrado." };
   const r = await enviarDocumento(supabase, p, doc.tipo, arquivo, { id: documentoId, motivo });
   if (r.erro) return { erro: r.erro };
+  if (r.aviso) return { erro: `Documento substituído, mas: ${r.aviso}` };
   revalidatePath("/", "layout");
   return { ok: "Documento substituído. A versão anterior foi preservada no histórico." };
 }

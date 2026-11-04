@@ -4,7 +4,7 @@ Sistema web interno para centralizar a rotina financeira das obras: pagamentos e
 
 > Nome, sigla e cores são **provisórios** (seção 13 da especificação). Para trocar, edite `src/lib/sistema.ts` (nome) e as variáveis `--marca-*` em `src/app/globals.css` (cores).
 
-## O que já está pronto (1ª entrega: núcleo)
+## O que já está pronto
 
 | Módulo | Situação |
 |---|---|
@@ -20,10 +20,13 @@ Sistema web interno para centralizar a rotina financeira das obras: pagamentos e
 | Histórico de atividades / auditoria imutável | ✅ |
 | Notificações internas (sino), com fila pronta para o WhatsApp | ✅ |
 | Exportação dos pagamentos para planilha (CSV, abre no Excel) | ✅ |
-| Solicitações de OP com PDF (aguarda o modelo oficial da OP) | ⏳ próxima etapa |
-| Envio de alertas por WhatsApp (aguarda a definição do provedor) | ⏳ próxima etapa |
-| Relatórios demonstrativos | ⏳ próxima etapa |
-| Inteligência de Compras (leitura de XML/OCR das NFs) | ⏳ próxima etapa |
+| Solicitações de OP: itens, PDF numerado (modelo provisório), envio direto ao administrador, "Minhas solicitações" | ✅ |
+| Relatórios por obra, fornecedor, mês e situação, com período por vencimento, pagamento ou cadastro; exportação para Excel | ✅ |
+| Inteligência de Compras: leitura automática do XML da NF-e, lançamento manual de NF em PDF/imagem, comparação de preços, histórico, evolução mensal, comparação regional, alertas e Excel | ✅ |
+| Lembretes diários (vencimentos e assinaturas pendentes) | ✅ (pg_cron, 07:30) |
+| Alertas por WhatsApp (Cloud API da Meta) | ✅ pronto, falta configurar o número e o template |
+| Leitura automática (OCR) de NF em PDF/imagem | ⏳ hoje é lançamento manual com conferência humana |
+| Integração com o Conta Azul | ⏳ futura |
 
 ## Como a segurança funciona
 
@@ -45,6 +48,28 @@ Fluxo C:  Cadastro → Financeiro paga → Pago
 
 Rejeição em qualquer etapa → **Rejeitado**. Quem cadastrou corrige e **reenvia**, gerando nova versão. Se o Financeiro mudar o fluxo ou os responsáveis de uma obra, os pagamentos pendentes são reencaminhados automaticamente.
 
+## Solicitações de OP
+
+1. O engenheiro cria a solicitação (rascunho = **em elaboração**), com favorecido, CPF/CNPJ, itens, quantidades e valores.
+2. Ao **enviar**, a OP recebe número único (`OP-AAAA-00001`), o PDF é gerado e anexado, e um pagamento é criado **direto para o administrador da obra**, sem passar por Suprimentos. Se a obra não tiver administrador, a OP vai ao Financeiro.
+3. O status acompanha o andamento: **enviada → em análise** (quando o administrador abre) **→ aprovada / rejeitada → paga**. Uma OP rejeitada pode ser duplicada para correção.
+
+O modelo do PDF é provisório (`src/lib/pdf-op.ts`). Os dados da empresa ficam em `src/lib/sistema.ts`.
+
+## Inteligência de Compras
+
+- Ao anexar o **XML da NF-e** como nota fiscal, os itens são lidos automaticamente: descrição, NCM, unidade, quantidade, preço, fornecedor/CNPJ e data. A obra liga cada item à cidade e à UF.
+- Para NF em **PDF ou imagem**, o detalhe do pagamento oferece o **lançamento manual dos itens** (conferência humana).
+- A mesma NF-e (pela chave de acesso) não entra duas vezes. Se o documento da NF for substituído, os itens antigos saem da análise.
+- Alertas marcam preços mais de 15% acima da mediana do mesmo material e unidade (com no mínimo 3 compras). São **indicadores para análise**, não prova de sobrepreço.
+- Acesso: Financeiro e Suprimentos.
+
+## Alertas por WhatsApp
+
+O WhatsApp é **só aviso**: a mensagem traz um link que exige login. Toda notificação de um usuário com telefone cadastrado entra numa fila. A rota `/api/cron/whatsapp` envia a fila pela Cloud API da Meta quando estas variáveis existem: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` e `WHATSAPP_TEMPLATE` (um template aprovado com 3 parâmetros: título, mensagem e link), além de `CRON_SECRET` e `APP_URL`.
+
+O `vercel.json` agenda essa rota a cada 10 minutos. O plano gratuito da Vercel só permite agendamento diário; nesse caso, use o plano Pro ou chame a rota por outro agendador com o cabeçalho `Authorization: Bearer <CRON_SECRET>`.
+
 ## Tecnologia
 
 - **Next.js 16** (App Router, Server Actions) + TypeScript + Tailwind CSS 4
@@ -64,11 +89,19 @@ npm run dev                   # http://localhost:3000
 
 Usuários de demonstração (senha `Demo-1234`): `financeiro@demo.local`, `suprimentos@demo.local`, `engenheiro@demo.local`, `administrador@demo.local`, `administrador2@demo.local`.
 
-Testes das regras do banco (contra o Supabase local):
+Testes:
 
 ```bash
-npm run test:integracao
+npm run test:integracao   # regras do banco (RLS, fluxos, assinaturas, OP, NF, lembretes)
+npm run test:nfe          # leitura de XML de NF-e
+npm run test:e2e          # navegador, ponta a ponta (recria o banco local!)
 ```
+
+Para o `test:e2e`, rode o sistema com `npm run build` e depois:
+`CRON_SECRET=segredo-teste WHATSAPP_TOKEN=tok WHATSAPP_PHONE_NUMBER_ID=999 WHATSAPP_TEMPLATE=alerta WHATSAPP_API_URL=http://127.0.0.1:4555 APP_URL=http://127.0.0.1:3000 npm start`.
+O teste simula a API do WhatsApp localmente.
+
+Exemplo de XML de NF-e para testar a Inteligência de Compras: `tests/exemplos/nfe-exemplo-concreto.xml`.
 
 ## Colocar em produção
 

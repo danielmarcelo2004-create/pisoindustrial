@@ -4,6 +4,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
+import { lerNFe } from "../src/lib/nfe.ts";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const PUB = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -128,6 +129,116 @@ ok(await F.rpc("registrar_baixa", { p_id: p8, p_pago_em: dia(-11) }));
 await anexar("financeiro", p8, "comprovante", "comprovante-pix");
 const p9 = await pagamento("suprimentos", obraB.id, concreto, "Concreto FCK 35 — 20 m³", 12800.0, dia(4));
 ok(await u.administrador2.client.rpc("decidir_aprovacao", { p_itens: [{ id: p9, versao: 1 }], p_decisao: "rejeitado", p_comentario: "Valor do m³ diverge da proposta aprovada (R$ 610,00)." }));
+
+// ---------------------------------------------------------------------------
+// Notas fiscais (XML) de meses anteriores para a Inteligência de Compras
+// ---------------------------------------------------------------------------
+console.log("Criando notas fiscais em XML (Inteligência de Compras)…");
+const MATERIAIS = {
+  concreto: { desc: "CONCRETO USINADO FCK 30 MPA BRITA 1", un: "M3", base: 590, ncm: "38245000" },
+  tela: { desc: "TELA SOLDADA Q-196 2,45X6,00M", un: "PC", base: 132, ncm: "73142000" },
+  endurecedor: { desc: "ENDURECEDOR DE SUPERFICIE MINERAL 25KG", un: "SC", base: 215, ncm: "38245000" },
+  fibra: { desc: "FIBRA DE ACO PARA CONCRETO", un: "KG", base: 11.8, ncm: "73269090" },
+  selante: { desc: "SELANTE PU PARA JUNTAS 400G", un: "UN", base: 56, ncm: "32141010" },
+};
+let seqNF = 7000;
+function xmlNFe({ emitente, cnpj, uf, data: emissao, itens, frete = 0 }) {
+  seqNF++;
+  const chave = ("29" + emissao.slice(2, 4) + emissao.slice(5, 7) + cnpj + "55001" + String(seqNF).padStart(9, "0") + "1" + String(seqNF).padStart(8, "0")).slice(0, 43) + "7";
+  const det = itens
+    .map((it, i) => {
+      const v = (it.q * it.vu).toFixed(2);
+      return `<det nItem="${i + 1}"><prod><cProd>${it.cod}</cProd><xProd>${it.desc}</xProd><NCM>${it.ncm}</NCM><uCom>${it.un}</uCom><qCom>${it.q}</qCom><vUnCom>${it.vu}</vUnCom><vProd>${v}</vProd></prod></det>`;
+    })
+    .join("");
+  const vProd = itens.reduce((s, it) => s + it.q * it.vu, 0);
+  return `<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe"><NFe><infNFe Id="NFe${chave}"><ide><serie>1</serie><nNF>${seqNF}</nNF><dhEmi>${emissao}T10:00:00-03:00</dhEmi></ide><emit><CNPJ>${cnpj}</CNPJ><xNome>${emitente}</xNome><enderEmit><UF>${uf}</UF></enderEmit></emit>${det}<total><ICMSTot><vProd>${vProd.toFixed(2)}</vProd><vFrete>${frete.toFixed(2)}</vFrete><vNF>${(vProd + frete).toFixed(2)}</vNF></ICMSTot></total></infNFe></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`;
+}
+async function pagarCompleto(obra, forn, descricao, valor, venc) {
+  const id = ok(
+    await F.rpc("criar_pagamento", {
+      p_obra_id: obra.id, p_fornecedor_id: forn.id, p_favorecido: "", p_descricao: descricao, p_valor: valor,
+      p_vencimento: venc, p_forma_pagamento: "boleto", p_numero_documento: String(seqNF + 1),
+    }),
+  );
+  return id;
+}
+async function concluir(obra, id, venc) {
+  if (obra.fluxo === "A") await assinar("engenheiro", id);
+  if (obra.fluxo === "A") await assinar("administrador", id);
+  if (obra.fluxo === "B") await assinar("administrador2", id);
+  ok(await F.rpc("registrar_baixa", { p_id: id, p_pago_em: venc }));
+}
+async function anexarXml(pagId, xml) {
+  const pag = ok(await admin.from("pagamentos").select("id, obra_id").eq("id", pagId).single());
+  const bytes = Buffer.from(xml);
+  const path = `${pag.obra_id}/${pag.id}/${randomUUID()}.xml`;
+  ok(await F.storage.from("documentos").upload(path, bytes, { contentType: "application/xml" }));
+  const docId = ok(
+    await F.rpc("registrar_documento", {
+      p_pagamento_id: pag.id, p_tipo: "nota_fiscal", p_nome_arquivo: `nfe-${seqNF}.xml`, p_storage_path: path,
+      p_mime_type: "application/xml", p_tamanho: bytes.length, p_sha256: createHash("sha256").update(bytes).digest("hex"),
+    }),
+  );
+  const lida = lerNFe(xml);
+  ok(await F.rpc("registrar_nf", { p_documento_id: docId, p_nota: lida.nota, p_itens: lida.itens, p_origem: "xml" }));
+}
+// Fator de preço por obra/fornecedor/mês (inflação leve + variação regional)
+const compras = [
+  // [mesesAtras, obra, fornecedor, [[material, qtd, fator]]]
+  [5, obraA, concreto, [["concreto", 40, 1.0], ["fibra", 600, 1.0]]],
+  [5, obraC, quimicos, [["endurecedor", 30, 1.02], ["selante", 80, 1.0]]],
+  [4, obraA, aco, [["tela", 100, 1.0], ["fibra", 400, 1.03]]],
+  [4, obraB, concreto, [["concreto", 25, 1.06]]],
+  [3, obraC, quimicos, [["endurecedor", 20, 1.05], ["selante", 60, 1.04]]],
+  [3, obraA, concreto, [["concreto", 55, 1.03]]],
+  [2, obraB, aco, [["tela", 60, 1.08], ["fibra", 300, 1.05]]],
+  [2, obraA, quimicos, [["endurecedor", 25, 1.04]]],
+  [1, obraC, locadora, [["selante", 40, 1.38]]], // preço bem acima: gera alerta
+  [1, obraA, concreto, [["concreto", 30, 1.05]]],
+  [1, obraB, quimicos, [["endurecedor", 35, 1.31]]], // gera alerta
+  [0, obraA, aco, [["tela", 80, 1.07], ["fibra", 500, 1.08]]],
+];
+for (const [mesesAtras, obra, forn, linhas] of compras) {
+  const d = new Date(hoje.getFullYear(), hoje.getMonth() - mesesAtras, 8 + (seqNF % 12));
+  if (d > hoje) d.setDate(hoje.getDate() - 1);
+  const emissao = d.toISOString().slice(0, 10);
+  const itens = linhas.map(([m, q, fator]) => ({
+    cod: m.toUpperCase().slice(0, 6), desc: MATERIAIS[m].desc, un: MATERIAIS[m].un, ncm: MATERIAIS[m].ncm, q,
+    vu: Math.round(MATERIAIS[m].base * fator * 100) / 100,
+  }));
+  const valor = Math.round(itens.reduce((s, i) => s + i.q * i.vu, 0) * 100) / 100;
+  const id = await pagarCompleto(obra, forn, `Compra de materiais — ${itens.map((i) => i.desc.toLowerCase()).join(", ")}`.slice(0, 200), valor, emissao);
+  await anexarXml(id, xmlNFe({ emitente: forn.nome.toUpperCase(), cnpj: forn.cpf_cnpj, uf: forn.uf, data: emissao, itens, frete: 150 }));
+  await concluir(obra, id, emissao);
+}
+
+// ---------------------------------------------------------------------------
+// Ordens de Pagamento do engenheiro
+// ---------------------------------------------------------------------------
+console.log("Criando solicitações de OP…");
+const E = u.engenheiro.client;
+const opRascunho = ok(
+  await E.rpc("salvar_op", {
+    p_id: null, p_obra_id: obraA.id, p_favorecido: "José Carlos Santos", p_cpf_cnpj: "52998224725",
+    p_descricao: "Mão de obra avulsa — corte e selagem de juntas", p_vencimento: dia(6), p_forma_pagamento: "pix",
+    p_dados_bancarios: "PIX CPF 529.982.247-25", p_observacoes: null,
+    p_itens: [
+      { descricao: "Corte de juntas com serra diamantada", unidade: "m", quantidade: 420, valor_unitario: 3.5 },
+      { descricao: "Limpeza e selagem de juntas", unidade: "m", quantidade: 420, valor_unitario: 2.8 },
+    ],
+  }),
+);
+const opEnviada = ok(
+  await E.rpc("salvar_op", {
+    p_id: null, p_obra_id: obraA.id, p_favorecido: "Transportes Recôncavo ME", p_cpf_cnpj: "11444777000161",
+    p_descricao: "Frete de equipamentos — semana 44", p_vencimento: dia(3), p_forma_pagamento: "transferencia",
+    p_dados_bancarios: "Banco do Brasil · Ag 3456 · CC 12345-6", p_observacoes: "Frete ida e volta da acabadora.",
+    p_itens: [{ descricao: "Frete caminhão munck", unidade: "viagem", quantidade: 2, valor_unitario: 950 }],
+  }),
+);
+ok(await E.rpc("enviar_op", { p_id: opEnviada }));
+ok(await u.engenheiro.client.from("ordens_pagamento").select("id").eq("id", opRascunho));
 
 console.log(`\nPronto. ${[p1, p2, p3, p4, p5, p6, p7, p8, p9].length} pagamentos criados.`);
 console.log(`Usuários (senha ${SENHA}): financeiro@demo.local, suprimentos@demo.local, engenheiro@demo.local, administrador@demo.local, administrador2@demo.local\n`);

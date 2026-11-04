@@ -347,3 +347,126 @@ test('visitante sem login não acessa nada', async () => {
   })
   assert.ok(error)
 })
+
+// -----------------------------------------------------------------------------
+// Ordens de Pagamento (OP)
+// -----------------------------------------------------------------------------
+const itensOP = [
+  { descricao: 'Diária de pedreiro', unidade: 'dia', quantidade: 5, valor_unitario: 180 },
+  { descricao: 'Ajudante', unidade: 'dia', quantidade: 5, valor_unitario: 120.5 },
+]
+function salvarOP(chave, obraId, extra = {}) {
+  return rpc(chave, 'salvar_op', {
+    p_id: null, p_obra_id: obraId, p_favorecido: 'João da Silva', p_cpf_cnpj: '123.456.789-09',
+    p_descricao: 'Mão de obra avulsa — juntas', p_vencimento: '2026-12-15', p_forma_pagamento: 'pix',
+    p_dados_bancarios: 'PIX 123.456.789-09', p_observacoes: null, p_itens: itensOP, ...extra,
+  })
+}
+
+test('OP: só o engenheiro vinculado cria; rascunho é privado', async () => {
+  await rpcFalha('sup', 'salvar_op', {
+    p_id: null, p_obra_id: obraA.id, p_favorecido: 'X', p_cpf_cnpj: null, p_descricao: 'X', p_vencimento: null,
+    p_forma_pagamento: 'pix', p_dados_bancarios: null, p_observacoes: null, p_itens: itensOP,
+  }, /engenheiros/)
+  await rpcFalha('eng', 'salvar_op', {
+    p_id: null, p_obra_id: obraB.id, p_favorecido: 'X', p_cpf_cnpj: null, p_descricao: 'X', p_vencimento: null,
+    p_forma_pagamento: 'pix', p_dados_bancarios: null, p_observacoes: null, p_itens: itensOP,
+  }, /vinculado/)
+  const id = await salvarOP('eng', obraA.id)
+  const { data: vAdm } = await u.adm.client.from('ordens_pagamento').select('id').eq('id', id)
+  assert.equal(vAdm.length, 0)
+  const { data: vEng } = await u.eng.client.from('ordens_pagamento').select('*, ordem_itens(total)').eq('id', id).single()
+  assert.equal(vEng.status, 'em_elaboracao')
+  assert.equal(vEng.ordem_itens.reduce((s, i) => s + Number(i.total), 0), 1502.5)
+  await rpc('eng', 'excluir_op', { p_id: id })
+})
+
+test('OP: envio cria pagamento direto ao administrador e acompanha o status até paga', async () => {
+  const id = await salvarOP('eng', obraA.id)
+  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  await rpcFalha('eng', 'salvar_op', {
+    p_id: id, p_obra_id: obraA.id, p_favorecido: 'X', p_cpf_cnpj: null, p_descricao: 'X', p_vencimento: null,
+    p_forma_pagamento: 'pix', p_dados_bancarios: null, p_observacoes: null, p_itens: itensOP,
+  }, /já foi enviada/)
+  let p = await pagamento(pagId)
+  assert.equal(p.status, 'aguardando_administrador') // obra é fluxo A, mas a OP vai direto ao administrador
+  assert.equal(Number(p.valor), 1502.5)
+  assert.equal(p.created_by, u.eng.id)
+  const op = async () => (await admin.from('ordens_pagamento').select('*').eq('id', id).single()).data
+  assert.match((await op()).numero, /^OP-\d{4}-\d{5}$/)
+  assert.equal(p.numero_documento, (await op()).numero)
+  assert.equal((await op()).status, 'enviada')
+
+  // engenheiro anexa o PDF da OP
+  await anexar('eng', p, 'ordem_pagamento')
+  // mas não anexa em outros pagamentos da obra
+  const outro = await pagamento(await novoPagamento('sup', obraA.id))
+  await assert.rejects(() => anexar('eng', outro, 'outro'), /permissão|upload/)
+
+  await rpc('adm', 'marcar_op_em_analise', { p_pagamento_id: pagId })
+  assert.equal((await op()).status, 'em_analise')
+  await rpc('adm', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'aprovado' })
+  assert.equal((await op()).status, 'aprovada')
+  const { data: n } = await u.eng.client.from('notificacoes').select('titulo').eq('pagamento_id', pagId)
+  assert.ok(n.some((x) => /aprovada/.test(x.titulo)))
+  await rpc('fin', 'registrar_baixa', { p_id: pagId, p_pago_em: '2026-12-14' })
+  assert.equal((await op()).status, 'paga')
+})
+
+test('OP: rejeição pelo administrador', async () => {
+  const id = await salvarOP('eng', obraA.id)
+  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  await rpc('adm', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'rejeitado', p_comentario: 'Sem medição' })
+  const { data } = await admin.from('ordens_pagamento').select('status').eq('id', id).single()
+  assert.equal(data.status, 'rejeitada')
+})
+
+test('OP: obra sem administrador segue ao Financeiro', async () => {
+  const { data: obra } = await u.fin.client.from('obras').insert({ nome: `Obra E ${sufixo}`, cidade: 'Lauro de Freitas', uf: 'BA', fluxo: 'C' }).select().single()
+  await u.fin.client.from('obra_acessos').insert({ obra_id: obra.id, user_id: u.eng.id })
+  const id = await salvarOP('eng', obra.id)
+  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  assert.equal((await pagamento(pagId)).status, 'aguardando_pagamento')
+})
+
+// -----------------------------------------------------------------------------
+// Inteligência de Compras
+// -----------------------------------------------------------------------------
+test('NF: registro de itens, duplicidade de chave, acesso e substituição', async () => {
+  const pagId = await novoPagamento('sup', obraA.id)
+  const p = await pagamento(pagId)
+  const docId = await anexar('sup', p, 'nota_fiscal')
+  const chave = ('2926111234567800019055001' + Date.now() + '0000000000').slice(0, 44)
+  const nota = { chave, numero: '1234', serie: '1', data_emissao: '2026-11-01', emitente_cnpj: '12.345.678/0001-90', emitente_nome: 'Concreteira', emitente_uf: 'BA', valor_total: 1500 }
+  const itens = [{ numero_item: 1, descricao: 'Concreto FCK 30', descricao_normalizada: 'concreto fck 30', unidade: 'm3', quantidade: 3, valor_unitario: 500, valor_total: 1500 }]
+  await rpcFalha('eng', 'registrar_nf', { p_documento_id: docId, p_nota: nota, p_itens: itens, p_origem: 'xml' })
+  await rpc('sup', 'registrar_nf', { p_documento_id: docId, p_nota: nota, p_itens: itens, p_origem: 'xml' })
+
+  const p2 = await pagamento(await novoPagamento('sup', obraA.id))
+  const doc2 = await anexar('sup', p2, 'nota_fiscal')
+  await rpcFalha('sup', 'registrar_nf', { p_documento_id: doc2, p_nota: nota, p_itens: itens, p_origem: 'xml' }, /já foi registrada/)
+
+  const { data: vf } = await u.fin.client.from('compras_itens').select('*').eq('nota_id', (await admin.from('nf_notas').select('id').eq('chave', chave).single()).data.id)
+  assert.equal(vf.length, 1)
+  assert.equal(vf[0].cidade, 'Salvador')
+  assert.equal(vf[0].unidade, 'M3')
+  const { data: ve } = await u.eng.client.from('compras_itens').select('id')
+  assert.equal(ve.length, 0)
+
+  await anexar('sup', p, 'nota_fiscal', docId, 'NF cancelada e reemitida')
+  const { data: inativa } = await admin.from('nf_notas').select('ativa').eq('chave', chave).single()
+  assert.equal(inativa.ativa, false)
+  // com a anterior inativa, a mesma chave pode ser registrada de novo
+  await rpc('sup', 'registrar_nf', { p_documento_id: doc2, p_nota: nota, p_itens: itens, p_origem: 'xml' })
+})
+
+test('lembretes diários avisam o Financeiro e os assinantes uma vez por dia', async () => {
+  const id = await novoPagamento('sup', obraA.id)
+  await admin.rpc('gerar_lembretes_diarios')
+  await admin.rpc('gerar_lembretes_diarios')
+  const hoje = new Date().toISOString().slice(0, 10)
+  const { data } = await u.eng.client.from('notificacoes').select('titulo, created_at').eq('titulo', 'Documentos aguardando sua assinatura')
+  assert.equal(data.length, 1)
+  await rpcFalha('fin', 'gerar_lembretes_diarios', {})
+  assert.ok(id && hoje)
+})

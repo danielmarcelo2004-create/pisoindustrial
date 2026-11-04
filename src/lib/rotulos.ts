@@ -65,3 +65,14 @@ export const UFS = [
 ];
 
 export type Cor = "amarelo" | "azul" | "verde" | "vermelho" | "cinza" | "roxo";
+
+export type StatusOP = Enums["status_op"];
+export const STATUS_OP: Record<StatusOP, { rotulo: string; cor: Cor }> = {
+  em_elaboracao: { rotulo: "Em elaboração", cor: "cinza" },
+  enviada: { rotulo: "Enviada", cor: "azul" },
+  em_analise: { rotulo: "Em análise", cor: "amarelo" },
+  aprovada: { rotulo: "Aprovada", cor: "verde" },
+  rejeitada: { rotulo: "Rejeitada", cor: "vermelho" },
+  paga: { rotulo: "Paga", cor: "verde" },
+  cancelada: { rotulo: "Cancelada", cor: "cinza" },
+};

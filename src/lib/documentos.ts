@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { mensagemErro } from "@/lib/erros";
 import type { TipoDocumento } from "@/lib/rotulos";
+import { lerNFe } from "@/lib/nfe";
 
 export const TAMANHO_MAXIMO = 25 * 1024 * 1024;
 
@@ -40,7 +41,7 @@ export async function enviarDocumento(
   tipo: TipoDocumento,
   arquivo: File,
   substitui?: { id: string; motivo: string },
-): Promise<{ erro?: string; id?: string }> {
+): Promise<{ erro?: string; id?: string; aviso?: string }> {
   const invalido = validarArquivo(arquivo);
   if (invalido) return { erro: invalido };
 
@@ -65,5 +66,14 @@ export async function enviarDocumento(
     p_motivo: substitui?.motivo ?? undefined,
   });
   if (error) return { erro: mensagemErro(error) };
-  return { id: data as string };
+  const id = data as string;
+
+  // XML de NF-e: alimenta a Inteligência de Compras automaticamente.
+  if (tipo === "nota_fiscal" && ext === "xml") {
+    const lida = lerNFe(bytes.toString("utf8"));
+    if (!lida) return { id, aviso: `O XML ${arquivo.name} não foi reconhecido como NF-e; os itens não foram lidos.` };
+    const r = await supabase.rpc("registrar_nf", { p_documento_id: id, p_nota: lida.nota, p_itens: lida.itens, p_origem: "xml" });
+    if (r.error) return { id, aviso: `Itens da NF não registrados: ${mensagemErro(r.error)}` };
+  }
+  return { id };
 }

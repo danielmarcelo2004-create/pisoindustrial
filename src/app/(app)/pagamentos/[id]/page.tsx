@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { removerNF } from "@/app/(app)/compras/actions";
 import { FormDecisao } from "@/components/assinatura";
 import { FormAcao } from "@/components/form-acao";
 import { LinhaDoTempo } from "@/components/linha-do-tempo";
@@ -93,9 +95,20 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
     supabase.rpc("pode_atuar_obra", { p_obra_id: p.obra_id }),
     supabase.from("profiles").select("id, nome"),
   ]);
+  // OP aberta pelo administrador responsável passa a "em análise".
+  if (p.ordem_id && p.status === "aguardando_administrador" && p.obra.administrador_id === u.id) {
+    await supabase.rpc("marcar_op_em_analise", { p_pagamento_id: id });
+  }
   const nomes = Object.fromEntries((perfis ?? []).map((x) => [x.id, x.nome]));
 
   const ativos = (docs ?? []).filter((d) => d.ativo);
+  const analista = u.perfil === "financeiro" || u.perfil === "suprimentos";
+  const idsNF = ativos.filter((d) => d.tipo === "nota_fiscal").map((d) => d.id);
+  const { data: notasNF } =
+    analista && idsNF.length
+      ? await supabase.from("nf_notas").select("id, documento_id, origem, nf_itens(count)").in("documento_id", idsNF)
+      : { data: [] as { id: string; documento_id: string; origem: string; nf_itens: { count: number }[] }[] };
+  const notaPorDoc = new Map((notasNF ?? []).map((n) => [n.documento_id, n]));
   const historico = (docs ?? []).filter((d) => !d.ativo);
   const finalizado = p.status === "pago" || p.status === "cancelado";
   const souAssinante =
@@ -123,11 +136,18 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
           </>
         }
         acoes={
-          atua && (
-            <LinkBotao href={`/pagamentos/${id}/editar`} variante="secundario">
-              Editar dados
-            </LinkBotao>
-          )
+          <>
+            {p.ordem_id && (
+              <LinkBotao href={`/ops/${p.ordem_id}`} variante="secundario">
+                Ver solicitação {p.numero_documento}
+              </LinkBotao>
+            )}
+            {atua && (
+              <LinkBotao href={`/pagamentos/${id}/editar`} variante="secundario">
+                Editar dados
+              </LinkBotao>
+            )}
+          </>
         }
       />
 
@@ -135,6 +155,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
         {sp.criado && <Aviso tipo="sucesso">Pagamento cadastrado e encaminhado conforme o fluxo da obra.</Aviso>}
         {sp.decisao === "aprovado" && <Aviso tipo="sucesso">Documento assinado e encaminhado para a próxima etapa.</Aviso>}
         {sp.decisao === "rejeitado" && <Aviso tipo="sucesso">Rejeição registrada. Quem cadastrou e o Financeiro foram notificados.</Aviso>}
+        {sp.nf === "lancada" && <Aviso tipo="sucesso">Itens da nota registrados na Inteligência de Compras.</Aviso>}
         {sp.salvo && <Aviso tipo="sucesso">Alterações salvas e registradas no histórico.</Aviso>}
         {typeof sp.aviso === "string" && <Aviso tipo="alerta">Pagamento criado, mas houve problema com anexos: {sp.aviso}</Aviso>}
         {p.status === "rejeitado" && (
@@ -248,6 +269,29 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                         </a>
                       </div>
                     </div>
+                    {analista && d.tipo === "nota_fiscal" && (
+                      <div className="mt-1.5 text-xs">
+                        {notaPorDoc.get(d.id) ? (
+                          <span className="text-emerald-700">
+                            ✓ {notaPorDoc.get(d.id)!.nf_itens[0]?.count ?? 0} item(ns) na Inteligência de Compras (
+                            {notaPorDoc.get(d.id)!.origem === "xml" ? "lidos do XML" : "lançamento manual"})
+                            {notaPorDoc.get(d.id)!.origem === "manual" && (podeAtuar || fin) && (
+                              <FormAcao
+                                action={removerNF.bind(null, notaPorDoc.get(d.id)!.id, id)}
+                                enviar="Remover para relançar"
+                                variante="fantasma"
+                                className="ml-2 inline-flex"
+                                confirmar="Remover os itens lançados desta nota?"
+                              />
+                            )}
+                          </span>
+                        ) : (podeAtuar || fin) ? (
+                          <Link href={`/compras/lancar/${d.id}`} className="text-marca-700 hover:underline">
+                            Lançar itens desta nota na Inteligência de Compras →
+                          </Link>
+                        ) : null}
+                      </div>
+                    )}
                     {atua && d.tipo !== "comprovante" && (
                       <details className="mt-2">
                         <summary className="cursor-pointer text-xs text-amber-700 hover:underline">Substituir por nova versão</summary>

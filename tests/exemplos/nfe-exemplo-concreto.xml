@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+    <infNFe Id="NFe29261112345678000190550010000045671000045678" versao="4.00">
+      <ide><cUF>29</cUF><natOp>VENDA DE MERCADORIA</natOp><mod>55</mod><serie>1</serie><nNF>4567</nNF><dhEmi>2026-10-28T09:15:00-03:00</dhEmi></ide>
+      <emit>
+        <CNPJ>12345678000190</CNPJ><xNome>CONCRETEIRA BAIANA LTDA</xNome><xFant>Concreteira Baiana</xFant>
+        <enderEmit><xLgr>Rod BA-099</xLgr><nro>100</nro><xMun>Salvador</xMun><UF>BA</UF></enderEmit>
+      </emit>
+      <dest><CNPJ>00000000000100</CNPJ><xNome>SUA EMPRESA LTDA</xNome></dest>
+      <det nItem="1">
+        <prod><cProd>CONC30</cProd><xProd>CONCRETO USINADO FCK 30 MPA BRITA 1 SLUMP 10±2</xProd><NCM>38245000</NCM><CFOP>5101</CFOP><uCom>M3</uCom><qCom>32.0000</qCom><vUnCom>592.5000000000</vUnCom><vProd>18960.00</vProd></prod>
+      </det>
+      <det nItem="2">
+        <prod><cProd>BOMB</cProd><xProd>Serviço de bombeamento de concreto</xProd><NCM>00000000</NCM><CFOP>5933</CFOP><uCom>SV</uCom><qCom>1.0000</qCom><vUnCom>850.0000000000</vUnCom><vProd>850.00</vProd></prod>
+      </det>
+      <det nItem="3">
+        <prod><cProd>ADIT</cProd><xProd>Aditivo plastificante p/ concreto</xProd><NCM>38244000</NCM><CFOP>5101</CFOP><uCom>L</uCom><qCom>20.5000</qCom><vUnCom>14.8000000000</vUnCom><vProd>303.40</vProd></prod>
+      </det>
+      <total><ICMSTot><vProd>20113.40</vProd><vFrete>350.00</vFrete><vDesc>0.00</vDesc><vNF>20463.40</vNF></ICMSTot></total>
+    </infNFe>
+  </NFe>
+  <protNFe versao="4.00"><infProt><chNFe>29261112345678000190550010000045671000045678</chNFe><nProt>129260000000001</nProt></infProt></protNFe>
+</nfeProc>

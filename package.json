@@ -11,12 +11,17 @@
     "test:integracao": "node --env-file=.env.local --test tests/integracao.test.mjs",
     "db:tipos": "supabase gen types typescript --local > src/lib/database.types.ts",
     "criar-admin": "node --env-file=.env.local scripts/criar-admin.mjs",
-    "seed:demo": "node --env-file=.env.local scripts/seed-demo.mjs"
+    "seed:demo": "node --env-file=.env.local scripts/seed-demo.mjs",
+    "test:nfe": "node --test tests/nfe.test.mts",
+    "test:e2e": "bash tests/e2e/rodar.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
+    "exceljs": "^4.4.0",
+    "fast-xml-parser": "^5.12.0",
     "next": "16.4.5",
+    "pdf-lib": "^1.17.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",

@@ -68,7 +68,7 @@ O modelo do PDF é provisório (`src/lib/pdf-op.ts`). Os dados da empresa ficam 
 
 O WhatsApp é **só aviso**: a mensagem traz um link que exige login. Toda notificação de um usuário com telefone cadastrado entra numa fila. A rota `/api/cron/whatsapp` envia a fila pela Cloud API da Meta quando estas variáveis existem: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` e `WHATSAPP_TEMPLATE` (um template aprovado com 3 parâmetros: título, mensagem e link), além de `CRON_SECRET` e `APP_URL`.
 
-O `vercel.json` agenda essa rota a cada 10 minutos. O plano gratuito da Vercel só permite agendamento diário; nesse caso, use o plano Pro ou chame a rota por outro agendador com o cabeçalho `Authorization: Bearer <CRON_SECRET>`.
+O `vercel.json` agenda essa rota uma vez por dia (10h UTC), que é o limite do plano gratuito da Vercel. Para envios mais frequentes, use o plano Pro (ajuste o `schedule` para `*/10 * * * *`) ou chame a rota por outro agendador com o cabeçalho `Authorization: Bearer <CRON_SECRET>`.
 
 ## Tecnologia
 

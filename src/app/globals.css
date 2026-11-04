@@ -1,26 +1,66 @@
 @import "tailwindcss";
 
+/*
+ * Identidade visual PROVISÓRIA (nome, logotipo e cores ainda serão definidos).
+ * Para trocar a cor da marca, altere apenas as variáveis --marca-*.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --marca-50: #eef3f8;
+  --marca-100: #d8e3ef;
+  --marca-200: #b3c7dd;
+  --marca-500: #2f5583;
+  --marca-600: #24476f;
+  --marca-700: #1f3a5a;
+  --marca-800: #182d46;
+  --marca-900: #112033;
+  --fundo: #f4f6f9;
+  --texto: #1b2533;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-marca-50: var(--marca-50);
+  --color-marca-100: var(--marca-100);
+  --color-marca-200: var(--marca-200);
+  --color-marca-500: var(--marca-500);
+  --color-marca-600: var(--marca-600);
+  --color-marca-700: var(--marca-700);
+  --color-marca-800: var(--marca-800);
+  --color-marca-900: var(--marca-900);
+  --color-fundo: var(--fundo);
+  --color-texto: var(--texto);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--fundo);
+  color: var(--texto);
+}
+
+/* Campos de formulário */
+.campo {
+  @apply block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs
+    placeholder:text-slate-400 focus:border-marca-500 focus:ring-2 focus:ring-marca-200 focus:outline-none
+    disabled:bg-slate-100 disabled:text-slate-500;
+}
+input[type="file"].campo {
+  @apply p-1.5 file:mr-3 file:rounded file:border-0 file:bg-marca-50 file:px-3 file:py-1.5 file:text-sm
+    file:font-medium file:text-marca-700 hover:file:bg-marca-100;
+}
+
+.tabela {
+  @apply w-full text-left text-sm;
+}
+.tabela thead th {
+  @apply border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold tracking-wide text-slate-500 uppercase;
+}
+.tabela tbody td {
+  @apply border-b border-slate-100 px-3 py-2.5 align-top;
+}
+.tabela tbody tr:hover {
+  @apply bg-slate-50/70;
 }

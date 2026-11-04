@@ -277,14 +277,14 @@ isOneToOne: false
                   ]
                 },"ordem_itens": {
                   Row: {
-                    "descricao": string,"id": string,"ordem_id": string,"posicao": number,"quantidade": number,"total": number | null,"unidade": string | null,"valor_unitario": number
+                    "descricao": string,"id": string,"inicio": string | null,"ordem_id": string,"posicao": number,"quantidade": number,"salario": number | null,"total": number | null,"unidade": string | null,"valor_unitario": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "descricao": string,"id"?: string,"ordem_id": string,"posicao": number,"quantidade": number,"total"?: never,"unidade"?: string | null,"valor_unitario": number
+                    "descricao": string,"id"?: string,"inicio"?: string | null,"ordem_id": string,"posicao": number,"quantidade": number,"salario"?: number | null,"total"?: never,"unidade"?: string | null,"valor_unitario": number
                   }
                   Update: {
-                    "descricao"?: string,"id"?: string,"ordem_id"?: string,"posicao"?: number,"quantidade"?: number,"total"?: never,"unidade"?: string | null,"valor_unitario"?: number
+                    "descricao"?: string,"id"?: string,"inicio"?: string | null,"ordem_id"?: string,"posicao"?: number,"quantidade"?: number,"salario"?: number | null,"total"?: never,"unidade"?: string | null,"valor_unitario"?: number
                   }
                   Relationships: [
                     {
@@ -297,14 +297,14 @@ isOneToOne: false
                   ]
                 },"ordens_pagamento": {
                   Row: {
-                    "analisada_em": string | null,"cpf_cnpj": string | null,"created_at": string,"dados_bancarios": string | null,"descricao": string,"enviada_em": string | null,"favorecido": string,"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": string | null,"obra_id": string,"observacoes": string | null,"solicitante_id": string,"status": Database["public"]['Enums']["status_op"],"updated_at": string,"vencimento": string | null
+                    "analisada_em": string | null,"cpf_cnpj": string | null,"created_at": string,"dados_bancarios": string | null,"desconto": number,"descricao": string,"enviada_em": string | null,"favorecido": string,"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": string | null,"obra_id": string,"observacoes": string | null,"referencia": string | null,"solicitante_id": string,"status": Database["public"]['Enums']["status_op"],"updated_at": string,"vencimento": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "analisada_em"?: string | null,"cpf_cnpj"?: string | null,"created_at"?: string,"dados_bancarios"?: string | null,"descricao": string,"enviada_em"?: string | null,"favorecido": string,"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: string | null,"obra_id": string,"observacoes"?: string | null,"solicitante_id"?: string,"status"?: Database["public"]['Enums']["status_op"],"updated_at"?: string,"vencimento"?: string | null
+                    "analisada_em"?: string | null,"cpf_cnpj"?: string | null,"created_at"?: string,"dados_bancarios"?: string | null,"desconto"?: number,"descricao": string,"enviada_em"?: string | null,"favorecido": string,"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: string | null,"obra_id": string,"observacoes"?: string | null,"referencia"?: string | null,"solicitante_id"?: string,"status"?: Database["public"]['Enums']["status_op"],"updated_at"?: string,"vencimento"?: string | null
                   }
                   Update: {
-                    "analisada_em"?: string | null,"cpf_cnpj"?: string | null,"created_at"?: string,"dados_bancarios"?: string | null,"descricao"?: string,"enviada_em"?: string | null,"favorecido"?: string,"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"solicitante_id"?: string,"status"?: Database["public"]['Enums']["status_op"],"updated_at"?: string,"vencimento"?: string | null
+                    "analisada_em"?: string | null,"cpf_cnpj"?: string | null,"created_at"?: string,"dados_bancarios"?: string | null,"desconto"?: number,"descricao"?: string,"enviada_em"?: string | null,"favorecido"?: string,"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"referencia"?: string | null,"solicitante_id"?: string,"status"?: Database["public"]['Enums']["status_op"],"updated_at"?: string,"vencimento"?: string | null
                   }
                   Relationships: [
                     {
@@ -543,7 +543,7 @@ isOneToOne: false
 { Args: { "p_nota_id": string }; Returns: undefined
                            },
 "salvar_op":
-{ Args: { "p_cpf_cnpj": string,"p_dados_bancarios": string,"p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_id": string,"p_itens": Json,"p_obra_id": string,"p_observacoes": string,"p_vencimento": string }; Returns: string
+{ Args: { "p_cpf_cnpj": string,"p_dados_bancarios": string,"p_desconto"?: number,"p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_id": string,"p_itens": Json,"p_obra_id": string,"p_observacoes": string,"p_referencia"?: string,"p_vencimento": string }; Returns: string
                            }
           }
           Enums: {

@@ -13,7 +13,22 @@ import { createClient } from "@/lib/supabase/server";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const t = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
-type ItemOP = { descricao: string; unidade: string; quantidade: number; valor_unitario: number };
+type ItemOP = {
+  descricao: string;
+  unidade: string;
+  quantidade: number;
+  valor_unitario: number;
+  inicio: string | null;
+  salario: number | null;
+};
+
+/** "1.234,56" → 1234.56; vazio = 0; inválido = null. */
+function dinheiro(s: string): number | null {
+  const x = s.trim();
+  if (!x) return 0;
+  const n = x.includes(",") ? Number(x.replace(/\./g, "").replace(",", ".")) : Number(x);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
+}
 
 function lerItens(fd: FormData): ItemOP[] | string {
   let bruto: unknown;
@@ -33,7 +48,19 @@ function lerItens(fd: FormData): ItemOP[] | string {
     if (!descricao) return `Item ${i + 1}: informe a descrição.`;
     if (!(quantidade > 0)) return `Item ${i + 1}: quantidade inválida.`;
     if (!(valor >= 0)) return `Item ${i + 1}: valor unitário inválido.`;
-    itens.push({ descricao, unidade: String(it.unidade ?? "").trim(), quantidade, valor_unitario: Math.round(valor * 100) / 100 });
+    const inicio = String(it.inicio ?? "").trim();
+    if (inicio && !/^\d{4}-\d{2}-\d{2}$/.test(inicio)) return `Item ${i + 1}: data de início inválida.`;
+    const salRaw = it.salario;
+    const salario = salRaw === null || salRaw === undefined || salRaw === "" ? null : Number(salRaw);
+    if (salario !== null && !(salario >= 0)) return `Item ${i + 1}: salário inválido.`;
+    itens.push({
+      descricao,
+      unidade: String(it.unidade ?? "").trim(),
+      quantidade,
+      valor_unitario: Math.round(valor * 100) / 100,
+      inicio: inicio || null,
+      salario: salario === null ? null : Math.round(salario * 100) / 100,
+    });
   }
   return itens;
 }
@@ -50,6 +77,8 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
   if (venc && !/^\d{4}-\d{2}-\d{2}$/.test(venc)) return { erro: "Vencimento inválido." };
   const itens = lerItens(fd);
   if (typeof itens === "string") return { erro: itens };
+  const desconto = dinheiro(t(fd, "desconto"));
+  if (desconto === null) return { erro: "Desconto inválido." };
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("salvar_op", {
@@ -63,6 +92,8 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
     p_dados_bancarios: t(fd, "dados_bancarios"),
     p_observacoes: t(fd, "observacoes"),
     p_itens: itens,
+    p_desconto: desconto,
+    p_referencia: t(fd, "referencia"),
   });
   if (error) return { erro: mensagemErro(error) };
 
@@ -135,7 +166,11 @@ export async function duplicarOP(id: string, _: Estado): Promise<Estado> {
       unidade: i.unidade ?? "",
       quantidade: Number(i.quantidade),
       valor_unitario: Number(i.valor_unitario),
+      inicio: i.inicio,
+      salario: i.salario === null ? null : Number(i.salario),
     })),
+    p_desconto: Number(op.desconto),
+    p_referencia: op.referencia ?? "",
   });
   if (error) return { erro: mensagemErro(error) };
   redirect(`/ops/${data}/editar`);

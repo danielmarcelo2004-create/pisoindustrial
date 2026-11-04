@@ -28,7 +28,8 @@ export default async function OPPage({ params, searchParams }: PageProps<"/ops/[
   if (!op) notFound();
   const meu = op.solicitante_id === u.id;
   const rascunho = op.status === "em_elaboracao";
-  const total = op.ordem_itens.reduce((s, i) => s + Number(i.total), 0);
+  const subtotal = op.ordem_itens.reduce((s, i) => s + Number(i.total), 0);
+  const total = subtotal - Number(op.desconto);
   const atual = ETAPAS.findIndex((e) => e.s.includes(op.status));
   const pag = op.pagamento ?? null;
 
@@ -125,6 +126,7 @@ export default async function OPPage({ params, searchParams }: PageProps<"/ops/[
               </Dado>
               <Dado rotulo="Vencimento">{data(op.vencimento)}</Dado>
               <Dado rotulo="Forma de pagamento">{FORMAS_PAGAMENTO[op.forma_pagamento]}</Dado>
+              <Dado rotulo="Referência">{op.referencia ?? "—"}</Dado>
               <Dado rotulo="Favorecido">{op.favorecido}</Dado>
               <Dado rotulo="CPF / CNPJ">{op.cpf_cnpj ? cpfCnpj(op.cpf_cnpj) : "—"}</Dado>
               <Dado rotulo="Dados para pagamento">{op.dados_bancarios ?? "—"}</Dado>
@@ -172,6 +174,18 @@ export default async function OPPage({ params, searchParams }: PageProps<"/ops/[
                   ))}
                 </tbody>
                 <tfoot>
+                  <tr>
+                    <td colSpan={5} className="px-3 py-2 text-right text-slate-600">
+                      Subtotal
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{moeda(subtotal)}</td>
+                  </tr>
+                  <tr>
+                    <td colSpan={5} className="px-3 py-2 text-right text-slate-600">
+                      Desconto
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{Number(op.desconto) > 0 ? `- ${moeda(op.desconto)}` : "—"}</td>
+                  </tr>
                   <tr>
                     <td colSpan={5} className="px-3 py-2.5 text-right font-semibold">
                       Total

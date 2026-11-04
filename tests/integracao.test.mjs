@@ -470,3 +470,23 @@ test('lembretes diários avisam o Financeiro e os assinantes uma vez por dia', a
   await rpcFalha('fin', 'gerar_lembretes_diarios', {})
   assert.ok(id && hoje)
 })
+
+// -----------------------------------------------------------------------------
+// Modelo oficial da OP: referência, desconto, início e salário por item
+// -----------------------------------------------------------------------------
+test('OP: desconto reduz o valor do pagamento; campos do modelo são gravados', async () => {
+  const itens = [{ descricao: 'Cabo de turma', unidade: 'UNID.', quantidade: 1, valor_unitario: 1410.02, inicio: '2026-08-21', salario: 3525.04 }]
+  const base = { p_id: null, p_obra_id: obraA.id, p_favorecido: 'João Teste', p_cpf_cnpj: null, p_descricao: 'Adiantamento de salário',
+    p_vencimento: '2026-12-20', p_forma_pagamento: 'pix', p_dados_bancarios: 'PIX (71) 99999-0000', p_observacoes: null, p_itens: itens }
+  await rpcFalha('eng', 'salvar_op', { ...base, p_desconto: 5000, p_referencia: 'OUTUBRO' }, /maior que o subtotal/)
+  const id = await rpc('eng', 'salvar_op', { ...base, p_desconto: 10, p_referencia: 'OUTUBRO' })
+  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  const p = await pagamento(pagId)
+  assert.equal(Number(p.valor), 1400.02)
+  const { data: op } = await admin.from('ordens_pagamento').select('referencia, desconto').eq('id', id).single()
+  assert.equal(op.referencia, 'OUTUBRO')
+  assert.equal(Number(op.desconto), 10)
+  const { data: it } = await admin.from('ordem_itens').select('inicio, salario').eq('ordem_id', id)
+  assert.equal(it[0].inicio, '2026-08-21')
+  assert.equal(Number(it[0].salario), 3525.04)
+})

@@ -1,11 +1,14 @@
 /**
- * Nome e dados institucionais PROVISÓRIOS — substituir quando a identidade
- * visual e os dados cadastrais da empresa forem definidos (seção 13).
+ * Identidade do sistema e dados da empresa usados nos documentos (OP em PDF).
+ * O nome do sistema é provisório (seção 13 da especificação).
  */
 export const SISTEMA = {
   nome: "Gestão Financeira de Obras",
   sigla: "GFO",
-  empresa: "Sua Empresa Ltda.",
-  empresaCnpj: "00.000.000/0001-00",
-  empresaEndereco: "Endereço da empresa — Cidade/UF",
+  // Dados da empresa, conforme o modelo oficial de Ordem de Pagamento.
+  empresa: "CONSTRUTORA PARCERIA PROJ. E CONST. LTDA",
+  empresaCnpj: "04.602.232/0001-70",
+  // Logotipo em texto (substituir pela imagem oficial quando for enviada).
+  logoPequeno: "Construtora",
+  logoGrande: "PARCERIA",
 };

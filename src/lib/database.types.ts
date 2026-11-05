@@ -385,6 +385,32 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"provisoes": {
+                  Row: {
+                    "created_at": string,"created_by": string,"descricao": string,"id": string,"mes_referencia": string | null,"obra_id": string,"observacoes": string | null,"status": string,"updated_at": string,"valor_estimado": number | null,"vencimento": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string,"descricao": string,"id"?: string,"mes_referencia"?: string | null,"obra_id": string,"observacoes"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string,"descricao"?: string,"id"?: string,"mes_referencia"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "provisoes_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "provisoes_obra_id_fkey"
+      columns: ["obra_id"]
+isOneToOne: false
+      referencedRelation: "obras"
+      referencedColumns: ["id"]
+    }
+                  ]
                 }
           }
           Views: {

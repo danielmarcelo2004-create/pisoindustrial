@@ -16,6 +16,12 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
   const sp = await searchParams;
   const [obras, fornecedores] = await Promise.all([obrasParaCadastro(u), fornecedoresAtivos()]);
   const obraPadrao = typeof sp.obra === "string" ? sp.obra : "";
+  const texto = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
+  const padraoCampos = {
+    descricao: texto("descricao"),
+    vencimento: texto("vencimento") || null,
+    valor: texto("valor") || null,
+  };
 
   return (
     <>
@@ -37,7 +43,7 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
             </Campo>
           </Cartao>
           <Cartao titulo="Dados do pagamento">
-            <CamposPagamento fornecedores={fornecedores} />
+            <CamposPagamento fornecedores={fornecedores} padrao={padraoCampos} />
           </Cartao>
           <Cartao titulo="Documentos">
             <div className="grid gap-4 sm:grid-cols-3">

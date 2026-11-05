@@ -3,6 +3,7 @@ import Link from "next/link";
 import { TabelaPagamentos } from "@/components/pagamentos";
 import { Cabecalho, Cartao, cx } from "@/components/ui";
 import { pagamentosEmAberto, somar, type PagamentoLista } from "@/lib/consultas/pagamentos";
+import { createClient } from "@/lib/supabase/server";
 import { data, hojeISO, moeda, somarDias } from "@/lib/formato";
 
 export const metadata: Metadata = { title: "Agenda de pagamentos" };
@@ -47,6 +48,12 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
   const diaSel = typeof sp.dia === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.dia) ? sp.dia : null;
 
   const abertos = await pagamentosEmAberto();
+  const provisoesSupabase = await createClient();
+  const { data: provisoes } = await provisoesSupabase
+    .from("provisoes")
+    .select("id, descricao, vencimento, valor_estimado, mes_referencia, obra:obras(nome)")
+    .eq("status", "provisionada")
+    .order("vencimento", { ascending: true, nullsFirst: false });
   const vencidos = abertos.filter((p) => p.vencimento < hoje);
   const deHoje = abertos.filter((p) => p.vencimento === hoje);
   const proximos = abertos.filter((p) => p.vencimento > hoje && p.vencimento <= somarDias(hoje, 15));
@@ -150,6 +157,28 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
           <Lista id="dia-lista" titulo={`Vencimento em ${data(diaSel)}`} itens={porDia.get(diaSel) ?? []} cor="bg-marca-500" />
         </div>
       )}
+
+      <div className="mt-6">
+        <Cartao titulo={`Provisões (${provisoes?.length ?? 0}) · não entram nos totais`} semPadding>
+          {!provisoes?.length ? (
+            <div className="px-4 py-6 text-sm text-slate-500">Nenhuma provisão em aberto.</div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {provisoes.map((pr) => (
+                <li key={pr.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                  <span>
+                    <span className="font-medium">{pr.descricao}</span>
+                    <span className="text-slate-500"> · {pr.obra?.nome}{pr.mes_referencia ? ` · ref. ${pr.mes_referencia}` : ""}</span>
+                  </span>
+                  <span className="tabular-nums text-slate-600">
+                    {data(pr.vencimento)} · {pr.valor_estimado === null ? "valor a definir" : moeda(pr.valor_estimado)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Cartao>
+      </div>
 
       <div className="mt-6 space-y-6">
         <Lista id="vencidos" titulo="Vencidos" itens={vencidos} cor="bg-red-500" />

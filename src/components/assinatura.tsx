@@ -209,7 +209,7 @@ export function SelecaoLote({ itens }: { itens: ItemAssinavel[] }) {
                     <td className="text-slate-500 tabular-nums">{i.numero}</td>
                     <td className="whitespace-nowrap tabular-nums">{data(i.vencimento)}</td>
                     <td>
-                      <Link href={`/pagamentos/${i.id}`} className="font-medium text-marca-700 hover:underline">
+                      <Link href={`/pagamentos/${i.id}`} target="_blank" rel="noopener" className="font-medium text-marca-700 hover:underline">
                         {i.favorecido}
                       </Link>
                       <div className="line-clamp-1 text-xs text-slate-500">{i.descricao}</div>

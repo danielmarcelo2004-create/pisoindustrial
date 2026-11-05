@@ -121,7 +121,11 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
   return (
     <>
       <Cabecalho
-        voltar={{ href: "/pagamentos", rotulo: "Pagamentos" }}
+        voltar={
+          u.perfil === "engenheiro" || u.perfil === "administrador" || u.perfil === "administrador_master"
+            ? { href: "/aprovacoes", rotulo: "Aprovações e assinaturas" }
+            : { href: "/pagamentos", rotulo: "Pagamentos" }
+        }
         titulo={
           <span className="flex flex-wrap items-center gap-3">
             <span>

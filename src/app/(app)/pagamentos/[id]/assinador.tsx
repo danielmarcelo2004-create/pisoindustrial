@@ -52,8 +52,9 @@ export function AssinadorDocumentos({
       const arq = new File([blob], escolhido.nome, { type: escolhido.mime || blob.type });
       setArquivoOriginal(arq);
       if (arq.type === "application/pdf") {
-        if ((await contarPaginas(arq)) < 1) throw new Error("PDF sem páginas");
-        setPreview(await renderizarPagina(arq, 1));
+        const total = await contarPaginas(arq);
+        if (total < 1) throw new Error("PDF sem páginas");
+        setPreview(await renderizarPagina(arq, total));
       } else {
         setPreview(URL.createObjectURL(arq));
       }
@@ -100,7 +101,7 @@ export function AssinadorDocumentos({
       let pagina;
       if (arquivoOriginal.type === "application/pdf") {
         doc = await PDFDoc.load(new Uint8Array(await arquivoOriginal.arrayBuffer()));
-        pagina = doc.getPage(0);
+        pagina = doc.getPage(doc.getPageCount() - 1);
       } else {
         // Imagem: vira uma página do PDF com o próprio tamanho da imagem.
         doc = await PDFDoc.create();
@@ -167,7 +168,7 @@ export function AssinadorDocumentos({
               <h3 className="text-base font-semibold">Posicione sua assinatura</h3>
               <button type="button" onClick={() => setAberto(false)} className="rounded p-1 text-slate-500 hover:bg-slate-100" aria-label="Fechar">✕</button>
             </div>
-            <p className="mb-3 text-xs text-slate-600">Arraste a assinatura para o lugar desejado e use o canto inferior direito para ajustar o tamanho. A página mostrada é a primeira.</p>
+            <p className="mb-3 text-xs text-slate-600">Arraste a assinatura para o lugar desejado e use o canto inferior direito para ajustar o tamanho. A assinatura vai na última página, que é a mostrada.</p>
             <div ref={contRef} className="relative mx-auto select-none overflow-hidden rounded border border-slate-300 bg-slate-100" style={{ touchAction: "none" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={preview} alt="Primeira página" className="block w-full" draggable={false} />

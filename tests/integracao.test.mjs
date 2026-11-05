@@ -561,3 +561,24 @@ test('parcelas: soma confere, multa/desconto exigem motivo, aprovação não mud
   assert.equal((await pagamento(id)).status, antes.status)
   assert.equal((await pagamento(id)).versao, antes.versao)
 })
+
+// -----------------------------------------------------------------------------
+// Baixa por parcela
+// -----------------------------------------------------------------------------
+test('baixa por parcela: pagamento só fica pago quando todas as parcelas estiverem pagas', async () => {
+  const id = await novoPagamento('fin', obraC.id, 1000)
+  await rpc('fin', 'definir_parcelas', { p_pagamento_id: id, p_parcelas: [
+    { valor: 600, vencimento: '2026-12-10' },
+    { valor: 400, vencimento: '2026-12-20', multa: 10, motivo: 'Multa por atraso' },
+  ] })
+  const { data: par } = await admin.from('pagamento_parcelas').select('id, numero').eq('pagamento_id', id).order('numero')
+  await rpcFalha('fin', 'registrar_baixa', { p_id: id, p_pago_em: '2026-12-10' }, /parcelado/)
+  await rpc('fin', 'registrar_baixa_parcela', { p_parcela_id: par[0].id, p_pago_em: '2026-12-10' })
+  assert.equal((await pagamento(id)).status, 'aguardando_pagamento')
+  await rpcFalha('fin', 'registrar_baixa_parcela', { p_parcela_id: par[0].id, p_pago_em: '2026-12-10' }, /já foi paga/)
+  await rpcFalha('fin', 'definir_parcelas', { p_pagamento_id: id, p_parcelas: [{ valor: 1000, vencimento: '2026-12-30' }, { valor: 0.01, vencimento: '2026-12-31' }] }, /pagas|parcelas/)
+  await rpc('fin', 'registrar_baixa_parcela', { p_parcela_id: par[1].id, p_pago_em: '2026-12-21' })
+  const fim = await pagamento(id)
+  assert.equal(fim.status, 'pago')
+  assert.equal(Number(fim.valor_pago), 1010)
+})

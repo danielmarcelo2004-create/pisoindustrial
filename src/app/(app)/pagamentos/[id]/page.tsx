@@ -5,7 +5,7 @@ import { removerNF } from "@/app/(app)/compras/actions";
 import { FormDecisao } from "@/components/assinatura";
 import { AssinadorDocumentos } from "./assinador";
 import { FormParcelas } from "./parcelas";
-import { definirParcelas } from "../actions";
+import { definirParcelas, registrarBaixaParcela } from "../actions";
 import { FormAcao } from "@/components/form-acao";
 import { LinhaDoTempo } from "@/components/linha-do-tempo";
 import { SeloStatus, Vencimento } from "@/components/pagamentos";
@@ -410,7 +410,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             </Cartao>
           )}
 
-          {baixa && p.status === "aguardando_pagamento" && (
+          {baixa && p.status === "aguardando_pagamento" && !(parcelas && parcelas.length > 0) && (
             <Cartao titulo="Registrar pagamento" className="border-sky-300">
               <FormAcao action={registrarBaixa.bind(null, id)} enviar="Confirmar pagamento" variante="sucesso">
                 <Campo rotulo="Data do pagamento" obrigatorio>
@@ -454,6 +454,8 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                       <th className="text-right">Multa/juros</th>
                       <th className="text-right">Desconto</th>
                       <th className="text-right">A pagar</th>
+                      <th>Situação</th>
+                      {baixa && <th />}
                     </tr>
                   </thead>
                   <tbody>
@@ -467,6 +469,28 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                           <td className="text-right tabular-nums">{Number(pc.multa) + Number(pc.juros) > 0 ? moeda(Number(pc.multa) + Number(pc.juros)) : "—"}</td>
                           <td className="text-right tabular-nums">{Number(pc.desconto) > 0 ? moeda(pc.desconto) : "—"}</td>
                           <td className="text-right font-medium tabular-nums">{moeda(aPagar)}</td>
+                          <td>
+                            {pc.status === "pago" ? (
+                              <Selo cor="verde">Paga em {data(pc.pago_em)}</Selo>
+                            ) : (
+                              <Selo cor="amarelo">A pagar</Selo>
+                            )}
+                          </td>
+                          {baixa && (
+                            <td className="whitespace-nowrap">
+                              {pc.status !== "pago" && p.status === "aguardando_pagamento" && (
+                                <details>
+                                  <summary className="cursor-pointer text-xs text-marca-700">Pagar esta parcela</summary>
+                                  <div className="mt-2 w-64">
+                                    <FormAcao action={registrarBaixaParcela.bind(null, pc.id, p.id)} enviar="Confirmar pagamento" variante="sucesso" className="space-y-2">
+                                      <input type="date" name="pago_em" required defaultValue={hojeISO()} className="campo" />
+                                      <input name="observacao" placeholder="Observação (opcional)" className="campo" />
+                                    </FormAcao>
+                                  </div>
+                                </details>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}

@@ -75,7 +75,42 @@ export async function pagamentosEmAberto(de?: string, ate?: string) {
   if (ate) q = q.lte("vencimento", ate);
   const { data, error } = await q.limit(5000);
   if (error) throw new Error(error.message);
-  return data ?? [];
+  const linhas = data ?? [];
+
+  // Pagamentos parcelados aparecem uma vez por parcela pendente, cada uma no seu vencimento.
+  const ids = linhas.map((l) => l.id);
+  if (ids.length === 0) return linhas;
+  const { data: parcelas } = await supabase
+    .from("pagamento_parcelas")
+    .select("pagamento_id, numero, valor_base, multa, juros, desconto, vencimento, status")
+    .in("pagamento_id", ids)
+    .order("numero");
+  const porPagamento = new Map<string, NonNullable<typeof parcelas>>();
+  for (const pc of parcelas ?? []) {
+    const lista = porPagamento.get(pc.pagamento_id) ?? [];
+    lista.push(pc);
+    porPagamento.set(pc.pagamento_id, lista);
+  }
+  const saida: typeof linhas = [];
+  for (const l of linhas) {
+    const lista = porPagamento.get(l.id);
+    if (!lista || lista.length === 0) {
+      saida.push(l);
+      continue;
+    }
+    for (const pc of lista) {
+      if (pc.status === "pago") continue;
+      if (de && pc.vencimento < de) continue;
+      if (ate && pc.vencimento > ate) continue;
+      saida.push({
+        ...l,
+        vencimento: pc.vencimento,
+        valor: Math.round((Number(pc.valor_base) + Number(pc.multa) + Number(pc.juros) - Number(pc.desconto)) * 100) / 100,
+        descricao: `${l.descricao} (parcela ${pc.numero}/${lista.length})`,
+      });
+    }
+  }
+  return saida.sort((x, y) => x.vencimento.localeCompare(y.vencimento) || x.numero - y.numero);
 }
 
 export function somar(itens: { valor: number | string }[]) {

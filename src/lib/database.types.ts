@@ -329,14 +329,14 @@ isOneToOne: false
                   ]
                 },"pagamento_parcelas": {
                   Row: {
-                    "desconto": number,"id": string,"juros": number,"motivo": string | null,"multa": number,"numero": number,"pagamento_id": string,"valor_base": number,"vencimento": string
+                    "desconto": number,"id": string,"juros": number,"motivo": string | null,"multa": number,"numero": number,"pagamento_id": string,"pago_em": string | null,"pago_por": string | null,"status": string,"valor_base": number,"valor_pago": number | null,"vencimento": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "desconto"?: number,"id"?: string,"juros"?: number,"motivo"?: string | null,"multa"?: number,"numero": number,"pagamento_id": string,"valor_base": number,"vencimento": string
+                    "desconto"?: number,"id"?: string,"juros"?: number,"motivo"?: string | null,"multa"?: number,"numero": number,"pagamento_id": string,"pago_em"?: string | null,"pago_por"?: string | null,"status"?: string,"valor_base": number,"valor_pago"?: number | null,"vencimento": string
                   }
                   Update: {
-                    "desconto"?: number,"id"?: string,"juros"?: number,"motivo"?: string | null,"multa"?: number,"numero"?: number,"pagamento_id"?: string,"valor_base"?: number,"vencimento"?: string
+                    "desconto"?: number,"id"?: string,"juros"?: number,"motivo"?: string | null,"multa"?: number,"numero"?: number,"pagamento_id"?: string,"pago_em"?: string | null,"pago_por"?: string | null,"status"?: string,"valor_base"?: number,"valor_pago"?: number | null,"vencimento"?: string
                   }
                   Relationships: [
                     {
@@ -344,6 +344,12 @@ isOneToOne: false
       columns: ["pagamento_id"]
 isOneToOne: false
       referencedRelation: "pagamentos"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pagamento_parcelas_pago_por_fkey"
+      columns: ["pago_por"]
+isOneToOne: false
+      referencedRelation: "profiles"
       referencedColumns: ["id"]
     }
                   ]
@@ -591,6 +597,9 @@ isOneToOne: false
                            },
 "registrar_baixa":
 { Args: { "p_id": string,"p_observacao"?: string,"p_pago_em": string,"p_valor_pago"?: number }; Returns: undefined
+                           },
+"registrar_baixa_parcela":
+{ Args: { "p_observacao"?: string,"p_pago_em": string,"p_parcela_id": string,"p_valor_pago"?: number }; Returns: undefined
                            },
 "registrar_documento":
 { Args: { "p_mime_type": string,"p_motivo"?: string,"p_nome_arquivo": string,"p_pagamento_id": string,"p_sha256": string,"p_storage_path": string,"p_substitui_id"?: string,"p_tamanho": number,"p_tipo": Database["public"]['Enums']["tipo_documento"] }; Returns: string

@@ -15,7 +15,10 @@ export default async function BaixaLotePage() {
     .eq("status", "aguardando_pagamento")
     .order("vencimento", { ascending: true })
     .limit(500);
-  const linhas = (data ?? []).map((p) => ({
+  // Parcelados recebem baixa por parcela, não em lote.
+  const { data: comParcelas } = await supabase.from("pagamento_parcelas").select("pagamento_id");
+  const parcelados = new Set((comParcelas ?? []).map((x) => x.pagamento_id));
+  const linhas = (data ?? []).filter((p) => !parcelados.has(p.id)).map((p) => ({
     id: p.id,
     numero: p.numero,
     favorecido: p.favorecido,

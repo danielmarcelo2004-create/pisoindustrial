@@ -235,3 +235,21 @@ export async function definirParcelas(id: string, _: Estado, fd: FormData): Prom
   revalidatePath(`/pagamentos/${id}`);
   return { ok: "Parcelas definidas. A aprovação continua valendo para o pagamento inteiro." };
 }
+
+/** Baixa de uma parcela (pagamento parcelado). O pagamento fica pago só quando todas as parcelas estiverem pagas. */
+export async function registrarBaixaParcela(parcelaId: string, pagamentoId: string, _: Estado, fd: FormData): Promise<Estado> {
+  await getUsuario();
+  if (!UUID.test(parcelaId)) return { erro: "Parcela não encontrada." };
+  const pagoEm = String(fd.get("pago_em") ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(pagoEm)) return { erro: "Informe a data do pagamento." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("registrar_baixa_parcela", {
+    p_parcela_id: parcelaId,
+    p_pago_em: pagoEm,
+    p_observacao: String(fd.get("observacao") ?? "").trim() || undefined,
+  });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath(`/pagamentos/${pagamentoId}`);
+  revalidatePath("/", "layout");
+  return { ok: "Parcela registrada como paga." };
+}

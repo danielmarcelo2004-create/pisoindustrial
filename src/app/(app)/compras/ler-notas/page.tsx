@@ -23,7 +23,7 @@ export default async function LerNotasPage() {
     id: d.id,
     arquivo: d.nome_arquivo,
     mime: d.mime_type ?? "",
-    numero: d.pagamento?.numero ?? null,
+    numero: d.pagamento?.numero !== undefined && d.pagamento?.numero !== null ? String(d.pagamento.numero) : null,
     favorecido: d.pagamento?.favorecido ?? "",
     obra: d.pagamento?.obra?.nome ?? "",
   }));

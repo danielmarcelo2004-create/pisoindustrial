@@ -51,7 +51,7 @@ export function FormLerNotas({ pendentes }: { pendentes: Pendente[] }) {
             continue;
           }
           const r = await registrarNotaLida(doc.id, { nota: lida.nota, itens: lida.itens });
-          if (r.erro) marcar(doc.id, { status: "erro", detalhe: r.erro });
+          if (r?.erro) marcar(doc.id, { status: "erro", detalhe: r.erro });
           else marcar(doc.id, { status: "registrada", detalhe: `${lida.itens.length} item(ns) registrados` });
         } catch (e) {
           marcar(doc.id, { status: "erro", detalhe: (e as Error).message });

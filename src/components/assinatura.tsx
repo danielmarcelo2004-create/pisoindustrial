@@ -195,7 +195,7 @@ export function SelecaoLote({ itens }: { itens: ItemAssinavel[] }) {
                   <th>Nº</th>
                   <th>Vencimento</th>
                   <th>Favorecido / descrição</th>
-                  <th>Obra</th>
+                  <th>Centro de custo</th>
                   <th>Etapa</th>
                   <th className="text-right">Valor</th>
                 </tr>

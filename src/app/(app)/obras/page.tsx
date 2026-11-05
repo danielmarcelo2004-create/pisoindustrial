@@ -5,7 +5,7 @@ import { getUsuario } from "@/lib/auth";
 import { STATUS_OBRA } from "@/lib/rotulos";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata: Metadata = { title: "Obras" };
+export const metadata: Metadata = { title: "Centros de custo" };
 
 export default async function ObrasPage() {
   const u = await getUsuario();
@@ -25,9 +25,9 @@ export default async function ObrasPage() {
   return (
     <>
       <Cabecalho
-        titulo="Obras"
+        titulo="Centros de custo"
         subtitulo={u.perfil === "engenheiro" || u.perfil === "administrador" ? "Obras às quais você está vinculado" : undefined}
-        acoes={u.perfil === "financeiro" && <LinkBotao href="/obras/nova">+ Nova obra</LinkBotao>}
+        acoes={u.perfil === "financeiro" && <LinkBotao href="/obras/nova">+ Novo centro de custo</LinkBotao>}
       />
       <Cartao semPadding>
         {!obras?.length ? (
@@ -37,7 +37,7 @@ export default async function ObrasPage() {
             <table className="tabela">
               <thead>
                 <tr>
-                  <th>Obra</th>
+                  <th>Centro de custo</th>
                   <th>Local</th>
                   <th>Fluxo</th>
                   <th>Engenheiro</th>

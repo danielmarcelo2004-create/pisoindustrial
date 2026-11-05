@@ -30,7 +30,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { href: "/pagamentos", rotulo: "Pagamentos", icone: Icones.pagamentos },
     { href: "/ops", rotulo: u.perfil === "engenheiro" ? "Minhas solicitações (OP)" : "Solicitações de OP", icone: Icones.op },
     ...(assinante ? [{ href: "/aprovacoes", rotulo: "Aprovações e assinaturas", icone: Icones.aprovacoes, contador: pend.count ?? 0 }] : []),
-    { href: "/obras", rotulo: "Obras", icone: Icones.obras },
+    { href: "/obras", rotulo: "Centros de custo", icone: Icones.obras },
     ...(fin || sup ? [{ href: "/fornecedores", rotulo: "Fornecedores", icone: Icones.fornecedores }] : []),
     { href: "/relatorios", rotulo: "Relatórios", icone: Icones.relatorios },
     ...(compras ? [{ href: "/compras", rotulo: "Inteligência de Compras", icone: Icones.compras }] : []),

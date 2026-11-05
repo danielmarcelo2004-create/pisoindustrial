@@ -315,7 +315,7 @@ function DetalheMaterial({
               <tr>
                 <th>Emissão</th>
                 <th>Fornecedor</th>
-                <th>Obra</th>
+                <th>Centro de custo</th>
                 <th>Local</th>
                 <th>Descrição na nota</th>
                 <th className="text-right">Qtd</th>

@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     null,
   );
 
-  const cab = ["Nº", "Vencimento", "Favorecido", "Fornecedor", "Descrição", "Obra", "Cidade", "UF", "Valor", "Forma", "Nº documento", "Situação", "Pago em", "Valor pago"];
+  const cab = ["Nº", "Vencimento", "Favorecido", "Fornecedor", "Descrição", "Centro de custo", "Cidade", "UF", "Valor", "Forma", "Nº documento", "Situação", "Pago em", "Valor pago"];
   const linhas = itens.map((p) =>
     [
       p.numero,

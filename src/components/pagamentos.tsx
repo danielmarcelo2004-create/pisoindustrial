@@ -45,7 +45,7 @@ export function TabelaPagamentos({
             <th className="w-16">Nº</th>
             <th>Vencimento</th>
             <th>Favorecido / descrição</th>
-            {colunaObra && <th>Obra</th>}
+            {colunaObra && <th>Centro de custo</th>}
             <th className="text-right">Valor</th>
             <th>Forma</th>
             <th>Situação</th>

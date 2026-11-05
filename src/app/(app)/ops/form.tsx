@@ -91,7 +91,7 @@ export function FormOP({
       <Cartao titulo="Dados da solicitação">
         <div className="grid gap-4 sm:grid-cols-2">
           <Campo
-            rotulo="Obra (centro de custo)"
+            rotulo="Centro de custo"
             obrigatorio
             ajuda={
               obraSel &&

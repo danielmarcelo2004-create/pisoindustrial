@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CamposObra } from "../campos";
 import { concederAcesso, revogarAcesso, salvarObra } from "../actions";
 
-export const metadata: Metadata = { title: "Obra" };
+export const metadata: Metadata = { title: "Centro de custo" };
 
 export default async function ObraPage({ params, searchParams }: PageProps<"/obras/[id]">) {
   const { id } = await params;
@@ -42,7 +42,7 @@ export default async function ObraPage({ params, searchParams }: PageProps<"/obr
   return (
     <>
       <Cabecalho
-        voltar={{ href: "/obras", rotulo: "Obras" }}
+        voltar={{ href: "/obras", rotulo: "Centros de custo" }}
         titulo={
           <span className="flex flex-wrap items-center gap-3">
             {o.nome}
@@ -61,7 +61,7 @@ export default async function ObraPage({ params, searchParams }: PageProps<"/obr
       />
       {sp.criada && (
         <div className="mb-4">
-          <Aviso tipo="sucesso">Obra cadastrada. Conceda abaixo os acessos de Suprimentos, se necessário.</Aviso>
+          <Aviso tipo="sucesso">Centro de custo cadastrado. Conceda abaixo os acessos de Suprimentos, se necessário.</Aviso>
         </div>
       )}
 
@@ -78,7 +78,7 @@ export default async function ObraPage({ params, searchParams }: PageProps<"/obr
               </FormAcao>
             </Cartao>
           ) : (
-            <Cartao titulo="Dados da obra">
+            <Cartao titulo="Dados do centro de custo">
               <dl className="grid gap-4 sm:grid-cols-2">
                 <Dado rotulo="Cliente">{o.cliente}</Dado>
                 <Dado rotulo="Endereço">{o.endereco}</Dado>
@@ -100,7 +100,7 @@ export default async function ObraPage({ params, searchParams }: PageProps<"/obr
         </div>
 
         <div className="min-w-0 space-y-6">
-          <Cartao titulo="Acessos à obra">
+          <Cartao titulo="Acessos ao centro de custo">
             <p className="mb-3 text-xs text-slate-500">
               O engenheiro e o administrador responsáveis já têm acesso. Conceda aqui o acesso de Suprimentos (para cadastrar
               pagamentos) ou de outros engenheiros/administradores.

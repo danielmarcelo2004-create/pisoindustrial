@@ -47,7 +47,7 @@ export default async function OPsPage({ searchParams }: PageProps<"/ops">) {
                 <tr>
                   <th>Número</th>
                   <th>Favorecido / descrição</th>
-                  <th>Obra</th>
+                  <th>Centro de custo</th>
                   {!eng && <th>Solicitante</th>}
                   <th>Vencimento</th>
                   <th className="text-right">Valor</th>

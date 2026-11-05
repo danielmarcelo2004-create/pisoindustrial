@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Histórico de atividades" };
 const ENTIDADES: Record<string, string> = {
   pagamento: "Pagamentos",
   documento: "Documentos",
-  obras: "Obras",
+  obras: "Centros de custo",
   obra_acessos: "Acessos a obras",
   fornecedores: "Fornecedores",
   profiles: "Usuários",

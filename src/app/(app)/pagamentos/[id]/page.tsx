@@ -209,7 +209,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                   </Dado>
                 </div>
               )}
-              <Dado rotulo="Obra">
+              <Dado rotulo="Centro de custo">
                 {p.obra.nome}
                 <div className="text-xs text-slate-500">
                   {p.obra.cidade}/{p.obra.uf}

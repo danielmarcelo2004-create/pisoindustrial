@@ -99,7 +99,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
           </select>
           <input type="date" name="de" defaultValue={f.de} className="campo" aria-label="De" />
           <input type="date" name="ate" defaultValue={f.ate} className="campo" aria-label="Até" />
-          <select name="obra" defaultValue={f.obra} className="campo" aria-label="Obra">
+          <select name="obra" defaultValue={f.obra} className="campo" aria-label="Centro de custo">
             <option value="">Todas as obras</option>
             {(obras ?? []).map((o) => (
               <option key={o.id} value={o.id}>
@@ -148,7 +148,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
           </Cartao>
         )}
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <TabelaResumo titulo="Por obra" coluna="Obra" linhas={r.porObra} link={(l) => (l.chave ? comFiltro("obra", l.chave) : null)} />
+          <TabelaResumo titulo="Por centro de custo" coluna="Centro de custo" linhas={r.porObra} link={(l) => (l.chave ? comFiltro("obra", l.chave) : null)} />
           <TabelaResumo titulo="Por situação" coluna="Situação" linhas={r.porStatus} link={(l) => comFiltro("status", l.chave)} />
         </div>
         <TabelaResumo
@@ -168,7 +168,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
                     <th>Nº</th>
                     <th>Vencimento</th>
                     <th>Favorecido / descrição</th>
-                    <th>Obra</th>
+                    <th>Centro de custo</th>
                     <th className="text-right">Valor</th>
                     <th>Situação</th>
                     <th>Pago em</th>

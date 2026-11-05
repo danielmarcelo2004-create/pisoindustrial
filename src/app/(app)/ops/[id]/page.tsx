@@ -138,7 +138,7 @@ export default async function OPPage({ params, searchParams }: PageProps<"/ops/[
                   <Dado rotulo="Observações">{op.observacoes}</Dado>
                 </div>
               )}
-              <Dado rotulo="Obra">
+              <Dado rotulo="Centro de custo">
                 {op.obra?.nome}
                 <div className="text-xs text-slate-500">
                   {op.obra?.cidade}/{op.obra?.uf}

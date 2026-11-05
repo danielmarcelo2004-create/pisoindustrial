@@ -23,7 +23,7 @@ export function CamposObra({ engenheiros, administradores, padrao = {} }: { enge
         <Campo rotulo="Código">
           <input name="codigo" defaultValue={padrao.codigo ?? ""} className="campo" maxLength={30} />
         </Campo>
-        <Campo rotulo="Nome da obra" obrigatorio className="sm:col-span-3">
+        <Campo rotulo="Nome do centro de custo" obrigatorio className="sm:col-span-3">
           <input name="nome" required defaultValue={padrao.nome ?? ""} className="campo" maxLength={200} />
         </Campo>
         <Campo rotulo="Cliente" className="sm:col-span-2">

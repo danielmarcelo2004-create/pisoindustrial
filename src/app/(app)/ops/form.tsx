@@ -4,7 +4,6 @@ import { useState } from "react";
 import { BotaoEnviar, FormAcao } from "@/components/form-acao";
 import { Botao, Campo, Cartao } from "@/components/ui";
 import type { Estado } from "@/lib/erros";
-import { FORMAS_PAGAMENTO } from "@/lib/rotulos";
 
 type Item = { descricao: string; unidade: string; quantidade: string; valor_unitario: string };
 type ItemPadrao = {

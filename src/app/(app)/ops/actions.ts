@@ -15,13 +15,6 @@ const t = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
 type ItemOP = { descricao: string; unidade: string; quantidade: number; valor_unitario: number };
 
-/** "1.234,56" → 1234.56; vazio = 0; inválido = null. */
-function dinheiro(s: string): number | null {
-  const x = s.trim();
-  if (!x) return 0;
-  const n = x.includes(",") ? Number(x.replace(/\./g, "").replace(",", ".")) : Number(x);
-  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
-}
 
 function lerItens(fd: FormData): ItemOP[] | string {
   let bruto: unknown;

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { removerNF } from "@/app/(app)/compras/actions";
 import { FormDecisao } from "@/components/assinatura";
+import { AssinadorDocumentos } from "./assinador";
 import { FormAcao } from "@/components/form-acao";
 import { LinhaDoTempo } from "@/components/linha-do-tempo";
 import { SeloStatus, Vencimento } from "@/components/pagamentos";
@@ -103,6 +104,11 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
 
   const ativos = (docs ?? []).filter((d) => d.ativo);
   const analista = u.perfil === "financeiro" || u.perfil === "suprimentos";
+  // Assinatura guardada do usuário (para assinar os documentos deste pagamento)
+  const { data: meuPerfil } = await supabase.from("profiles").select("assinatura_path").eq("id", u.id).single();
+  const caminhoAss = meuPerfil?.assinatura_path && meuPerfil.assinatura_path.startsWith(`${u.id}/`) && !meuPerfil.assinatura_path.endsWith("/removida") ? meuPerfil.assinatura_path : null;
+  const assinaturaUrl = caminhoAss ? (await supabase.storage.from("assinaturas").createSignedUrl(caminhoAss, 600)).data?.signedUrl ?? null : null;
+  const assinaturaMime = caminhoAss?.endsWith(".png") ? ("image/png" as const) : ("image/jpeg" as const);
   const idsNF = ativos.filter((d) => d.tipo === "nota_fiscal").map((d) => d.id);
   const { data: notasNF } =
     analista && idsNF.length
@@ -431,6 +437,18 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             </Cartao>
           )}
 
+          {assinaturaUrl && p.status !== "cancelado" && (
+            <AssinadorDocumentos
+              documentos={ativos
+                .filter((d) => d.tipo !== "comprovante")
+                .filter((d) => ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? ""))
+                .map((d) => ({ id: d.id, nome: d.nome_arquivo, mime: d.mime_type ?? "application/pdf" }))}
+              assinaturaUrl={assinaturaUrl}
+              assinaturaMime={assinaturaMime}
+              pagamentoId={p.id}
+              obraId={p.obra_id}
+            />
+          )}
           <Cartao titulo="Assinaturas">
             {p.assinado_no_cadastro && (
               <p className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800">

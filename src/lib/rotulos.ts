@@ -43,6 +43,7 @@ export const TIPOS_DOCUMENTO: Record<TipoDocumento, string> = {
   ordem_pagamento: "Ordem de pagamento",
   comprovante: "Comprovante de pagamento",
   outro: "Outro documento",
+  documento_assinado: "Documento assinado",
 };
 
 export const FORMAS_PAGAMENTO: Record<FormaPagamento, string> = {

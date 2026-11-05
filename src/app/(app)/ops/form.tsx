@@ -6,14 +6,12 @@ import { Botao, Campo, Cartao } from "@/components/ui";
 import type { Estado } from "@/lib/erros";
 import { FORMAS_PAGAMENTO } from "@/lib/rotulos";
 
-type Item = { descricao: string; unidade: string; quantidade: string; valor_unitario: string; inicio: string; salario: string };
+type Item = { descricao: string; unidade: string; quantidade: string; valor_unitario: string };
 type ItemPadrao = {
   descricao: string;
   unidade: string | null;
   quantidade: number | string;
   valor_unitario: number | string;
-  inicio?: string | null;
-  salario?: number | string | null;
 };
 type Padrao = {
   obra_id?: string;
@@ -24,8 +22,7 @@ type Padrao = {
   forma_pagamento?: string;
   dados_bancarios?: string | null;
   observacoes?: string | null;
-  referencia?: string | null;
-  desconto?: number | string;
+  numero_nf?: string | null;
   itens?: ItemPadrao[];
 };
 
@@ -38,7 +35,7 @@ function num(s: string): number {
 const moeda = (v: number) => (Number.isFinite(v) ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—");
 const paraCampo = (v: number | string, casas: number) =>
   Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: casas, useGrouping: false });
-const itemVazio = (): Item => ({ descricao: "", unidade: "", quantidade: "1", valor_unitario: "", inicio: "", salario: "" });
+const itemVazio = (): Item => ({ descricao: "", unidade: "", quantidade: "1", valor_unitario: "" });
 
 export function FormOP({
   action,
@@ -56,19 +53,14 @@ export function FormOP({
           unidade: i.unidade ?? "",
           quantidade: paraCampo(i.quantidade, 3),
           valor_unitario: paraCampo(i.valor_unitario, 2),
-          inicio: i.inicio ?? "",
-          salario: i.salario === null || i.salario === undefined ? "" : paraCampo(i.salario, 2),
         }))
       : [itemVazio()],
   );
   const [obra, setObra] = useState(padrao.obra_id ?? "");
-  const [desconto, setDesconto] = useState(paraCampo(padrao.desconto ?? 0, 2));
 
   const totais = itens.map((i) => Math.round(num(i.quantidade) * num(i.valor_unitario) * 100) / 100);
   const subtotal = totais.reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0);
-  const descontoNum = num(desconto);
-  const desc = Number.isFinite(descontoNum) ? descontoNum : 0;
-  const total = subtotal - desc;
+  const total = subtotal;
   const obraSel = obras.find((o) => o.id === obra);
 
   const alterar = (i: number, campo: keyof Item, v: string) =>
@@ -80,8 +72,6 @@ export function FormOP({
       unidade: i.unidade,
       quantidade: num(i.quantidade),
       valor_unitario: num(i.valor_unitario),
-      inicio: i.inicio || null,
-      salario: i.salario.trim() ? num(i.salario) : null,
     })),
   );
 
@@ -121,17 +111,14 @@ export function FormOP({
           <Campo rotulo="Observação (motivo)" obrigatorio className="sm:col-span-2" ajuda="Aparece no campo OBSERVAÇÃO do PDF.">
             <input name="descricao" required defaultValue={padrao.descricao ?? ""} className="campo" maxLength={500} placeholder="Ex.: Adiantamento de salário" />
           </Campo>
-          <Campo rotulo="Condição de pagamento">
+          <Campo rotulo="Condição de pagamento (pix ou boleto)">
             <select name="forma_pagamento" defaultValue={padrao.forma_pagamento ?? "pix"} className="campo">
-              {Object.entries(FORMAS_PAGAMENTO).map(([v, r]) => (
-                <option key={v} value={v}>
-                  {r}
-                </option>
-              ))}
+              <option value="pix">PIX</option>
+              <option value="boleto">Boleto</option>
             </select>
           </Campo>
-          <Campo rotulo="Referência" ajuda="Mês de referência, ex.: OUTUBRO (opcional).">
-            <input name="referencia" defaultValue={padrao.referencia ?? ""} className="campo" maxLength={60} placeholder="OUTUBRO" />
+          <Campo rotulo="Nº da Nota Fiscal" ajuda="Opcional. Se vazio, o sistema usa o número da OP.">
+            <input name="numero_nf" defaultValue={padrao.numero_nf ?? ""} className="campo" maxLength={60} />
           </Campo>
           <Campo rotulo="Dados para pagamento" ajuda="Chave PIX, banco, agência e conta. Uma informação por linha no PDF.">
             <textarea name="dados_bancarios" rows={2} defaultValue={padrao.dados_bancarios ?? ""} className="campo" maxLength={300} />
@@ -152,8 +139,6 @@ export function FormOP({
                 <th className="w-24">Unidade</th>
                 <th className="w-24">Quantidade</th>
                 <th className="w-32">Valor unit. (R$)</th>
-                <th className="w-36" title="Opcional: para mão de obra">Início</th>
-                <th className="w-32" title="Opcional: salário de referência">Salário (R$)</th>
                 <th className="w-32 text-right">Total</th>
                 <th className="w-10" />
               </tr>
@@ -174,12 +159,6 @@ export function FormOP({
                   <td>
                     <input aria-label={`Valor unitário do item ${i + 1}`} value={it.valor_unitario} onChange={(e) => alterar(i, "valor_unitario", e.target.value)} className="campo tabular-nums" inputMode="decimal" placeholder="0,00" required />
                   </td>
-                  <td>
-                    <input type="date" aria-label={`Início do item ${i + 1}`} value={it.inicio} onChange={(e) => alterar(i, "inicio", e.target.value)} className="campo" />
-                  </td>
-                  <td>
-                    <input aria-label={`Salário do item ${i + 1}`} value={it.salario} onChange={(e) => alterar(i, "salario", e.target.value)} className="campo tabular-nums" inputMode="decimal" placeholder="—" />
-                  </td>
                   <td className="pt-4 text-right font-medium tabular-nums">{moeda(totais[i])}</td>
                   <td className="pt-3">
                     {itens.length > 1 && (
@@ -193,7 +172,7 @@ export function FormOP({
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={7} className="px-3 py-3">
+                <td colSpan={5} className="px-3 py-3">
                   <Botao type="button" variante="secundario" tamanho="sm" onClick={() => setItens((xs) => [...xs, itemVazio()])}>
                     + Adicionar item
                   </Botao>
@@ -205,16 +184,7 @@ export function FormOP({
                 <td />
               </tr>
               <tr>
-                <td colSpan={7} className="px-3 py-2 text-right text-sm text-slate-600">
-                  Desconto (R$)
-                </td>
-                <td className="px-3 py-2">
-                  <input name="desconto" value={desconto} onChange={(e) => setDesconto(e.target.value)} className="campo text-right tabular-nums" inputMode="decimal" placeholder="0,00" aria-label="Desconto" />
-                </td>
-                <td />
-              </tr>
-              <tr>
-                <td colSpan={7} className="px-3 py-3 text-right font-semibold">
+                <td colSpan={5} className="px-3 py-3 text-right font-semibold">
                   Total da OP
                 </td>
                 <td className="px-3 py-3 text-right text-base font-semibold tabular-nums">{moeda(total)}</td>
@@ -223,7 +193,6 @@ export function FormOP({
             </tfoot>
           </table>
         </div>
-        {desc > subtotal && <p className="px-4 pb-3 text-sm text-red-700">O desconto não pode ser maior que o subtotal.</p>}
       </Cartao>
 
       <div className="flex flex-wrap gap-2">

@@ -126,7 +126,7 @@ export default async function OPPage({ params, searchParams }: PageProps<"/ops/[
               </Dado>
               <Dado rotulo="Vencimento">{data(op.vencimento)}</Dado>
               <Dado rotulo="Forma de pagamento">{FORMAS_PAGAMENTO[op.forma_pagamento]}</Dado>
-              <Dado rotulo="Referência">{op.referencia ?? "—"}</Dado>
+              <Dado rotulo="Nº da Nota Fiscal">{op.numero_nf ?? "—"}</Dado>
               <Dado rotulo="Favorecido">{op.favorecido}</Dado>
               <Dado rotulo="CPF / CNPJ">{op.cpf_cnpj ? cpfCnpj(op.cpf_cnpj) : "—"}</Dado>
               <Dado rotulo="Dados para pagamento">{op.dados_bancarios ?? "—"}</Dado>

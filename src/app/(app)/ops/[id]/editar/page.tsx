@@ -10,7 +10,7 @@ import { FormOP } from "../../form";
 export const metadata: Metadata = { title: "Editar solicitação de OP" };
 
 export default async function EditarOPPage({ params }: PageProps<"/ops/[id]/editar">) {
-  const u = await exigirPerfil("engenheiro");
+  const u = await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const { id } = await params;
   const op = await carregarOP(id);
   if (!op) notFound();

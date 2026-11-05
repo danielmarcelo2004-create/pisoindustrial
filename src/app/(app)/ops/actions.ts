@@ -13,14 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const t = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
-type ItemOP = {
-  descricao: string;
-  unidade: string;
-  quantidade: number;
-  valor_unitario: number;
-  inicio: string | null;
-  salario: number | null;
-};
+type ItemOP = { descricao: string; unidade: string; quantidade: number; valor_unitario: number };
 
 /** "1.234,56" → 1234.56; vazio = 0; inválido = null. */
 function dinheiro(s: string): number | null {
@@ -48,25 +41,18 @@ function lerItens(fd: FormData): ItemOP[] | string {
     if (!descricao) return `Item ${i + 1}: informe a descrição.`;
     if (!(quantidade > 0)) return `Item ${i + 1}: quantidade inválida.`;
     if (!(valor >= 0)) return `Item ${i + 1}: valor unitário inválido.`;
-    const inicio = String(it.inicio ?? "").trim();
-    if (inicio && !/^\d{4}-\d{2}-\d{2}$/.test(inicio)) return `Item ${i + 1}: data de início inválida.`;
-    const salRaw = it.salario;
-    const salario = salRaw === null || salRaw === undefined || salRaw === "" ? null : Number(salRaw);
-    if (salario !== null && !(salario >= 0)) return `Item ${i + 1}: salário inválido.`;
     itens.push({
       descricao,
       unidade: String(it.unidade ?? "").trim(),
       quantidade,
       valor_unitario: Math.round(valor * 100) / 100,
-      inicio: inicio || null,
-      salario: salario === null ? null : Math.round(salario * 100) / 100,
     });
   }
   return itens;
 }
 
 export async function salvarOP(id: string | null, _: Estado, fd: FormData): Promise<Estado> {
-  await exigirPerfil("engenheiro");
+  await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const obra = t(fd, "obra_id");
   const forma = t(fd, "forma_pagamento") as FormaPagamento;
   const venc = t(fd, "vencimento");
@@ -77,8 +63,6 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
   if (venc && !/^\d{4}-\d{2}-\d{2}$/.test(venc)) return { erro: "Vencimento inválido." };
   const itens = lerItens(fd);
   if (typeof itens === "string") return { erro: itens };
-  const desconto = dinheiro(t(fd, "desconto"));
-  if (desconto === null) return { erro: "Desconto inválido." };
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("salvar_op", {
@@ -92,8 +76,7 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
     p_dados_bancarios: t(fd, "dados_bancarios"),
     p_observacoes: t(fd, "observacoes"),
     p_itens: itens,
-    p_desconto: desconto,
-    p_referencia: t(fd, "referencia"),
+    p_numero_nf: t(fd, "numero_nf"),
   });
   if (error) return { erro: mensagemErro(error) };
 
@@ -104,7 +87,7 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
 }
 
 export async function enviarOP(id: string, _: Estado): Promise<Estado> {
-  await exigirPerfil("engenheiro");
+  await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const supabase = await createClient();
   const { data: pagId, error } = await supabase.rpc("enviar_op", { p_id: id });
   if (error || !pagId) return { erro: mensagemErro(error) };
@@ -137,7 +120,7 @@ export async function enviarOP(id: string, _: Estado): Promise<Estado> {
 }
 
 export async function excluirOP(id: string, _: Estado): Promise<Estado> {
-  await exigirPerfil("engenheiro");
+  await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const supabase = await createClient();
   const { error } = await supabase.rpc("excluir_op", { p_id: id });
   if (error) return { erro: mensagemErro(error) };
@@ -147,7 +130,7 @@ export async function excluirOP(id: string, _: Estado): Promise<Estado> {
 
 /** Cria um novo rascunho a partir de uma OP (ex.: rejeitada, para corrigir e reenviar). */
 export async function duplicarOP(id: string, _: Estado): Promise<Estado> {
-  await exigirPerfil("engenheiro");
+  await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const op = await carregarOP(id);
   if (!op) return { erro: "Solicitação não encontrada." };
   const supabase = await createClient();
@@ -166,11 +149,8 @@ export async function duplicarOP(id: string, _: Estado): Promise<Estado> {
       unidade: i.unidade ?? "",
       quantidade: Number(i.quantidade),
       valor_unitario: Number(i.valor_unitario),
-      inicio: i.inicio,
-      salario: i.salario === null ? null : Number(i.salario),
     })),
-    p_desconto: Number(op.desconto),
-    p_referencia: op.referencia ?? "",
+    p_numero_nf: op.numero_nf ?? "",
   });
   if (error) return { erro: mensagemErro(error) };
   redirect(`/ops/${data}/editar`);

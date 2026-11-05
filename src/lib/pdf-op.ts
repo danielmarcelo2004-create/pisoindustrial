@@ -1,54 +1,43 @@
 import "server-only";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { cpfCnpj, data, dataHora, moeda } from "@/lib/formato";
 import { FORMAS_PAGAMENTO, type FormaPagamento } from "@/lib/rotulos";
 import { SISTEMA } from "@/lib/sistema";
 
-export type ItemPdfOP = {
-  descricao: string;
-  unidade: string | null;
-  quantidade: number;
-  valorUnitario: number;
-  total: number;
-  inicio: string | null;
-  salario: number | null;
-};
+export type ItemPdfOP = { descricao: string; unidade: string | null; quantidade: number; valorUnitario: number; total: number };
 
 export type DadosPdfOP = {
   numero: string | null;
   rascunho: boolean;
-  referencia: string | null;
-  centroDeCusto: string;
+  dataEmissao: string;
   favorecido: string;
   cpfCnpj: string | null;
-  observacao: string;
+  numeroNf: string | null;
   vencimento: string | null;
   formaPagamento: FormaPagamento;
   dadosBancarios: string | null;
-  observacoes: string | null;
-  desconto: number;
+  centroDeCusto: string;
   solicitante: string;
   emitidaEm: string;
   itens: ItemPdfOP[];
 };
 
-// Formulário em paisagem (A4), como o modelo oficial.
+// Formulário em paisagem (A4), no modelo da planilha da empresa.
 const L = 841.89;
 const A = 595.28;
 const M = 28;
 const W = L - 2 * M;
-const LIMITE = A - 52; // altura útil, acima do rodapé
+const LIMITE = A - 52;
 
 type Cor = ReturnType<typeof rgb>;
 const PRETO = rgb(0, 0, 0);
 const CINZA = rgb(0.35, 0.35, 0.35);
-const VERDE = rgb(0.573, 0.816, 0.314); // cabeçalho da tabela (cor do modelo)
-const AMARELO = rgb(1, 0.949, 0.8); // valores e totais (cor do modelo)
-const VERMELHO = rgb(0.8, 0.1, 0.1);
+const CINZA_CLARO = rgb(0.93, 0.93, 0.93);
 const AZUL = rgb(0.13, 0.36, 0.6);
 const MARCA_DAGUA = rgb(0.85, 0.2, 0.2);
 
-// As fontes padrão do PDF usam WinAnsi: substitui o que não cabe.
 const WIN_ANSI_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
 function seguro(s: string): string {
   return Array.from(s.replace(/\r?\n/g, " "))
@@ -61,7 +50,6 @@ function seguro(s: string): string {
     .join("");
 }
 
-/** Quebra um texto em linhas que cabem na largura dada. */
 function quebrar(texto: string, fonte: PDFFont, tamanho: number, largura: number): string[] {
   const palavras = seguro(texto).split(/\s+/).filter(Boolean);
   const linhas: string[] = [];
@@ -86,19 +74,7 @@ function quebrar(texto: string, fonte: PDFFont, tamanho: number, largura: number
   return linhas.length ? linhas : [""];
 }
 
-/** Reduz a fonte e, se preciso, corta o texto com reticências, para caber numa célula. */
-function encaixar(t: string, f: PDFFont, maxW: number, tamanho: number): { txt: string; s: number } {
-  let s = tamanho;
-  let txt = seguro(t);
-  while (s > 6.5 && f.widthOfTextAtSize(txt, s) > maxW) s -= 0.5;
-  if (f.widthOfTextAtSize(txt, s) > maxW) {
-    while (txt.length > 1 && f.widthOfTextAtSize(txt + "…", s) > maxW) txt = txt.slice(0, -1);
-    txt += "…";
-  }
-  return { txt, s };
-}
-
-/** Gera o PDF da Ordem de Pagamento no layout do modelo oficial da empresa. */
+/** Gera o PDF da Ordem de Pagamento no modelo da planilha da empresa. */
 export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.setTitle(`Ordem de Pagamento ${d.numero ?? "(rascunho)"}`);
@@ -106,23 +82,26 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
   pdf.setCreator(SISTEMA.nome);
   const reg = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const boldIt = await pdf.embedFont(StandardFonts.HelveticaBoldOblique);
+
+  // Logo da empresa (JPEG em public/logo-empresa.jpg). Se faltar, usa o nome da empresa.
+  let logo: Awaited<ReturnType<PDFDocument["embedJpg"]>> | null = null;
+  try {
+    logo = await pdf.embedJpg(await readFile(path.join(process.cwd(), "public", "logo-empresa.jpg")));
+  } catch {
+    logo = null;
+  }
 
   const subtotal = d.itens.reduce((s, i) => s + i.total, 0);
-  const total = subtotal - d.desconto;
-  const temInicio = d.itens.some((i) => i.inicio);
-  const temSalario = d.itens.some((i) => i.salario !== null);
 
-  // Colunas da tabela (a coluna do nome ocupa o espaço restante).
+  // Colunas da tabela
   const colDef: { id: string; titulo: string; w: number; al: "c" | "l" | "r" }[] = [
-    { id: "item", titulo: "ITEM", w: 38, al: "c" },
+    { id: "item", titulo: "ITEM", w: 40, al: "c" },
     { id: "nome", titulo: "NOME DO PRODUTO/SERVIÇO/MATERIAL", w: 0, al: "l" },
-    { id: "centro", titulo: "CENTRO DE CUSTO", w: 150, al: "c" },
-    ...(temInicio ? [{ id: "inicio", titulo: "INÍCIO", w: 66, al: "c" as const }] : []),
-    ...(temSalario ? [{ id: "salario", titulo: "SALÁRIO", w: 80, al: "r" as const }] : []),
-    { id: "un", titulo: "UNIDADE", w: 58, al: "c" },
-    { id: "vu", titulo: "VALOR UNITÁRIO", w: 92, al: "r" },
-    { id: "total", titulo: "VALOR TOTAL", w: 96, al: "r" },
+    { id: "centro", titulo: "CENTRO DE CUSTO", w: 170, al: "c" },
+    { id: "qtd", titulo: "QUANTIDADE", w: 70, al: "c" },
+    { id: "un", titulo: "UNIDADE", w: 62, al: "c" },
+    { id: "vu", titulo: "VALOR UNITÁRIO", w: 98, al: "r" },
+    { id: "total", titulo: "VALOR TOTAL", w: 104, al: "r" },
   ];
   const fixo = colDef.reduce((s, c) => (c.id === "nome" ? s : s + c.w), 0);
   colDef.find((c) => c.id === "nome")!.w = W - fixo;
@@ -133,7 +112,6 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
     cursor += c.w;
   }
 
-  // Desenho
   const yOf = (top: number) => A - top;
   const texto = (p: PDFPage, t: string, x: number, top: number, o: { f?: PDFFont; s?: number; c?: Cor } = {}) =>
     p.drawText(seguro(t), { x, y: yOf(top) - (o.s ?? 9), font: o.f ?? reg, size: o.s ?? 9, color: o.c ?? PRETO });
@@ -157,7 +135,7 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
   };
   const cabecalhoTabela = (p: PDFPage, top: number) => {
     const h = 20;
-    caixa(p, M, top, W, h, { fill: VERDE });
+    caixa(p, M, top, W, h, { fill: CINZA_CLARO });
     for (const c of colDef) {
       const cc = col[c.id];
       textoAlin(p, c.titulo, cc.x, cc.x + cc.w, top + 6, "c", { f: bold, s: 7.5 });
@@ -169,45 +147,51 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
   let page = novaPagina();
   let top = M;
 
-  // Título
-  caixa(page, M, top, W, 30, { espessura: 1.4 });
-  textoAlin(page, "ORDEM DE PAGAMENTO", M, M + W, top + 8, "c", { f: bold, s: 15 });
-  if (d.numero) textoAlin(page, d.numero, M, M + W, top + 11, "r", { f: bold, s: 9 });
-  top += 30;
+  // Cabeçalho: logo e CNPJ à esquerda; campos à direita
+  const hTopo = 92;
+  const xDir = M + 330;
+  const wDirRot = 150;
+  caixa(page, M, top, W, hTopo, { espessura: 1 });
+  linhaV(page, xDir, top, top + hTopo);
+  if (logo) {
+    const lw = 220;
+    const lh = (lw * logo.height) / logo.width;
+    page.drawImage(logo, { x: M + 14, y: yOf(top + 14) - lh, width: lw, height: lh });
+    texto(page, `CNPJ: ${SISTEMA.empresaCnpj}`, M + 14, top + hTopo - 18, { f: bold, s: 9 });
+  } else {
+    texto(page, SISTEMA.logoPequeno, M + 14, top + 12, { s: 9, c: CINZA });
+    texto(page, SISTEMA.logoGrande, M + 14, top + 22, { f: bold, s: 22, c: AZUL });
+    texto(page, `CNPJ: ${SISTEMA.empresaCnpj}`, M + 14, top + hTopo - 18, { f: bold, s: 9 });
+  }
 
-  // Cabeçalho: empresa | data de vencimento | campos
-  const hCab = 66;
-  const xMeio = M + 230;
-  const xDir = M + 530;
-  caixa(page, M, top, W, hCab, { espessura: 1 });
-  linhaV(page, xMeio, top, top + hCab);
-  linhaV(page, xDir, top, top + hCab);
-  texto(page, SISTEMA.logoPequeno, M + 14, top + 8, { s: 9, c: CINZA });
-  texto(page, SISTEMA.logoGrande, M + 14, top + 17, { f: bold, s: 22, c: AZUL });
-  texto(page, `CNPJ: ${SISTEMA.empresaCnpj}`, M + 14, top + hCab - 20, { f: boldIt, s: 10, c: VERMELHO });
-
-  textoAlin(page, "Data de vencimento:", xMeio, xDir, top + 8, "c", { f: bold, s: 10 });
-  textoAlin(page, d.vencimento ? data(d.vencimento) : "—", xMeio, xDir, top + 26, "c", { f: boldIt, s: 16, c: VERMELHO });
-  if (d.referencia) textoAlin(page, `REF: ${d.referencia}`, xMeio, xDir, top + hCab - 17, "c", { f: boldIt, s: 10, c: VERMELHO });
-
-  const campos: [string, string, boolean][] = [
-    ["FORNECEDOR", d.favorecido.toUpperCase(), false],
-    ["OBSERVAÇÃO", d.observacao, true],
-    ["CONDIÇÃO DE PGTO", FORMAS_PAGAMENTO[d.formaPagamento].toUpperCase(), false],
+  const campos: [string, string][] = [
+    ["Data:", data(d.dataEmissao)],
+    ["FORNECEDOR", d.favorecido.toUpperCase()],
+    ["Nº da Nota Fiscal", d.numeroNf ?? "—"],
+    ["Data de vencimento", d.vencimento ? data(d.vencimento) : "—"],
+    ["CONDIÇÃO DE PGTO (pix ou boleto)", FORMAS_PAGAMENTO[d.formaPagamento].toUpperCase()],
   ];
-  const hLin = hCab / 3;
-  const xValorDir = xDir + 88;
-  campos.forEach(([, , ], i) => caixa(page, xValorDir, top + i * hLin, M + W - xValorDir, hLin, { fill: AMARELO }));
-  campos.forEach(([rotulo, valor, italico], i) => {
+  const hLin = hTopo / campos.length;
+  campos.forEach(([rot, val], i) => {
     const yy = top + i * hLin;
     if (i > 0) linhaH(page, xDir, M + W, yy);
-    texto(page, rotulo, xDir + 5, yy + hLin / 2 - 4, { f: bold, s: 6.5, c: CINZA });
-    const fonte = italico ? boldIt : bold;
-    const enc = encaixar(valor, fonte, M + W - xValorDir - 10, 9);
-    texto(page, enc.txt, xValorDir + 6, yy + hLin / 2 - enc.s / 2 - 1, { f: fonte, s: enc.s });
+    texto(page, rot, xDir + 6, yy + hLin / 2 - 4, { f: bold, s: 7, c: CINZA });
+    const x0 = xDir + wDirRot;
+    linhaV(page, x0, yy, yy + hLin);
+    const largura = M + W - x0 - 10;
+    let s = 9;
+    let txt = seguro(val);
+    while (s > 6.5 && bold.widthOfTextAtSize(txt, s) > largura) s -= 0.5;
+    while (txt.length > 1 && bold.widthOfTextAtSize(txt, s) > largura) txt = txt.slice(0, -1);
+    texto(page, txt, x0 + 6, yy + hLin / 2 - s / 2 - 1, { f: bold, s });
   });
-  linhaV(page, xValorDir, top, top + hCab);
-  top += hCab;
+  top += hTopo;
+
+  // Título acima da tabela (faixa com a palavra ORDEM DE PAGAMENTO)
+  caixa(page, M, top, W, 26, { espessura: 1 });
+  textoAlin(page, "ORDEM DE PAGAMENTO", M, M + W, top + 7, "c", { f: bold, s: 14 });
+  if (d.numero) textoAlin(page, d.numero, M, M + W, top + 9, "r", { f: bold, s: 8 });
+  top += 26;
 
   // Tabela de itens
   top = cabecalhoTabela(page, top);
@@ -227,54 +211,41 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
     nomeL.forEach((l, j) => texto(page, l, col.nome.x + 5, top + 5 + j * 10.5, { s: 8.5 }));
     centroL.forEach((l, j) => textoAlin(page, l, col.centro.x, col.centro.x + col.centro.w, top + 5 + j * 10, "c", { s: 8 }));
     const celula = (id: string, t: string, al: "c" | "l" | "r") => textoAlin(page, t, col[id].x, col[id].x + col[id].w, yc, al, { s: 8 });
-    if (temInicio) celula("inicio", item.inicio ? data(item.inicio) : "—", "c");
-    if (temSalario) celula("salario", item.salario !== null ? moeda(item.salario) : "—", "r");
+    celula("qtd", String(item.quantidade).replace(".", ","), "c");
     celula("un", item.unidade ?? "", "c");
     celula("vu", moeda(item.valorUnitario), "r");
     celula("total", moeda(item.total), "r");
     top += hRow;
   });
 
-  // Bloco final: pagamento (esquerda), totais (direita), observação e assinatura
-  const linhasPag = [
-    ...(d.dadosBancarios ? d.dadosBancarios.split(/\r?\n/).flatMap((l) => quebrar(l, bold, 9, col.vu.x - M - 40)) : []),
-    ...quebrar(`FAV: ${d.favorecido}`, bold, 9, col.vu.x - M - 40),
-    ...(d.cpfCnpj ? [`CPF/CNPJ: ${cpfCnpj(d.cpfCnpj)}`] : []),
-  ];
-  const wPag = col.vu.x - M - 16;
-  const hPag = 26 + linhasPag.length * 14 + 10;
-  const obsL = d.observacoes ? quebrar(d.observacoes, reg, 8, wPag - 10) : [];
-  const hObs = obsL.length ? obsL.length * 10 + 8 : 0;
-  const hBloco = Math.max(hPag, 54);
-  if (top + hBloco + hObs + 70 > LIMITE) {
+  // Total
+  if (top + 22 > LIMITE) {
     page = novaPagina();
     top = M;
   }
+  caixa(page, col.vu.x, top, col.vu.w, 22, { fill: CINZA_CLARO });
+  caixa(page, col.total.x, top, col.total.w, 22, { fill: CINZA_CLARO });
+  textoAlin(page, "Total", col.vu.x, col.vu.x + col.vu.w, top + 7, "r", { f: bold, s: 9 });
+  textoAlin(page, moeda(subtotal), col.total.x, col.total.x + col.total.w, top + 6, "r", { f: bold, s: 10 });
+  top += 22;
 
-  const linhasTot: [string, string, boolean][] = [
-    ["Sub-Total", moeda(subtotal), false],
-    ["Desconto", d.desconto > 0 ? `- ${moeda(d.desconto)}` : "", false],
-    ["Total", moeda(total), true],
+  // Bloco de pagamento e assinatura
+  const linhasPag = [
+    ...(d.dadosBancarios ? d.dadosBancarios.split(/\r?\n/).flatMap((l) => quebrar(l, bold, 9, 360)) : []),
+    ...quebrar(`FAVORECIDO: ${d.favorecido}`, bold, 9, 360),
+    ...(d.cpfCnpj ? [`CPF/CNPJ: ${cpfCnpj(d.cpfCnpj)}`] : []),
   ];
-  linhasTot.forEach(([rotulo, valor, destaque], i) => {
-    const yy = top + i * 18;
-    caixa(page, col.vu.x, yy, col.vu.w, 18, { fill: AMARELO });
-    caixa(page, col.total.x, yy, col.total.w, 18, { fill: AMARELO });
-    textoAlin(page, rotulo, col.vu.x, col.vu.x + col.vu.w, yy + 5, "r", { f: bold, s: 9 });
-    textoAlin(page, valor, col.total.x, col.total.x + col.total.w, yy + (destaque ? 3 : 5), "r", { f: bold, s: destaque ? 11 : 9 });
-  });
-
+  const wPag = 420;
+  const hPag = 26 + linhasPag.length * 14 + 10;
+  if (top + hPag + 80 > LIMITE) {
+    page = novaPagina();
+    top = M;
+  }
   caixa(page, M, top, wPag, hPag);
   textoAlin(page, "PAGAMENTO", M, M + wPag, top + 7, "c", { f: bold, s: 10 });
   linhasPag.forEach((l, j) => textoAlin(page, l, M, M + wPag, top + 26 + j * 14, "c", { f: bold, s: 9 }));
 
-  if (obsL.length) {
-    obsL.forEach((l, j) => texto(page, l, M, top + hPag + 8 + j * 10, { s: 8, c: CINZA }));
-  }
-
-  // Assinatura: linha para assinatura física + registro eletrônico
-  const fimBloco = top + hBloco + hObs;
-  const sigTop = fimBloco + 22;
+  const sigTop = top + Math.max(hPag, 54) + 26;
   linhaH(page, M + W * 0.5, M + W - 30, sigTop + 36);
   textoAlin(page, SISTEMA.empresa, M + W * 0.5, M + W - 30, sigTop + 42, "c", { s: 9 });
   textoAlin(
@@ -287,12 +258,12 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
     { s: 7.5, c: CINZA },
   );
 
-  // Rodapé e marca d'água em todas as páginas
-  const total_p = paginas.length;
+  // Rodapé e marca d'água
+  const totalP = paginas.length;
   paginas.forEach((p, i) => {
     p.drawLine({ start: { x: M, y: 36 }, end: { x: L - M, y: 36 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
     p.drawText(seguro(`${d.numero ?? "Rascunho"} · ${SISTEMA.nome}`), { x: M, y: 24, size: 7, font: reg, color: CINZA });
-    const pg = `Página ${i + 1} de ${total_p}`;
+    const pg = `Página ${i + 1} de ${totalP}`;
     p.drawText(pg, { x: L - M - reg.widthOfTextAtSize(pg, 7), y: 24, size: 7, font: reg, color: CINZA });
     if (d.rascunho) {
       p.drawText("RASCUNHO", { x: 230, y: 200, size: 110, font: bold, color: MARCA_DAGUA, opacity: 0.12, rotate: degrees(20) });

@@ -30,7 +30,7 @@ export default async function OPsPage({ searchParams }: PageProps<"/ops">) {
             ? "Ordens de Pagamento que você solicitou e o andamento de cada uma"
             : "Ordens de Pagamento solicitadas pelos engenheiros das obras que você acessa"
         }
-        acoes={eng && <LinkBotao href="/ops/nova">+ Nova solicitação</LinkBotao>}
+        acoes={(u.perfil === "engenheiro" || u.perfil === "financeiro" || u.perfil === "suprimentos") && <LinkBotao href="/ops/nova">+ Nova solicitação</LinkBotao>}
       />
       {sp.excluida && (
         <div className="mb-4">

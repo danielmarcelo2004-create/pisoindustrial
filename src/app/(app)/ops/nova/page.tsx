@@ -8,7 +8,7 @@ import { FormOP } from "../form";
 export const metadata: Metadata = { title: "Nova solicitação de OP" };
 
 export default async function NovaOPPage() {
-  await exigirPerfil("engenheiro");
+  await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const obras = await obrasParaOP();
   return (
     <>

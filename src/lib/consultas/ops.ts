@@ -22,16 +22,14 @@ export function dadosPdf(op: OPCompleta): DadosPdfOP {
   return {
     numero: op.numero,
     rascunho: op.status === "em_elaboracao",
-    referencia: op.referencia,
-    centroDeCusto: op.obra?.nome ?? "",
+    dataEmissao: op.enviada_em ?? op.created_at,
     favorecido: op.favorecido,
     cpfCnpj: op.cpf_cnpj,
-    observacao: op.descricao,
+    numeroNf: op.numero_nf,
     vencimento: op.vencimento,
     formaPagamento: op.forma_pagamento,
     dadosBancarios: op.dados_bancarios,
-    observacoes: op.observacoes,
-    desconto: Number(op.desconto),
+    centroDeCusto: op.obra?.nome ?? "",
     solicitante: op.solicitante?.nome ?? "",
     emitidaEm: op.enviada_em ?? op.updated_at,
     itens: op.ordem_itens.map((i) => ({
@@ -40,8 +38,6 @@ export function dadosPdf(op: OPCompleta): DadosPdfOP {
       quantidade: Number(i.quantidade),
       valorUnitario: Number(i.valor_unitario),
       total: Number(i.total),
-      inicio: i.inicio,
-      salario: i.salario === null ? null : Number(i.salario),
     })),
   };
 }

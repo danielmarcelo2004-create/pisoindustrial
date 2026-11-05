@@ -114,7 +114,8 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
   const souAssinante =
     (p.status === "aguardando_engenheiro" && p.obra.engenheiro_id === u.id) ||
     (p.status === "aguardando_administrador" && p.obra.administrador_id === u.id);
-  const fin = u.perfil === "financeiro";
+  // Baixa e comprovante: Financeiro e Administrador master (todas as obras).
+  const baixa = u.perfil === "financeiro" || u.perfil === "administrador_master";
   const atua = Boolean(podeAtuar) && !finalizado;
 
   return (
@@ -224,7 +225,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                   <div className="text-xs text-slate-500">por {p.pagador?.nome}</div>
                 </Dado>
               )}
-              {fin && p.fornecedor && (p.fornecedor.chave_pix || p.fornecedor.banco) && (
+              {baixa && p.fornecedor && (p.fornecedor.chave_pix || p.fornecedor.banco) && (
                 <div className="sm:col-span-3">
                   <Dado rotulo="Dados bancários do fornecedor">
                     {p.fornecedor.chave_pix && <div>PIX: {p.fornecedor.chave_pix}</div>}
@@ -275,7 +276,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                           <span className="text-emerald-700">
                             ✓ {notaPorDoc.get(d.id)!.nf_itens[0]?.count ?? 0} item(ns) na Inteligência de Compras (
                             {notaPorDoc.get(d.id)!.origem === "xml" ? "lidos do XML" : "lançamento manual"})
-                            {notaPorDoc.get(d.id)!.origem === "manual" && (podeAtuar || fin) && (
+                            {notaPorDoc.get(d.id)!.origem === "manual" && (podeAtuar || baixa) && (
                               <FormAcao
                                 action={removerNF.bind(null, notaPorDoc.get(d.id)!.id, id)}
                                 enviar="Remover para relançar"
@@ -285,7 +286,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                               />
                             )}
                           </span>
-                        ) : (podeAtuar || fin) ? (
+                        ) : (podeAtuar || baixa) ? (
                           <Link href={`/compras/lancar/${d.id}`} className="text-marca-700 hover:underline">
                             Lançar itens desta nota na Inteligência de Compras →
                           </Link>
@@ -332,7 +333,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                 </ul>
               </details>
             )}
-            {(atua || (fin && (p.status === "pago" || p.status === "aguardando_pagamento"))) && (
+            {(atua || (baixa && (p.status === "pago" || p.status === "aguardando_pagamento"))) && (
               <div className="border-t border-slate-200 px-4 py-3">
                 <details>
                   <summary className="cursor-pointer text-sm font-medium text-marca-700">+ Anexar documento</summary>
@@ -343,7 +344,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                           <select name="tipo" required className="campo" defaultValue={atua ? "" : "comprovante"}>
                             {atua && <option value="">Selecione…</option>}
                             {Object.entries(TIPOS_DOCUMENTO)
-                              .filter(([t]) => (t === "comprovante" ? fin : atua))
+                              .filter(([t]) => (t === "comprovante" ? baixa : atua))
                               .map(([v, r]) => (
                                 <option key={v} value={v}>
                                   {r}
@@ -394,7 +395,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             </Cartao>
           )}
 
-          {fin && p.status === "aguardando_pagamento" && (
+          {baixa && p.status === "aguardando_pagamento" && (
             <Cartao titulo="Registrar pagamento" className="border-sky-300">
               <FormAcao action={registrarBaixa.bind(null, id)} enviar="Confirmar pagamento" variante="sucesso">
                 <Campo rotulo="Data do pagamento" obrigatorio>

@@ -32,7 +32,7 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
   const pendencias = pendRes.data ?? [];
 
   const podeCadastrar = u.perfil === "financeiro" || u.perfil === "suprimentos";
-  const assinante = u.perfil === "engenheiro" || u.perfil === "administrador";
+  const assinante = u.perfil === "engenheiro" || u.perfil === "administrador" || u.perfil === "administrador_master";
 
   return (
     <>
@@ -82,7 +82,7 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Cartao
-          titulo={assinante ? "Aguardando sua assinatura" : u.perfil === "financeiro" ? "Liberados para pagamento" : "Em aprovação"}
+          titulo={assinante ? "Aguardando sua assinatura" : (u.perfil === "financeiro" || u.perfil === "administrador_master") ? "Liberados para pagamento" : "Em aprovação"}
           acoes={
             assinante ? (
               <LinkBotao href="/aprovacoes" variante="secundario" tamanho="sm">
@@ -93,7 +93,7 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
           semPadding
         >
           <TabelaPagamentos
-            itens={assinante || u.perfil === "financeiro" ? pendencias : emAprovacao.slice(0, 10)}
+            itens={assinante || u.perfil === "financeiro" || u.perfil === "administrador_master" ? pendencias : emAprovacao.slice(0, 10)}
             vazio="Nenhuma pendência no momento."
             compacto
           />

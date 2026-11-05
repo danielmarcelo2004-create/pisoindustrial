@@ -14,14 +14,15 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
   const [{ count: naoLidas }, pend] = await Promise.all([
     supabase.from("notificacoes").select("id", { count: "exact", head: true }).is("lida_em", null),
-    u.perfil === "engenheiro" || u.perfil === "administrador"
+    u.perfil === "engenheiro" || u.perfil === "administrador" || u.perfil === "administrador_master"
       ? supabase.rpc("minhas_pendencias", undefined, { count: "exact", head: true })
       : Promise.resolve({ count: 0 }),
   ]);
 
   const fin = u.perfil === "financeiro";
   const sup = u.perfil === "suprimentos";
-  const assinante = u.perfil === "engenheiro" || u.perfil === "administrador";
+  const assinante = u.perfil === "engenheiro" || u.perfil === "administrador" || u.perfil === "administrador_master";
+  const compras = u.perfil !== "engenheiro";
 
   const principal: ItemMenu[] = [
     { href: "/", rotulo: "Painel", icone: Icones.painel },
@@ -32,7 +33,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { href: "/obras", rotulo: "Obras", icone: Icones.obras },
     ...(fin || sup ? [{ href: "/fornecedores", rotulo: "Fornecedores", icone: Icones.fornecedores }] : []),
     { href: "/relatorios", rotulo: "Relatórios", icone: Icones.relatorios },
-    ...(fin || sup ? [{ href: "/compras", rotulo: "Inteligência de Compras", icone: Icones.compras }] : []),
+    ...(compras ? [{ href: "/compras", rotulo: "Inteligência de Compras", icone: Icones.compras }] : []),
     ...(fin ? [{ href: "/usuarios", rotulo: "Usuários e permissões", icone: Icones.usuarios }] : []),
     ...(fin ? [{ href: "/auditoria", rotulo: "Histórico de atividades", icone: Icones.auditoria }] : []),
   ];

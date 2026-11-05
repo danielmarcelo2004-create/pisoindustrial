@@ -13,7 +13,7 @@ import { conferirSenha, createClient } from "@/lib/supabase/server";
  */
 export async function decidir(_: Estado, fd: FormData): Promise<Estado> {
   const u = await getUsuario();
-  if (u.perfil !== "engenheiro" && u.perfil !== "administrador") {
+  if (u.perfil !== "engenheiro" && u.perfil !== "administrador" && u.perfil !== "administrador_master") {
     return { erro: "Seu perfil não assina documentos." };
   }
 

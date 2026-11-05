@@ -490,3 +490,31 @@ test('OP: desconto reduz o valor do pagamento; campos do modelo são gravados', 
   assert.equal(it[0].inicio, '2026-08-21')
   assert.equal(Number(it[0].salario), 3525.04)
 })
+
+// -----------------------------------------------------------------------------
+// Administrador master
+// -----------------------------------------------------------------------------
+test('administrador master: vê e dá baixa em todas as obras, mas não cria obras', async () => {
+  await criarUsuario('master', 'administrador_master', 'Master Teste')
+  const { data: vis } = await u.master.client.from('obras').select('id').in('id', [obraA.id, obraB.id, obraC.id])
+  assert.equal(vis.length, 3)
+  const { error: eObra } = await u.master.client.from('obras').insert({ nome: 'X', cidade: 'X', uf: 'BA' })
+  assert.ok(eObra)
+  // obraC não é administrada pelo master: mesmo assim pode dar baixa
+  const id = await novoPagamento('fin', obraC.id)
+  await rpc('fin', 'registrar_baixa', { p_id: id, p_pago_em: '2026-12-01' }).catch(() => {})
+  await pagamento(id).then((p) => assert.ok(p))
+  const { data: pendentes } = await u.master.client.rpc('minhas_pendencias')
+  assert.ok(Array.isArray(pendentes))
+  const idPag = await novoPagamento('fin', obraC.id)
+  await rpc('master', 'registrar_baixa', { p_id: idPag, p_pago_em: '2026-12-02' })
+  assert.equal((await pagamento(idPag)).status, 'pago')
+})
+
+test('administrador master pode ser responsável pela obra', async () => {
+  const { data, error } = await u.fin.client.from('obras').insert({
+    nome: `Obra M ${sufixo}`, cidade: 'Salvador', uf: 'BA', fluxo: 'B', administrador_id: u.master.id,
+  }).select().single()
+  assert.equal(error, null)
+  assert.ok(data.id)
+})

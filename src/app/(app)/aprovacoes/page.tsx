@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 export const metadata: Metadata = { title: "Aprovações e assinaturas" };
 
 export default async function AprovacoesPage() {
-  const u = await exigirPerfil("engenheiro", "administrador");
+  const u = await exigirPerfil("engenheiro", "administrador", "administrador_master");
   const supabase = await createClient();
   const { data, error } = await supabase
     .rpc("minhas_pendencias")

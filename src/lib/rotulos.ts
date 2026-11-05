@@ -9,6 +9,7 @@ export type FormaPagamento = Enums["forma_pagamento"];
 export type StatusObra = Enums["status_obra"];
 
 export const PERFIS: Record<Perfil, string> = {
+  administrador_master: "Administrador master",
   financeiro: "Financeiro",
   suprimentos: "Suprimentos",
   engenheiro: "Engenheiro",

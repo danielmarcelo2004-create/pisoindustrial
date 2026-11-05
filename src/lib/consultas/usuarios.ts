@@ -7,10 +7,10 @@ export async function responsaveisAtivos() {
     .from("profiles")
     .select("id, nome, perfil")
     .eq("ativo", true)
-    .in("perfil", ["engenheiro", "administrador"])
+    .in("perfil", ["engenheiro", "administrador", "administrador_master"])
     .order("nome");
   return {
     engenheiros: (data ?? []).filter((p) => p.perfil === "engenheiro"),
-    administradores: (data ?? []).filter((p) => p.perfil === "administrador"),
+    administradores: (data ?? []).filter((p) => p.perfil === "administrador" || p.perfil === "administrador_master"),
   };
 }

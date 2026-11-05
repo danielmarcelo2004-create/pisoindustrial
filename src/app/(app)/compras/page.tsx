@@ -25,7 +25,7 @@ const preco = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curr
 const qtd = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 
 export default async function ComprasPage({ searchParams }: PageProps<"/compras">) {
-  await exigirPerfil("financeiro", "suprimentos");
+  await exigirPerfil("financeiro", "suprimentos", "administrador", "administrador_master");
   const sp = await searchParams;
   const s = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const filtros: FiltrosCompras = {

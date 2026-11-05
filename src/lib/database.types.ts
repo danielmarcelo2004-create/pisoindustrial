@@ -521,6 +521,9 @@ isOneToOne: false
 "pode_atuar_obra":
 { Args: { "p_obra_id": string }; Returns: boolean
                            },
+"pode_baixar":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
 "pode_enviar_arquivo":
 { Args: { "p_nome": string }; Returns: boolean
                            },
@@ -547,7 +550,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "decisao_aprovacao": "aprovado"|"rejeitado","etapa_aprovacao": "engenheiro"|"administrador","fluxo_aprovacao": "A"|"B"|"C","forma_pagamento": "boleto"|"pix"|"transferencia"|"dinheiro"|"cartao"|"outro","perfil_usuario": "financeiro"|"suprimentos"|"engenheiro"|"administrador","status_obra": "ativa"|"suspensa"|"concluida","status_op": "em_elaboracao"|"enviada"|"em_analise"|"aprovada"|"rejeitada"|"paga"|"cancelada","status_pagamento": "aguardando_engenheiro"|"aguardando_administrador"|"aguardando_pagamento"|"pago"|"rejeitado"|"cancelado","tipo_documento": "boleto"|"nota_fiscal"|"ordem_pagamento"|"comprovante"|"outro"
+            "decisao_aprovacao": "aprovado"|"rejeitado","etapa_aprovacao": "engenheiro"|"administrador","fluxo_aprovacao": "A"|"B"|"C","forma_pagamento": "boleto"|"pix"|"transferencia"|"dinheiro"|"cartao"|"outro","perfil_usuario": "financeiro"|"suprimentos"|"engenheiro"|"administrador"|"administrador_master","status_obra": "ativa"|"suspensa"|"concluida","status_op": "em_elaboracao"|"enviada"|"em_analise"|"aprovada"|"rejeitada"|"paga"|"cancelada","status_pagamento": "aguardando_engenheiro"|"aguardando_administrador"|"aguardando_pagamento"|"pago"|"rejeitado"|"cancelado","tipo_documento": "boleto"|"nota_fiscal"|"ordem_pagamento"|"comprovante"|"outro"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -667,7 +670,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "decisao_aprovacao": ["aprovado", "rejeitado"],"etapa_aprovacao": ["engenheiro", "administrador"],"fluxo_aprovacao": ["A", "B", "C"],"forma_pagamento": ["boleto", "pix", "transferencia", "dinheiro", "cartao", "outro"],"perfil_usuario": ["financeiro", "suprimentos", "engenheiro", "administrador"],"status_obra": ["ativa", "suspensa", "concluida"],"status_op": ["em_elaboracao", "enviada", "em_analise", "aprovada", "rejeitada", "paga", "cancelada"],"status_pagamento": ["aguardando_engenheiro", "aguardando_administrador", "aguardando_pagamento", "pago", "rejeitado", "cancelado"],"tipo_documento": ["boleto", "nota_fiscal", "ordem_pagamento", "comprovante", "outro"]
+            "decisao_aprovacao": ["aprovado", "rejeitado"],"etapa_aprovacao": ["engenheiro", "administrador"],"fluxo_aprovacao": ["A", "B", "C"],"forma_pagamento": ["boleto", "pix", "transferencia", "dinheiro", "cartao", "outro"],"perfil_usuario": ["financeiro", "suprimentos", "engenheiro", "administrador", "administrador_master"],"status_obra": ["ativa", "suspensa", "concluida"],"status_op": ["em_elaboracao", "enviada", "em_analise", "aprovada", "rejeitada", "paga", "cancelada"],"status_pagamento": ["aguardando_engenheiro", "aguardando_administrador", "aguardando_pagamento", "pago", "rejeitado", "cancelado"],"tipo_documento": ["boleto", "nota_fiscal", "ordem_pagamento", "comprovante", "outro"]
           }
         }
 } as const

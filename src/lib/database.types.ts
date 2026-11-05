@@ -187,14 +187,14 @@ isOneToOne: false
                   ]
                 },"notificacoes": {
                   Row: {
-                    "created_at": string,"id": string,"lida_em": string | null,"link": string | null,"mensagem": string | null,"pagamento_id": string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em": string | null,"whatsapp_erro": string | null,"whatsapp_status": string | null
+                    "created_at": string,"email_enviado_em": string | null,"email_erro": string | null,"email_status": string | null,"id": string,"lida_em": string | null,"link": string | null,"mensagem": string | null,"pagamento_id": string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em": string | null,"whatsapp_erro": string | null,"whatsapp_status": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_status"?: string | null
+                    "created_at"?: string,"email_enviado_em"?: string | null,"email_erro"?: string | null,"email_status"?: string | null,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_status"?: string | null
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo"?: string,"user_id"?: string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_status"?: string | null
+                    "created_at"?: string,"email_enviado_em"?: string | null,"email_erro"?: string | null,"email_status"?: string | null,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo"?: string,"user_id"?: string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_status"?: string | null
                   }
                   Relationships: [
                     {
@@ -483,6 +483,9 @@ isOneToOne: false
                            },
 "_diff_jsonb":
 { Args: { "p_antes": Json,"p_depois": Json }; Returns: Record<string, unknown>
+                           },
+"_email_elegivel":
+{ Args: { "p_perfil": Database["public"]['Enums']["perfil_usuario"],"p_titulo": string }; Returns: boolean
                            },
 "_notificar":
 { Args: { "p_link": string,"p_mensagem": string,"p_pagamento_id"?: string,"p_titulo": string,"p_user_id": string }; Returns: undefined

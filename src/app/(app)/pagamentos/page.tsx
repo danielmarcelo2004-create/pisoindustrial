@@ -52,6 +52,11 @@ export default async function PagamentosPage({ searchParams }: PageProps<"/pagam
             <a href={`/pagamentos/exportar?${qs}`} className={classeBotao("secundario")}>
               Exportar planilha
             </a>
+            {(u.perfil === "financeiro" || u.perfil === "administrador_master") && (
+              <LinkBotao href="/pagamentos/baixa-lote" variante="secundario">
+                Baixa em lote
+              </LinkBotao>
+            )}
             {(u.perfil === "financeiro" || u.perfil === "suprimentos") && (
               <LinkBotao href="/pagamentos/novo">+ Novo pagamento</LinkBotao>
             )}

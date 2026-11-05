@@ -327,6 +327,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"pagamento_parcelas": {
+                  Row: {
+                    "desconto": number,"id": string,"juros": number,"motivo": string | null,"multa": number,"numero": number,"pagamento_id": string,"valor_base": number,"vencimento": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "desconto"?: number,"id"?: string,"juros"?: number,"motivo"?: string | null,"multa"?: number,"numero": number,"pagamento_id": string,"valor_base": number,"vencimento": string
+                  }
+                  Update: {
+                    "desconto"?: number,"id"?: string,"juros"?: number,"motivo"?: string | null,"multa"?: number,"numero"?: number,"pagamento_id"?: string,"valor_base"?: number,"vencimento"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "pagamento_parcelas_pagamento_id_fkey"
+      columns: ["pagamento_id"]
+isOneToOne: false
+      referencedRelation: "pagamentos"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"pagamentos": {
                   Row: {
                     "assinado_no_cadastro": boolean,"cancelamento_motivo": string | null,"created_at": string,"created_by": string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": number,"numero_documento": string | null,"obra_id": string,"observacoes": string | null,"ordem_id": string | null,"pago_em": string | null,"pago_por": string | null,"rejeicao_motivo": string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at": string,"valor": number,"valor_pago": number | null,"vencimento": string,"versao": number
@@ -493,6 +513,9 @@ isOneToOne: false
                            },
 "definir_assinatura":
 { Args: { "p_path": string }; Returns: undefined
+                           },
+"definir_parcelas":
+{ Args: { "p_pagamento_id": string,"p_parcelas": Json }; Returns: undefined
                            },
 "enviar_op":
 { Args: { "p_id": string }; Returns: string

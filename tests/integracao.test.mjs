@@ -541,3 +541,23 @@ test('pagamento pago: Financeiro altera obra e valor com motivo, sem nova aprova
   assert.equal(pago.status, 'pago')
   assert.equal(Number(pago.valor), 530)
 })
+
+// -----------------------------------------------------------------------------
+// Pagamento parcelado
+// -----------------------------------------------------------------------------
+test('parcelas: soma confere, multa/desconto exigem motivo, aprovação não muda', async () => {
+  const id = await novoPagamento('fin', obraC.id, 900)
+  const antes = await pagamento(id)
+  const p = (valor, venc, extra = {}) => ({ valor, vencimento: venc, ...extra })
+  await rpcFalha('fin', 'definir_parcelas', { p_pagamento_id: id, p_parcelas: [p(400, '2026-12-10'), p(200, '2026-12-20')] }, /não confere/)
+  await rpcFalha('fin', 'definir_parcelas', { p_pagamento_id: id, p_parcelas: [p(400, '2026-12-10', { multa: 20 }), p(500, '2026-12-20')] }, /motivo/)
+  await rpc('fin', 'definir_parcelas', { p_pagamento_id: id, p_parcelas: [
+    p(400, '2026-12-10'),
+    p(500, '2026-12-20', { juros: 15, motivo: 'Juros por atraso da parcela anterior' }),
+  ] })
+  const { data: par } = await admin.from('pagamento_parcelas').select('numero, valor_base, juros, vencimento').eq('pagamento_id', id).order('numero')
+  assert.equal(par.length, 2)
+  assert.equal(Number(par[1].juros), 15)
+  assert.equal((await pagamento(id)).status, antes.status)
+  assert.equal((await pagamento(id)).versao, antes.versao)
+})

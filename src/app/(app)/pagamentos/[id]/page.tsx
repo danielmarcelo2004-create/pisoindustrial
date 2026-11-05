@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { removerNF } from "@/app/(app)/compras/actions";
 import { FormDecisao } from "@/components/assinatura";
 import { AssinadorDocumentos } from "./assinador";
+import { FormParcelas } from "./parcelas";
+import { definirParcelas } from "../actions";
 import { FormAcao } from "@/components/form-acao";
 import { LinhaDoTempo } from "@/components/linha-do-tempo";
 import { SeloStatus, Vencimento } from "@/components/pagamentos";
@@ -104,6 +106,9 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
 
   const ativos = (docs ?? []).filter((d) => d.ativo);
   const analista = u.perfil === "financeiro" || u.perfil === "suprimentos";
+  const { data: parcelas } = await supabase.from("pagamento_parcelas").select("*").eq("pagamento_id", id).order("numero");
+  const podeParcelar = p.created_by === u.id && (u.perfil === "financeiro" || u.perfil === "suprimentos") && !["pago", "cancelado", "rejeitado"].includes(p.status);
+
   // Assinatura guardada do usuário (para assinar os documentos deste pagamento)
   const { data: meuPerfil } = await supabase.from("profiles").select("assinatura_path").eq("id", u.id).single();
   const caminhoAss = meuPerfil?.assinatura_path && meuPerfil.assinatura_path.startsWith(`${u.id}/`) && !meuPerfil.assinatura_path.endsWith("/removida") ? meuPerfil.assinatura_path : null;
@@ -437,6 +442,45 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             </Cartao>
           )}
 
+          {(parcelas?.length || podeParcelar) && (
+            <Cartao titulo={`Parcelas${parcelas?.length ? ` (${parcelas.length})` : ""}`} semPadding={!!parcelas?.length}>
+              {parcelas && parcelas.length > 0 && (
+                <table className="tabela">
+                  <thead>
+                    <tr>
+                      <th>Nº</th>
+                      <th>Vencimento</th>
+                      <th className="text-right">Valor</th>
+                      <th className="text-right">Multa/juros</th>
+                      <th className="text-right">Desconto</th>
+                      <th className="text-right">A pagar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parcelas.map((pc) => {
+                      const aPagar = Number(pc.valor_base) + Number(pc.multa) + Number(pc.juros) - Number(pc.desconto);
+                      return (
+                        <tr key={pc.id}>
+                          <td>{pc.numero}</td>
+                          <td className="whitespace-nowrap">{data(pc.vencimento)}</td>
+                          <td className="text-right tabular-nums">{moeda(pc.valor_base)}</td>
+                          <td className="text-right tabular-nums">{Number(pc.multa) + Number(pc.juros) > 0 ? moeda(Number(pc.multa) + Number(pc.juros)) : "—"}</td>
+                          <td className="text-right tabular-nums">{Number(pc.desconto) > 0 ? moeda(pc.desconto) : "—"}</td>
+                          <td className="text-right font-medium tabular-nums">{moeda(aPagar)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+              {podeParcelar && (
+                <div className={parcelas?.length ? "border-t border-slate-200 p-4" : ""}>
+                  {parcelas?.length ? <p className="mb-3 text-xs text-slate-500">Para refazer a divisão, informe as parcelas de novo.</p> : null}
+                  <FormParcelas pagamentoId={p.id} valorTotal={Number(p.valor)} action={definirParcelas} />
+                </div>
+              )}
+            </Cartao>
+          )}
           {assinaturaUrl && p.status !== "cancelado" && (
             <AssinadorDocumentos
               documentos={ativos

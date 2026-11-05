@@ -218,3 +218,20 @@ export async function registrarBaixa(id: string, _: Estado, fd: FormData): Promi
   revalidatePath("/", "layout");
   return { ok: "Pagamento registrado como pago." };
 }
+
+/** Divide o pagamento em parcelas, cada uma com vencimento próprio. A aprovação continua única. */
+export async function definirParcelas(id: string, _: Estado, fd: FormData): Promise<Estado> {
+  await getUsuario();
+  if (!UUID.test(id)) return { erro: "Pagamento não encontrado." };
+  let parcelas: unknown;
+  try {
+    parcelas = JSON.parse(String(fd.get("parcelas") ?? "[]"));
+  } catch {
+    return { erro: "Parcelas inválidas." };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_parcelas", { p_pagamento_id: id, p_parcelas: parcelas as never });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath(`/pagamentos/${id}`);
+  return { ok: "Parcelas definidas. A aprovação continua valendo para o pagamento inteiro." };
+}

@@ -60,9 +60,14 @@ export default async function ComprasPage({ searchParams }: PageProps<"/compras"
         titulo="Inteligência de Compras"
         subtitulo="Análise dos preços extraídos das notas fiscais já anexadas aos pagamentos"
         acoes={
-          <a href={`/compras/exportar?${qs}`} className={classeBotao("secundario")}>
-            Exportar para Excel
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/compras/ler-notas" className={classeBotao("secundario")}>
+              Ler notas (PDF)
+            </Link>
+            <a href={`/compras/exportar?${qs}`} className={classeBotao("secundario")}>
+              Exportar para Excel
+            </a>
+          </div>
         }
       />
 

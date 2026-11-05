@@ -16,6 +16,7 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
   const sp = await searchParams;
   const [obras, fornecedores] = await Promise.all([obrasParaCadastro(u), fornecedoresAtivos()]);
   const obraPadrao = typeof sp.obra === "string" ? sp.obra : "";
+  const podeAssinarCadastro = u.perfil === "financeiro" || u.perfil === "suprimentos";
   const texto = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const padraoCampos = {
     descricao: texto("descricao"),
@@ -45,6 +46,17 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
           <Cartao titulo="Dados do pagamento">
             <CamposPagamento fornecedores={fornecedores} padrao={padraoCampos} />
           </Cartao>
+          {podeAssinarCadastro && (
+            <Cartao titulo="Assinatura do cadastro">
+              <label className="flex items-start gap-2 text-sm text-slate-700">
+                <input type="checkbox" name="assinar" className="mt-0.5" />
+                <span>
+                  Assinar como quem cadastrou. É só uma marca no pagamento, não é etapa de aprovação. Para pagamentos que não são
+                  boleto, a assinatura passa para a Solicitação de OP.
+                </span>
+              </label>
+            </Cartao>
+          )}
           <Cartao titulo="Documentos">
             <div className="grid gap-4 sm:grid-cols-3">
               <Campo rotulo="Boleto">

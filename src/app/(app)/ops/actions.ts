@@ -75,15 +75,18 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
 
   revalidatePath("/ops");
   const destino = `/ops/${data}`;
-  if (fd.get("acao") === "enviar") return enviarOP(data as string, null);
+  if (fd.get("acao") === "enviar") return enviarOP(data as string, null, fd);
   redirect(`${destino}?salva=1`);
 }
 
-export async function enviarOP(id: string, _: Estado): Promise<Estado> {
+export async function enviarOP(id: string, _: Estado, fd?: FormData): Promise<Estado> {
   await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const supabase = await createClient();
   const { data: pagId, error } = await supabase.rpc("enviar_op", { p_id: id });
   if (error || !pagId) return { erro: mensagemErro(error) };
+  if (fd?.get("assinar") === "on") {
+    await supabase.rpc("marcar_assinatura_cadastro", { p_id: pagId as string, p_assinar: true });
+  }
 
   // Gera o PDF oficial (já numerado) e anexa ao pagamento criado.
   const op = await carregarOP(id);

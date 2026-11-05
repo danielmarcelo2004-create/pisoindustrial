@@ -329,14 +329,14 @@ isOneToOne: false
                   ]
                 },"pagamentos": {
                   Row: {
-                    "cancelamento_motivo": string | null,"created_at": string,"created_by": string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": number,"numero_documento": string | null,"obra_id": string,"observacoes": string | null,"ordem_id": string | null,"pago_em": string | null,"pago_por": string | null,"rejeicao_motivo": string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at": string,"valor": number,"valor_pago": number | null,"vencimento": string,"versao": number
+                    "assinado_no_cadastro": boolean,"cancelamento_motivo": string | null,"created_at": string,"created_by": string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": number,"numero_documento": string | null,"obra_id": string,"observacoes": string | null,"ordem_id": string | null,"pago_em": string | null,"pago_por": string | null,"rejeicao_motivo": string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at": string,"valor": number,"valor_pago": number | null,"vencimento": string,"versao": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "cancelamento_motivo"?: string | null,"created_at"?: string,"created_by": string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: never,"numero_documento"?: string | null,"obra_id": string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor": number,"valor_pago"?: number | null,"vencimento": string,"versao"?: number
+                    "assinado_no_cadastro"?: boolean,"cancelamento_motivo"?: string | null,"created_at"?: string,"created_by": string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: never,"numero_documento"?: string | null,"obra_id": string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor": number,"valor_pago"?: number | null,"vencimento": string,"versao"?: number
                   }
                   Update: {
-                    "cancelamento_motivo"?: string | null,"created_at"?: string,"created_by"?: string,"descricao"?: string,"favorecido"?: string,"fluxo"?: Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: never,"numero_documento"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status"?: Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor"?: number,"valor_pago"?: number | null,"vencimento"?: string,"versao"?: number
+                    "assinado_no_cadastro"?: boolean,"cancelamento_motivo"?: string | null,"created_at"?: string,"created_by"?: string,"descricao"?: string,"favorecido"?: string,"fluxo"?: Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: never,"numero_documento"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status"?: Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor"?: number,"valor_pago"?: number | null,"vencimento"?: string,"versao"?: number
                   }
                   Relationships: [
                     {
@@ -503,6 +503,9 @@ isOneToOne: false
 "is_financeiro":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
+"marcar_assinatura_cadastro":
+{ Args: { "p_assinar": boolean,"p_id": string }; Returns: undefined
+                           },
 "marcar_notificacoes_lidas":
 { Args: { "p_ids"?: (string)[] }; Returns: undefined
                            },
@@ -514,7 +517,8 @@ isOneToOne: false
                            },
 "minhas_pendencias":
 { Args: Record<PropertyKey, never>; Returns: {
-              "cancelamento_motivo": string | null,
+              "assinado_no_cadastro": boolean,
+"cancelamento_motivo": string | null,
 "created_at": string,
 "created_by": string,
 "descricao": string,

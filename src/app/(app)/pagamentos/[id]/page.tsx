@@ -432,6 +432,11 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
           )}
 
           <Cartao titulo="Assinaturas">
+            {p.assinado_no_cadastro && (
+              <p className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                ✓ Cadastro assinado por {p.criador?.nome} (marca de quem cadastrou; não é etapa de aprovação).
+              </p>
+            )}
             {assinaturas && assinaturas.length > 0 ? (
               <ul className="space-y-3">
                 {assinaturas.map((a) => (

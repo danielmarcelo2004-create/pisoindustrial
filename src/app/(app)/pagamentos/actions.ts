@@ -53,11 +53,29 @@ async function buscarPagamento(id: string) {
 }
 
 export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
-  await getUsuario();
+  const usuario = await getUsuario();
   const obra = texto(fd, "obra_id");
   if (!UUID.test(obra)) return { erro: "Selecione a obra." };
   const lido = lerDadosPagamento(fd);
   if ("erro" in lido) return { erro: lido.erro };
+  const assinar = fd.get("assinar") === "on" && (usuario.perfil === "financeiro" || usuario.perfil === "suprimentos");
+
+  // Forma diferente de boleto: a solicitação de OP substitui o cadastro direto.
+  if (lido.dados.p_forma_pagamento !== "boleto" && (usuario.perfil === "financeiro" || usuario.perfil === "suprimentos")) {
+    const q = new URLSearchParams({
+      obra,
+      favorecido: lido.dados.p_favorecido ?? "",
+      descricao: lido.dados.p_descricao,
+      valor: String(lido.dados.p_valor),
+      vencimento: lido.dados.p_vencimento,
+      forma: lido.dados.p_forma_pagamento,
+      nf: lido.dados.p_numero_documento ?? "",
+      observacoes: lido.dados.p_observacoes ?? "",
+      assinar: assinar ? "1" : "",
+    });
+    if (lido.dados.p_fornecedor_id) q.set("fornecedor", lido.dados.p_fornecedor_id);
+    redirect(`/ops/nova?${q}`);
+  }
 
   const anexos: { tipo: TipoDocumento; arquivo: File }[] = [
     ...arquivosDoForm(fd, "boleto").map((arquivo) => ({ tipo: "boleto" as const, arquivo })),
@@ -72,6 +90,8 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
   const supabase = await createClient();
   const { data: id, error } = await supabase.rpc("criar_pagamento", { p_obra_id: obra, ...lido.dados });
   if (error || !id) return { erro: mensagemErro(error) };
+
+  if (assinar) await supabase.rpc("marcar_assinatura_cadastro", { p_id: id as string, p_assinar: true });
 
   const falhas: string[] = [];
   for (const a of anexos) {

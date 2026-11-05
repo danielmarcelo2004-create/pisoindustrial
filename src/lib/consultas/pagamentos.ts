@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import type { StatusPagamento } from "@/lib/rotulos";
+import { FORMAS_PAGAMENTO, type FormaPagamento, type StatusPagamento } from "@/lib/rotulos";
 
 export const SELECAO_LISTA =
   "id, numero, favorecido, descricao, valor, vencimento, status, fluxo, versao, forma_pagamento, numero_documento, pago_em, valor_pago, created_at, obra:obras(id, nome, cidade, uf), fornecedor:fornecedores(id, nome)";
@@ -10,6 +10,7 @@ export type FiltrosPagamento = {
   obra?: string;
   fornecedor?: string;
   status?: string;
+  forma?: string;
   de?: string;
   ate?: string;
 };
@@ -31,6 +32,8 @@ export async function listarPagamentos(f: FiltrosPagamento, pagina = 1, limite: 
   if (obra) q = q.eq("obra_id", obra);
   const forn = uuidValido(f.fornecedor);
   if (forn) q = q.eq("fornecedor_id", forn);
+
+  if (f.forma && f.forma in FORMAS_PAGAMENTO) q = q.eq("forma_pagamento", f.forma as FormaPagamento);
 
   if (f.status === "abertos") q = q.in("status", ["aguardando_engenheiro", "aguardando_administrador", "aguardando_pagamento"]);
   else if (f.status === "em_aprovacao") q = q.in("status", ["aguardando_engenheiro", "aguardando_administrador"]);

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Selo, Vazio, cx } from "@/components/ui";
 import { data, hojeISO, moeda } from "@/lib/formato";
-import { STATUS_EM_ABERTO, STATUS_PAGAMENTO, type StatusPagamento } from "@/lib/rotulos";
+import { FORMAS_PAGAMENTO, STATUS_EM_ABERTO, STATUS_PAGAMENTO, type StatusPagamento } from "@/lib/rotulos";
 import type { PagamentoLista } from "@/lib/consultas/pagamentos";
 
 export function SeloStatus({ status }: { status: StatusPagamento }) {
@@ -47,6 +47,7 @@ export function TabelaPagamentos({
             <th>Favorecido / descrição</th>
             {colunaObra && <th>Obra</th>}
             <th className="text-right">Valor</th>
+            <th>Forma</th>
             <th>Situação</th>
           </tr>
         </thead>
@@ -70,6 +71,7 @@ export function TabelaPagamentos({
               </td>
               {colunaObra && <td className="min-w-40 text-slate-700">{p.obra?.nome}</td>}
               <td className="text-right font-medium whitespace-nowrap tabular-nums">{moeda(p.valor)}</td>
+              <td className="whitespace-nowrap text-slate-700">{FORMAS_PAGAMENTO[p.forma_pagamento]}</td>
               <td>
                 <SeloStatus status={p.status} />
               </td>

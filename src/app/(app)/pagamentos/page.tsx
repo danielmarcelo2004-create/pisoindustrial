@@ -5,7 +5,7 @@ import { Cabecalho, Cartao, LinkBotao, classeBotao } from "@/components/ui";
 import { getUsuario } from "@/lib/auth";
 import { listarPagamentos, POR_PAGINA, somar, type FiltrosPagamento } from "@/lib/consultas/pagamentos";
 import { moeda } from "@/lib/formato";
-import { STATUS_PAGAMENTO } from "@/lib/rotulos";
+import { FORMAS_PAGAMENTO, STATUS_PAGAMENTO } from "@/lib/rotulos";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Pagamentos" };
@@ -22,6 +22,7 @@ export default async function PagamentosPage({ searchParams }: PageProps<"/pagam
     obra: str(sp.obra),
     fornecedor: str(sp.fornecedor),
     status: str(sp.status),
+    forma: str(sp.forma),
     de: str(sp.de),
     ate: str(sp.ate),
   };
@@ -66,6 +67,14 @@ export default async function PagamentosPage({ searchParams }: PageProps<"/pagam
             {(obras ?? []).map((o) => (
               <option key={o.id} value={o.id}>
                 {o.nome}
+              </option>
+            ))}
+          </select>
+          <select name="forma" defaultValue={filtros.forma} className="campo" aria-label="Forma de pagamento">
+            <option value="">Todas as formas</option>
+            {Object.entries(FORMAS_PAGAMENTO).map(([v, r]) => (
+              <option key={v} value={v}>
+                {r}
               </option>
             ))}
           </select>

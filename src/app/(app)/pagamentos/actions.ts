@@ -96,6 +96,7 @@ export async function atualizarPagamento(id: string, _: Estado, fd: FormData): P
     p_id: id,
     ...lido.dados,
     p_motivo: texto(fd, "motivo"),
+    p_obra_id: texto(fd, "obra_id") || undefined,
   });
   if (error) return { erro: mensagemErro(error) };
   revalidatePath("/", "layout");

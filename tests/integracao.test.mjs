@@ -364,10 +364,10 @@ function salvarOP(chave, obraId, extra = {}) {
 }
 
 test('OP: só o engenheiro vinculado cria; rascunho é privado', async () => {
-  await rpcFalha('sup', 'salvar_op', {
+  await rpcFalha('adm', 'salvar_op', {
     p_id: null, p_obra_id: obraA.id, p_favorecido: 'X', p_cpf_cnpj: null, p_descricao: 'X', p_vencimento: null,
     p_forma_pagamento: 'pix', p_dados_bancarios: null, p_observacoes: null, p_itens: itensOP,
-  }, /engenheiros/)
+  }, /perfil/)
   await rpcFalha('eng', 'salvar_op', {
     p_id: null, p_obra_id: obraB.id, p_favorecido: 'X', p_cpf_cnpj: null, p_descricao: 'X', p_vencimento: null,
     p_forma_pagamento: 'pix', p_dados_bancarios: null, p_observacoes: null, p_itens: itensOP,
@@ -517,4 +517,27 @@ test('administrador master pode ser responsável pela obra', async () => {
   }).select().single()
   assert.equal(error, null)
   assert.ok(data.id)
+})
+
+// -----------------------------------------------------------------------------
+// Alteração de pagamento liberado ou pago (sem nova aprovação, com motivo)
+// -----------------------------------------------------------------------------
+test('pagamento pago: Financeiro altera obra e valor com motivo, sem nova aprovação', async () => {
+  const id = await novoPagamento('fin', obraC.id, 500) // fluxo C: já liberado para pagamento
+  const antes = await pagamento(id)
+  const base = { p_id: id, p_fornecedor_id: null, p_favorecido: antes.favorecido, p_descricao: antes.descricao,
+    p_valor: 500, p_vencimento: antes.vencimento, p_forma_pagamento: antes.forma_pagamento, p_numero_documento: null, p_observacoes: null }
+  await rpcFalha('fin', 'atualizar_pagamento', { ...base, p_valor: 520 }, /motivo/)
+  await rpc('fin', 'atualizar_pagamento', { ...base, p_valor: 520, p_motivo: 'Reajuste acordado', p_obra_id: obraA.id })
+  const depois = await pagamento(id)
+  assert.equal(depois.status, 'aguardando_pagamento')
+  assert.equal(depois.versao, antes.versao)
+  assert.equal(depois.obra_id, obraA.id)
+  assert.equal(Number(depois.valor), 520)
+  await rpc('fin', 'registrar_baixa', { p_id: id, p_pago_em: '2026-12-03' })
+  await rpcFalha('fin', 'atualizar_pagamento', { ...base, p_valor: 530 }, /motivo/)
+  await rpc('fin', 'atualizar_pagamento', { ...base, p_valor: 530, p_motivo: 'Correção de valor' })
+  const pago = await pagamento(id)
+  assert.equal(pago.status, 'pago')
+  assert.equal(Number(pago.valor), 530)
 })

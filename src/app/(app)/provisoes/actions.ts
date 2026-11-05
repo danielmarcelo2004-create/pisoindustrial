@@ -10,7 +10,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const t = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
 export async function criarProvisao(_: Estado, fd: FormData): Promise<Estado> {
-  await exigirPerfil("financeiro");
+  await exigirPerfil("financeiro", "suprimentos");
   const obra = t(fd, "obra_id");
   const descricao = t(fd, "descricao");
   const mes = t(fd, "mes_referencia");

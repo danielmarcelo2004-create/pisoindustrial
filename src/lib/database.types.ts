@@ -477,7 +477,7 @@ isOneToOne: false
 { Args: { "p_texto": string }; Returns: string
                            },
 "atualizar_pagamento":
-{ Args: { "p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_id": string,"p_motivo"?: string,"p_numero_documento": string,"p_observacoes": string,"p_valor": number,"p_vencimento": string }; Returns: undefined
+{ Args: { "p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_id": string,"p_motivo"?: string,"p_numero_documento": string,"p_obra_id"?: string,"p_observacoes": string,"p_valor": number,"p_vencimento": string }; Returns: undefined
                            },
 "cancelar_pagamento":
 { Args: { "p_id": string,"p_motivo": string }; Returns: undefined

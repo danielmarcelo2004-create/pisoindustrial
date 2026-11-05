@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FormAcao } from "@/components/form-acao";
-import { Aviso, Cabecalho, Campo, Cartao, Selo, Vazio } from "@/components/ui";
+import { Cabecalho, Campo, Cartao, Selo, Vazio } from "@/components/ui";
 import { getUsuario } from "@/lib/auth";
 import { data, moeda } from "@/lib/formato";
 import { createClient } from "@/lib/supabase/server";
@@ -23,15 +23,16 @@ export default async function ProvisoesPage() {
     supabase.from("obras").select("id, nome").order("nome"),
   ]);
   const fin = u.perfil === "financeiro";
+  const podeCriar = u.perfil === "financeiro" || u.perfil === "suprimentos";
 
   return (
     <>
       <Cabecalho
         titulo="Provisões de pagamento"
-        subtitulo="Despesas futuras que ainda não têm valor definido. Não entram nos totais até virarem pagamento."
+        subtitulo="Despesas futuras que ainda não têm valor definido. Não entram nos totais até virarem pagamento. O Financeiro e o Suprimentos registram; o Financeiro lança o pagamento."
       />
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        {fin && (
+        {podeCriar && (
           <Cartao titulo="Nova provisão" className="xl:col-span-1">
             <FormAcao action={criarProvisao} enviar="Registrar provisão">
               <Campo rotulo="Centro de custo" obrigatorio>
@@ -64,7 +65,7 @@ export default async function ProvisoesPage() {
             </FormAcao>
           </Cartao>
         )}
-        <div className={fin ? "xl:col-span-2" : "xl:col-span-3"}>
+        <div className={podeCriar ? "xl:col-span-2" : "xl:col-span-3"}>
           <Cartao titulo={`Provisões (${provisoes?.length ?? 0})`} semPadding>
             {!provisoes?.length ? (
               <Vazio>Nenhuma provisão registrada.</Vazio>
@@ -118,7 +119,6 @@ export default async function ProvisoesPage() {
           </Cartao>
         </div>
       </div>
-      {!fin && <div className="mt-4"><Aviso tipo="info">Somente o Financeiro registra provisões.</Aviso></div>}
     </>
   );
 }

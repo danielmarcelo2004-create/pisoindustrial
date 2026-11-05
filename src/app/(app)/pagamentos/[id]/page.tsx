@@ -147,7 +147,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                 Ver solicitação {p.numero_documento}
               </LinkBotao>
             )}
-            {atua && (
+            {(atua || (Boolean(podeAtuar) && p.status !== "cancelado" && (u.perfil === "financeiro" || u.perfil === "suprimentos"))) && (
               <LinkBotao href={`/pagamentos/${id}/editar`} variante="secundario">
                 Editar dados
               </LinkBotao>

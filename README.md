@@ -108,8 +108,8 @@ npm run test:e2e          # navegador, ponta a ponta (recria o banco local!; inc
 ```
 
 Para o `test:e2e`, rode o sistema com `npm run build` e depois:
-`CRON_SECRET=segredo-teste WHATSAPP_TOKEN=tok WHATSAPP_PHONE_NUMBER_ID=999 WHATSAPP_TEMPLATE=alerta WHATSAPP_API_URL=http://127.0.0.1:4555 APP_URL=http://127.0.0.1:3000 npm start`.
-O teste simula a API do WhatsApp localmente.
+`CRON_SECRET=segredo-teste WHATSAPP_TOKEN=tok WHATSAPP_PHONE_NUMBER_ID=999 WHATSAPP_TEMPLATE=alerta WHATSAPP_API_URL=http://127.0.0.1:4555 APP_URL=http://127.0.0.1:3000 RESEND_API_KEY=re_teste EMAIL_FROM=avisos@teste.local RESEND_API_URL=http://127.0.0.1:4556 npm start`.
+O teste simula a API do WhatsApp (porta 4555) e a do Resend (porta 4556) localmente.
 
 Exemplo de XML de NF-e para testar a Inteligência de Compras: `tests/exemplos/nfe-exemplo-concreto.xml`.
 

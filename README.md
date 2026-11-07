@@ -23,6 +23,7 @@ Sistema web interno para centralizar a rotina financeira das obras: pagamentos e
 | Solicitações de OP: itens, PDF numerado (modelo provisório), envio direto ao administrador, "Minhas solicitações" | ✅ |
 | Relatórios por obra, fornecedor, mês e situação, com período por vencimento, pagamento ou cadastro; exportação para Excel | ✅ |
 | Inteligência de Compras: leitura automática do XML da NF-e, lançamento manual de NF em PDF/imagem, comparação de preços, histórico, evolução mensal, comparação regional, alertas e Excel | ✅ |
+| Fundo fixo: um fundo por pessoa e obra, gastos com comprovante assinado, aprovação do administrador, saldo, status e fechamento com pagamento de reposição e reembolso | ✅ |
 | Lembretes diários (vencimentos e assinaturas pendentes) | ✅ (pg_cron, 07:30) |
 | Alertas por WhatsApp (Cloud API da Meta) | ✅ pronto, falta configurar o número e o template |
 | Leitura automática (OCR) de NF em PDF/imagem | ⏳ hoje é lançamento manual com conferência humana |
@@ -55,6 +56,15 @@ Rejeição em qualquer etapa → **Rejeitado**. Quem cadastrou corrige e **reenv
 3. O status acompanha o andamento: **enviada → em análise** (quando o administrador abre) **→ aprovada / rejeitada → paga**. Uma OP rejeitada pode ser duplicada para correção.
 
 O modelo do PDF é provisório (`src/lib/pdf-op.ts`). Os dados da empresa ficam em `src/lib/sistema.ts`.
+
+## Fundo fixo
+
+- O Financeiro cria um fundo por pessoa (engenheiro ou Suprimentos) e por obra. Só existe um fundo aberto por pessoa e obra.
+- Cada gasto tem descrição, data, valor e comprovantes. Cada comprovante é assinado por quem gastou, com a própria assinatura posicionada na última página.
+- Se a obra tem administrador, o gasto só abate o saldo depois da aprovação. Gasto recusado fica fora do saldo, com o motivo.
+- Status pelo saldo: **acabando** (10% ou menos do valor) e **esgotado** (zero ou menos). O Financeiro é avisado nos dois casos.
+- Ao fechar: se esgotado, cria um pagamento só com reposição + reembolso (ex.: fundo de R$ 100,00 com R$ 120,00 gastos → R$ 120,00, "reposição de R$ 100,00 + reembolso de R$ 20,00"). Se acabando, o saldo é registrado para repasse à empresa, sem pagamento; o reembolso só existe se houver excesso.
+- O pagamento de reposição/reembolso vai direto para o Financeiro pagar.
 
 ## Inteligência de Compras
 
@@ -94,7 +104,7 @@ Testes:
 ```bash
 npm run test:integracao   # regras do banco (RLS, fluxos, assinaturas, OP, NF, lembretes)
 npm run test:nfe          # leitura de XML de NF-e
-npm run test:e2e          # navegador, ponta a ponta (recria o banco local!)
+npm run test:e2e          # navegador, ponta a ponta (recria o banco local!; inclui o fundo fixo)
 ```
 
 Para o `test:e2e`, rode o sistema com `npm run build` e depois:

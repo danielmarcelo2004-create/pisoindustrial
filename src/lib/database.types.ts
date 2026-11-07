@@ -127,6 +127,102 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"fundo_gasto_anexos": {
+                  Row: {
+                    "assinado": boolean,"created_at": string,"enviado_por": string,"gasto_id": string,"id": string,"mime_type": string | null,"nome_arquivo": string,"sha256": string,"storage_path": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "assinado"?: boolean,"created_at"?: string,"enviado_por"?: string,"gasto_id": string,"id"?: string,"mime_type"?: string | null,"nome_arquivo": string,"sha256": string,"storage_path": string
+                  }
+                  Update: {
+                    "assinado"?: boolean,"created_at"?: string,"enviado_por"?: string,"gasto_id"?: string,"id"?: string,"mime_type"?: string | null,"nome_arquivo"?: string,"sha256"?: string,"storage_path"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "fundo_gasto_anexos_enviado_por_fkey"
+      columns: ["enviado_por"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fundo_gasto_anexos_gasto_id_fkey"
+      columns: ["gasto_id"]
+isOneToOne: false
+      referencedRelation: "fundo_gastos"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"fundo_gastos": {
+                  Row: {
+                    "created_at": string,"data_gasto": string,"decidido_em": string | null,"decidido_por": string | null,"descricao": string,"fundo_id": string,"id": string,"lancado_por": string,"motivo_recusa": string | null,"status": Database["public"]['Enums']["status_gasto_fundo"],"valor": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"data_gasto": string,"decidido_em"?: string | null,"decidido_por"?: string | null,"descricao": string,"fundo_id": string,"id"?: string,"lancado_por"?: string,"motivo_recusa"?: string | null,"status"?: Database["public"]['Enums']["status_gasto_fundo"],"valor": number
+                  }
+                  Update: {
+                    "created_at"?: string,"data_gasto"?: string,"decidido_em"?: string | null,"decidido_por"?: string | null,"descricao"?: string,"fundo_id"?: string,"id"?: string,"lancado_por"?: string,"motivo_recusa"?: string | null,"status"?: Database["public"]['Enums']["status_gasto_fundo"],"valor"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "fundo_gastos_decidido_por_fkey"
+      columns: ["decidido_por"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fundo_gastos_fundo_id_fkey"
+      columns: ["fundo_id"]
+isOneToOne: false
+      referencedRelation: "fundos_fixos"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fundo_gastos_lancado_por_fkey"
+      columns: ["lancado_por"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"fundos_fixos": {
+                  Row: {
+                    "created_at": string,"criado_por": string,"fechado_em": string | null,"id": string,"obra_id": string,"pagamento_id": string | null,"pessoa_id": string,"reembolso": number | null,"reposicao": number | null,"saldo_repassado": number | null,"status": Database["public"]['Enums']["status_fundo"],"valor": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"criado_por"?: string,"fechado_em"?: string | null,"id"?: string,"obra_id": string,"pagamento_id"?: string | null,"pessoa_id": string,"reembolso"?: number | null,"reposicao"?: number | null,"saldo_repassado"?: number | null,"status"?: Database["public"]['Enums']["status_fundo"],"valor": number
+                  }
+                  Update: {
+                    "created_at"?: string,"criado_por"?: string,"fechado_em"?: string | null,"id"?: string,"obra_id"?: string,"pagamento_id"?: string | null,"pessoa_id"?: string,"reembolso"?: number | null,"reposicao"?: number | null,"saldo_repassado"?: number | null,"status"?: Database["public"]['Enums']["status_fundo"],"valor"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "fundos_fixos_criado_por_fkey"
+      columns: ["criado_por"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fundos_fixos_obra_id_fkey"
+      columns: ["obra_id"]
+isOneToOne: false
+      referencedRelation: "obras"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fundos_fixos_pagamento_id_fkey"
+      columns: ["pagamento_id"]
+isOneToOne: false
+      referencedRelation: "pagamentos"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fundos_fixos_pessoa_id_fkey"
+      columns: ["pessoa_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"nf_itens": {
                   Row: {
                     "codigo": string | null,"descricao": string,"descricao_normalizada": string,"id": string,"ncm": string | null,"nota_id": string,"numero_item": number,"quantidade": number,"unidade": string | null,"valor_total": number,"valor_unitario": number
@@ -475,7 +571,10 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "_auditar":
+            "_atualizar_status_fundo":
+{ Args: { "p_fundo": string }; Returns: undefined
+                           },
+"_auditar":
 { Args: { "p_acao": string,"p_antes"?: Json,"p_depois"?: Json,"p_descricao": string,"p_entidade": string,"p_entidade_id": string,"p_obra_id"?: string,"p_pagamento_id"?: string }; Returns: undefined
                            },
 "_conteudo_assinavel":
@@ -499,6 +598,12 @@ isOneToOne: false
 "_nova_versao":
 { Args: { "p_motivo": string,"p_pagamento_id": string }; Returns: undefined
                            },
+"_reais":
+{ Args: { "p_valor": number }; Returns: string
+                           },
+"_saldo_fundo":
+{ Args: { "p_fundo": string }; Returns: number
+                           },
 "_status_inicial":
 { Args: { "p_fluxo": Database["public"]['Enums']["fluxo_aprovacao"] }; Returns: Database["public"]['Enums']["status_pagamento"]
                            },
@@ -514,11 +619,17 @@ isOneToOne: false
 "confirmar_troca_senha":
 { Args: Record<PropertyKey, never>; Returns: undefined
                            },
+"criar_fundo_fixo":
+{ Args: { "p_obra_id": string,"p_pessoa_id": string,"p_valor": number }; Returns: string
+                           },
 "criar_pagamento":
 { Args: { "p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_numero_documento"?: string,"p_obra_id": string,"p_observacoes"?: string,"p_valor": number,"p_vencimento": string }; Returns: string
                            },
 "decidir_aprovacao":
 { Args: { "p_comentario"?: string,"p_decisao": Database["public"]['Enums']["decisao_aprovacao"],"p_ip"?: string,"p_itens": Json,"p_user_agent"?: string }; Returns: string
+                           },
+"decidir_gasto_fundo":
+{ Args: { "p_aprovar": boolean,"p_gasto_id": string,"p_motivo"?: string }; Returns: undefined
                            },
 "definir_assinatura":
 { Args: { "p_path": string }; Returns: undefined
@@ -532,11 +643,17 @@ isOneToOne: false
 "excluir_op":
 { Args: { "p_id": string }; Returns: undefined
                            },
+"fechar_fundo_fixo":
+{ Args: { "p_fundo_id": string,"p_vencimento": string }; Returns: string
+                           },
 "gerar_lembretes_diarios":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
 "is_financeiro":
 { Args: Record<PropertyKey, never>; Returns: boolean
+                           },
+"lancar_gasto_fundo":
+{ Args: { "p_data": string,"p_descricao": string,"p_fundo_id": string,"p_valor": number }; Returns: string
                            },
 "marcar_assinatura_cadastro":
 { Args: { "p_assinar": boolean,"p_id": string }; Returns: undefined
@@ -598,6 +715,9 @@ isOneToOne: false
 "reenviar_pagamento":
 { Args: { "p_id": string,"p_observacao"?: string }; Returns: undefined
                            },
+"registrar_anexo_gasto":
+{ Args: { "p_assinado": boolean,"p_gasto_id": string,"p_mime": string,"p_nome": string,"p_sha256": string,"p_storage_path": string }; Returns: string
+                           },
 "registrar_baixa":
 { Args: { "p_id": string,"p_observacao"?: string,"p_pago_em": string,"p_valor_pago"?: number }; Returns: undefined
                            },
@@ -618,7 +738,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "decisao_aprovacao": "aprovado"|"rejeitado","etapa_aprovacao": "engenheiro"|"administrador","fluxo_aprovacao": "A"|"B"|"C","forma_pagamento": "boleto"|"pix"|"transferencia"|"dinheiro"|"cartao"|"outro","perfil_usuario": "financeiro"|"suprimentos"|"engenheiro"|"administrador"|"administrador_master","status_obra": "ativa"|"suspensa"|"concluida","status_op": "em_elaboracao"|"enviada"|"em_analise"|"aprovada"|"rejeitada"|"paga"|"cancelada","status_pagamento": "aguardando_engenheiro"|"aguardando_administrador"|"aguardando_pagamento"|"pago"|"rejeitado"|"cancelado","tipo_documento": "boleto"|"nota_fiscal"|"ordem_pagamento"|"comprovante"|"outro"|"documento_assinado"
+            "decisao_aprovacao": "aprovado"|"rejeitado","etapa_aprovacao": "engenheiro"|"administrador","fluxo_aprovacao": "A"|"B"|"C","forma_pagamento": "boleto"|"pix"|"transferencia"|"dinheiro"|"cartao"|"outro","perfil_usuario": "financeiro"|"suprimentos"|"engenheiro"|"administrador"|"administrador_master","status_fundo": "em_andamento"|"acabando"|"esgotado"|"fechado","status_gasto_fundo": "pendente"|"aprovado"|"recusado","status_obra": "ativa"|"suspensa"|"concluida","status_op": "em_elaboracao"|"enviada"|"em_analise"|"aprovada"|"rejeitada"|"paga"|"cancelada","status_pagamento": "aguardando_engenheiro"|"aguardando_administrador"|"aguardando_pagamento"|"pago"|"rejeitado"|"cancelado","tipo_documento": "boleto"|"nota_fiscal"|"ordem_pagamento"|"comprovante"|"outro"|"documento_assinado"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -738,7 +858,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "decisao_aprovacao": ["aprovado", "rejeitado"],"etapa_aprovacao": ["engenheiro", "administrador"],"fluxo_aprovacao": ["A", "B", "C"],"forma_pagamento": ["boleto", "pix", "transferencia", "dinheiro", "cartao", "outro"],"perfil_usuario": ["financeiro", "suprimentos", "engenheiro", "administrador", "administrador_master"],"status_obra": ["ativa", "suspensa", "concluida"],"status_op": ["em_elaboracao", "enviada", "em_analise", "aprovada", "rejeitada", "paga", "cancelada"],"status_pagamento": ["aguardando_engenheiro", "aguardando_administrador", "aguardando_pagamento", "pago", "rejeitado", "cancelado"],"tipo_documento": ["boleto", "nota_fiscal", "ordem_pagamento", "comprovante", "outro", "documento_assinado"]
+            "decisao_aprovacao": ["aprovado", "rejeitado"],"etapa_aprovacao": ["engenheiro", "administrador"],"fluxo_aprovacao": ["A", "B", "C"],"forma_pagamento": ["boleto", "pix", "transferencia", "dinheiro", "cartao", "outro"],"perfil_usuario": ["financeiro", "suprimentos", "engenheiro", "administrador", "administrador_master"],"status_fundo": ["em_andamento", "acabando", "esgotado", "fechado"],"status_gasto_fundo": ["pendente", "aprovado", "recusado"],"status_obra": ["ativa", "suspensa", "concluida"],"status_op": ["em_elaboracao", "enviada", "em_analise", "aprovada", "rejeitada", "paga", "cancelada"],"status_pagamento": ["aguardando_engenheiro", "aguardando_administrador", "aguardando_pagamento", "pago", "rejeitado", "cancelado"],"tipo_documento": ["boleto", "nota_fiscal", "ordem_pagamento", "comprovante", "outro", "documento_assinado"]
           }
         }
 } as const

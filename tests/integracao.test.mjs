@@ -582,3 +582,47 @@ test('baixa por parcela: pagamento só fica pago quando todas as parcelas estive
   assert.equal(fim.status, 'pago')
   assert.equal(Number(fim.valor_pago), 1010)
 })
+
+// -----------------------------------------------------------------------------
+// Fundo fixo
+// -----------------------------------------------------------------------------
+test('fundo fixo: aprovação do administrador, status pelo saldo, avisos e fechamento', async () => {
+  const fundo = await rpc('fin', 'criar_fundo_fixo', { p_obra_id: obraA.id, p_pessoa_id: u.eng.id, p_valor: 100 })
+  await rpcFalha('fin', 'criar_fundo_fixo', { p_obra_id: obraA.id, p_pessoa_id: u.eng.id, p_valor: 50 }, /unique|duplicate|já/)
+  const g1 = await rpc('eng', 'lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Material de urgência', p_data: '2026-11-05', p_valor: 60 })
+  let f = (await admin.from('fundos_fixos').select('status').eq('id', fundo).single()).data
+  assert.equal(f.status, 'em_andamento')
+  await rpcFalha('eng', 'decidir_gasto_fundo', { p_gasto_id: g1, p_aprovar: true }, /administrador/)
+  await rpcFalha('adm', 'decidir_gasto_fundo', { p_gasto_id: g1, p_aprovar: false }, /motivo/)
+  await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g1, p_aprovar: true })
+  const g2 = await rpc('eng', 'lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Ferramenta', p_data: '2026-11-05', p_valor: 35 })
+  await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g2, p_aprovar: true })
+  f = (await admin.from('fundos_fixos').select('status').eq('id', fundo).single()).data
+  assert.equal(f.status, 'acabando')
+  const { data: avisos } = await admin.from('notificacoes').select('titulo').eq('user_id', u.fin.id).eq('titulo', 'Fundo fixo acabando')
+  assert.ok(avisos.length >= 1)
+  await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: '2026-11-20' })
+  const fechado = (await admin.from('fundos_fixos').select('status, reposicao, reembolso, saldo_repassado, pagamento_id').eq('id', fundo).single()).data
+  assert.equal(fechado.status, 'fechado')
+  assert.equal(Number(fechado.reposicao), 0)
+  assert.equal(Number(fechado.saldo_repassado), 5)
+  assert.equal(fechado.pagamento_id, null)
+
+  // Segundo fundo: gasta mais que o valor, vira esgotado e gera um pagamento só
+  const fundo2 = await rpc('fin', 'criar_fundo_fixo', { p_obra_id: obraA.id, p_pessoa_id: u.eng.id, p_valor: 100 })
+  for (const v of [60, 60]) {
+    const g = await rpc('eng', 'lancar_gasto_fundo', { p_fundo_id: fundo2, p_descricao: 'Compra', p_data: '2026-11-06', p_valor: v })
+    await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g, p_aprovar: true })
+  }
+  f = (await admin.from('fundos_fixos').select('status').eq('id', fundo2).single()).data
+  assert.equal(f.status, 'esgotado')
+  const pagId = await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: fundo2, p_vencimento: '2026-11-20' })
+  const pag = await pagamento(pagId)
+  assert.equal(Number(pag.valor), 120)
+  assert.equal(pag.status, 'aguardando_pagamento')
+  assert.equal(pag.fluxo, 'C')
+  assert.match(pag.descricao, /reposição de R\$ 100,00 \+ reembolso de R\$ 20,00/)
+  const fim = (await admin.from('fundos_fixos').select('reposicao, reembolso').eq('id', fundo2).single()).data
+  assert.equal(Number(fim.reposicao), 100)
+  assert.equal(Number(fim.reembolso), 20)
+})

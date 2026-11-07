@@ -75,6 +75,14 @@ as $$
     from public.fundos_fixos f where f.id = p_fundo
 $$;
 
+-- Valor em reais no padrão pt-BR (1.500,00), independente da configuração de locale do banco.
+create or replace function public._reais(p_valor numeric)
+returns text
+language sql immutable set search_path = ''
+as $$
+  select translate(to_char(p_valor, 'FM999G999G999G990D00'), '.,', ',.')
+$$;
+
 -- Atualiza o status pelo saldo e avisa o Financeiro quando acaba ou esgota.
 create or replace function public._atualizar_status_fundo(p_fundo uuid)
 returns void
@@ -105,7 +113,7 @@ begin
       perform public._notificar_financeiro(
         case when v_novo = 'esgotado' then 'Fundo fixo esgotado' else 'Fundo fixo acabando' end,
         'Fundo de ' || coalesce(v_pessoa, '') || ' em ' || coalesce(v_obra, '') || ': saldo de R$ '
-          || to_char(greatest(v_saldo, 0), 'FM999G999G990D00') || ' de R$ ' || to_char(f.valor, 'FM999G999G990D00')
+          || public._reais(greatest(v_saldo, 0)) || ' de R$ ' || public._reais(f.valor)
           || '. Feche o fundo e crie um novo.',
         '/fundos-fixos', null);
     end if;
@@ -279,7 +287,7 @@ begin
 
   if v_reposicao + v_reembolso > 0 then
     v_desc := 'Fundo fixo (' || coalesce(v_pessoa, '') || '): reposição de R$ '
-      || to_char(v_reposicao, 'FM999G999G990D00') || ' + reembolso de R$ ' || to_char(v_reembolso, 'FM999G999G990D00');
+      || public._reais(v_reposicao) || ' + reembolso de R$ ' || public._reais(v_reembolso);
     insert into public.pagamentos (obra_id, fornecedor_id, favorecido, descricao, valor, vencimento, forma_pagamento,
                                    numero_documento, observacoes, fluxo, status, created_by)
     values (f.obra_id, null, coalesce(v_pessoa, 'Fundo fixo'), v_desc, v_reposicao + v_reembolso,
@@ -295,8 +303,8 @@ begin
          saldo_repassado = case when v_saldo > 0 then v_saldo else 0 end, pagamento_id = v_pag
    where id = p_fundo_id;
   perform public._auditar('fundo_fixo', p_fundo_id::text, 'fechou',
-    'Fundo fechado. Reposição R$ ' || v_reposicao || ', reembolso R$ ' || v_reembolso
-      || case when v_saldo > 0 then ', saldo a repassar R$ ' || v_saldo else '' end,
+    'Fundo fechado. Reposição R$ ' || public._reais(v_reposicao) || ', reembolso R$ ' || public._reais(v_reembolso)
+      || case when v_saldo > 0 then ', saldo a repassar R$ ' || public._reais(v_saldo) else '' end,
     f.obra_id, v_pag, null, jsonb_build_object('reposicao', v_reposicao, 'reembolso', v_reembolso, 'saldo', greatest(v_saldo, 0)));
   return v_pag;
 end

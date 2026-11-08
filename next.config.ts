@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // pdf.js lê o texto das notas no servidor; precisa ser carregado direto do node_modules (worker interno).
+  serverExternalPackages: ["pdfjs-dist"],
   // Sistema interno: todas as páginas dependem do usuário logado, então
   // usamos renderização dinâmica (sem Cache Components).
   experimental: {

@@ -148,20 +148,23 @@ export function lerNfseTexto(texto: string): DadosNota | null {
     const m = t.match(rotulo);
     return m ? numBR(m[1]) : 0;
   };
-  const servicosM = t.match(/(?:DISCRIMINA[CÇ][AÃ]O|DESCRI[CÇ][AÃ]O DO SERVI[CÇ]O)[:\s]*([\s\S]{0,400}?)(?:\n\s*\n|VALOR|TOTAL|$)/i);
+  const servicosM = t.match(/(?:DISCRIMINA[CÇ][AÃ]O(?:\s+DOS\s+SERVI[CÇ]OS)?|DESCRI[CÇ][AÃ]O DO SERVI[CÇ]O)[:\s]*([\s\S]{0,400}?)(?:\n\s*\n|VALOR|TOTAL|$)/i);
   const dataM = t.match(/EMISS[AÃ]O\D{0,25}(\d{2}\/\d{2}\/\d{4})/i);
   const valorM = t.match(/VALOR (?:TOTAL )?(?:DOS )?SERVI[CÇ]OS?\D{0,20}([\d.]+,\d{2})/i);
-  const numeroM = t.match(/N[ºº°o]\.?\s*(?:DA )?(?:NFS-?e|NOTA)?\D{0,12}(\d{1,12})/i);
+  const numeroM = t.match(/N(?:ú|u)mero\D{0,30}?(\d{1,12})/i) ?? t.match(/N[º°o]\.?\s*(\d{1,12})/i);
+  const nomeM = aposPrestador.match(/PRESTADOR\s*\n?\s*([^\n]*?)\s+(?:CNPJ|CPF)\b/i);
 
   return {
     ehNfse: true,
     prestadorDocumento: docM ? docM[0] : null,
-    prestadorNome: null,
+    prestadorNome: nomeM ? nomeM[1].trim() || null : null,
     numero: numeroM ? numeroM[1] : null,
     dataEmissao: dataM ? dataM[1].split("/").reverse().join("-") : null,
     valor: valorM ? numBR(valorM[1]) : null,
     mei: /\bMEI\b|Microempreendedor Individual/i.test(t),
-    servicos: servicosM ? servicosM[1].split(/\n|;/).map((s) => s.trim()).filter(Boolean) : [],
+    servicos: servicosM
+      ? servicosM[1].split(/\n|;/).map((s) => s.trim()).filter((s) => s && !/^(DOS )?SERVI[ÇC]OS?$/i.test(s))
+      : [],
     retencoes: {
       inss: retencao(/INSS\D{0,30}([\d.]+,\d{2})/i),
       irrf: retencao(/IRRF\D{0,30}([\d.]+,\d{2})/i),

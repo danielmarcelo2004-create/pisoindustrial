@@ -76,7 +76,7 @@ Ao anexar uma nota a um pagamento (no cadastro ou depois), o sistema identifica 
 
 A identificação lê o XML (NFS-e municipal ABRASF ou nacional) e o texto de PDFs com camada de texto. Imagens (foto ou PDF digitalizado) não são identificadas automaticamente. Notas de produto (NF-e) não entram nesta lista. A aba é visível ao Financeiro e ao Suprimentos; só o Financeiro marca as notas como enviadas e pode exportar a planilha para o contador.
 
-As regras ficam em `src/lib/notas-contabeis.ts` e os testes em `tests/notas-contabeis.test.mts`.
+As regras ficam em `src/lib/notas-contabeis.ts`. Os testes estão em `tests/notas-contabeis.test.mts` (XML) e `tests/notas-pdf.test.mts` (PDF com camada de texto, em `tests/exemplos/`).
 
 ## Inteligência de Compras
 

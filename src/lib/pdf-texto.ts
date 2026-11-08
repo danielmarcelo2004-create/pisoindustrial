@@ -1,5 +1,3 @@
-import "server-only";
-
 /** Texto da camada de texto de um PDF (até as primeiras páginas). Vazio quando o PDF é só imagem. */
 export async function extrairTextoPdf(bytes: Buffer, maxPaginas = 5): Promise<string> {
   try {
@@ -22,7 +20,8 @@ export async function extrairTextoPdf(bytes: Buffer, maxPaginas = 5): Promise<st
     }
     await doc.destroy();
     return texto;
-  } catch {
+  } catch (e) {
+    console.error("[pdf-texto] não foi possível ler o texto do PDF:", e);
     return "";
   }
 }

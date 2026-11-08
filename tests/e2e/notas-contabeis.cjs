@@ -1,12 +1,15 @@
 // Teste de ponta a ponta: notas identificadas no cadastro do pagamento vão para a aba de contabilidade.
-// Rodar com o banco recém-zerado (rodar.sh faz isso). Anexa 2 NFS-e e 1 NF-e de produto: só as NFS-e entram.
+// Rodar com o banco recém-zerado (rodar.sh faz isso). Anexa NFS-e em XML e em PDF, e uma DANFE (produto) em PDF:
+// só as três NFS-e de serviço entram na lista (XML de PJ com retenção, PDF de PF, PDF de MEI com hidráulica).
 const { chromium } = require('playwright');
 const path = require('path');
 const BASE = 'http://127.0.0.1:3000';
 const EX = path.join(__dirname, '..', 'exemplos');
-const PJ = path.join(EX, 'nfse-pj-retencao.xml');
-const PF = path.join(EX, 'nfse-pf-avulsa.xml');
-const PRODUTO = path.join(EX, 'nfe-exemplo-concreto.xml');
+const PJ_XML = path.join(EX, 'nfse-pj-retencao.xml');
+const PF_PDF = path.join(EX, 'nfse-pdf-pf.pdf');
+const MEI_PDF = path.join(EX, 'nfse-pdf-mei-hidraulica.pdf');
+const MEI_OUTROS_PDF = path.join(EX, 'nfse-pdf-mei-outros-servicos.pdf');
+const DANFE_PDF = path.join(EX, 'danfe-produto.pdf');
 
 (async () => {
   const browser = await chromium.launch();
@@ -28,18 +31,20 @@ const PRODUTO = path.join(EX, 'nfe-exemplo-concreto.xml');
   await fin.fill('input[name=descricao]', 'Serviços elétrico e de assentamento');
   await fin.fill('input[name=valor]', '5.000,00');
   await fin.fill('input[name=vencimento]', new Date(Date.now() + 6 * 864e5).toISOString().slice(0, 10));
-  await fin.setInputFiles('input[name=nota_fiscal]', [PJ, PF, PRODUTO]);
+  await fin.setInputFiles('input[name=nota_fiscal]', [PJ_XML, PF_PDF, MEI_PDF, MEI_OUTROS_PDF, DANFE_PDF]);
   await Promise.all([fin.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/), fin.click('button:has-text("Cadastrar e encaminhar")')]);
-  console.log('✔ pagamento cadastrado com 3 notas anexadas');
+  console.log('✔ pagamento cadastrado com 5 arquivos de nota anexados');
 
   // 2. A aba mostra só as duas NFS-e identificadas
   await fin.goto(`${BASE}/notas-contabeis`);
   await fin.getByText('Instalações Elétricas Exemplo LTDA').waitFor({ timeout: 60000 });
-  await fin.getByText('Joana Pedreira da Silva', { exact: false }).first().waitFor({ timeout: 60000 }).catch(() => {});
+  await fin.getByText('Maria Hidráulica MEI').first().waitFor({ timeout: 60000 });
+  await fin.getByText('529.982.247-25').waitFor({ timeout: 60000 });
   const linhas = await fin.$$eval('tbody tr', (trs) => trs.length);
-  if (linhas !== 2) throw new Error(`esperava 2 notas na aba, veio ${linhas}`);
+  if (linhas !== 3) throw new Error(`esperava 3 notas na aba, veio ${linhas}`);
   await fin.getByText('Serviço tomado de PJ com retenção').first().waitFor();
-  console.log('✔ aba mostra as 2 NFS-e identificadas (a NF-e de produto ficou de fora)');
+  await fin.getByText('MEI — serviços específicos').first().waitFor();
+  console.log('✔ aba mostra as 3 NFS-e identificadas (XML e PDF); MEI com outro serviço e a DANFE ficaram de fora');
 
   // 3. Financeiro marca como enviada
   await fin.click('button:has-text("Marcar como enviada")');
@@ -57,7 +62,7 @@ const PRODUTO = path.join(EX, 'nfe-exemplo-concreto.xml');
   const sup = await novaPagina();
   await entrar(sup, 'suprimentos@demo.local');
   await sup.goto(`${BASE}/notas-contabeis?situacao=todas`);
-  await sup.getByText('Instalações Elétricas Exemplo LTDA').waitFor({ timeout: 60000 });
+  await sup.getByText('Maria Hidráulica MEI').first().waitFor({ timeout: 60000 });
   const botoes = await sup.locator('button:has-text("Marcar como enviada")').count();
   if (botoes !== 0) throw new Error('suprimentos não deveria marcar notas como enviadas');
   console.log('✔ suprimentos lê a aba e não marca como enviada');

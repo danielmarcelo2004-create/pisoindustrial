@@ -12,7 +12,7 @@
     "db:tipos": "supabase gen types typescript --local > src/lib/database.types.ts",
     "criar-admin": "node --env-file=.env.local scripts/criar-admin.mjs",
     "seed:demo": "node --env-file=.env.local scripts/seed-demo.mjs",
-    "test:nfe": "node --test tests/nfe.test.mts tests/notas-contabeis.test.mts",
+    "test:nfe": "node --test tests/nfe.test.mts tests/notas-contabeis.test.mts tests/notas-pdf.test.mts",
     "test:e2e": "bash tests/e2e/rodar.sh"
   },
   "dependencies": {

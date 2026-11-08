@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CompNfse xmlns="http://www.abrasf.org.br/nfse.xsd">
+  <Nfse>
+    <InfNfse>
+      <Numero>206</Numero>
+      <DataEmissao>2026-11-05T15:00:00</DataEmissao>
+      <PrestadorServico>
+        <IdentificacaoPrestador><CpfCnpj><Cnpj>45123456000190</Cnpj></CpfCnpj></IdentificacaoPrestador>
+        <RazaoSocial>Maria Hidráulica MEI</RazaoSocial>
+        <RegimeEspecialTributario>5</RegimeEspecialTributario>
+      </PrestadorServico>
+      <Servico>
+        <Valores><ValorServicos>800.00</ValorServicos><IssRetido>2</IssRetido></Valores>
+        <Discriminacao>Reparo de vazamento na tubulação hidráulica; consultoria em gestão de projetos</Discriminacao>
+      </Servico>
+    </InfNfse>
+  </Nfse>
+</CompNfse>

@@ -5,6 +5,8 @@ import type { Database } from "@/lib/database.types";
 import { mensagemErro } from "@/lib/erros";
 import type { TipoDocumento } from "@/lib/rotulos";
 import { lerNFe } from "@/lib/nfe";
+import { classificarNota, lerNfseTexto, lerNfseXml, type DadosNota } from "@/lib/notas-contabeis";
+import { extrairTextoPdf } from "@/lib/pdf-texto";
 
 export const TAMANHO_MAXIMO = 25 * 1024 * 1024;
 
@@ -68,12 +70,45 @@ export async function enviarDocumento(
   if (error) return { erro: mensagemErro(error) };
   const id = data as string;
 
-  // XML de NF-e: alimenta a Inteligência de Compras automaticamente.
   if (tipo === "nota_fiscal" && ext === "xml") {
-    const lida = lerNFe(bytes.toString("utf8"));
-    if (!lida) return { id, aviso: `O XML ${arquivo.name} não foi reconhecido como NF-e; os itens não foram lidos.` };
-    const r = await supabase.rpc("registrar_nf", { p_documento_id: id, p_nota: lida.nota, p_itens: lida.itens, p_origem: "xml" });
-    if (r.error) return { id, aviso: `Itens da NF não registrados: ${mensagemErro(r.error)}` };
+    const texto = bytes.toString("utf8");
+    // XML de NF-e (produtos): alimenta a Inteligência de Compras automaticamente.
+    const lida = lerNFe(texto);
+    if (lida) {
+      const r = await supabase.rpc("registrar_nf", { p_documento_id: id, p_nota: lida.nota, p_itens: lida.itens, p_origem: "xml" });
+      if (r.error) return { id, aviso: `Itens da NF não registrados: ${mensagemErro(r.error)}` };
+      return { id };
+    }
+    // XML de NFS-e (serviços): identificado para a contabilidade.
+    const nfse = lerNfseXml(texto);
+    if (!nfse) return { id, aviso: `O XML ${arquivo.name} não foi reconhecido como NF-e nem NFS-e; os itens não foram lidos.` };
+    return { id, aviso: await registrarNotaContabil(supabase, id, nfse) };
+  }
+
+  // PDF de NFS-e com texto: identificado para a contabilidade.
+  if (tipo === "nota_fiscal" && ext === "pdf") {
+    const nfse = lerNfseTexto(await extrairTextoPdf(bytes));
+    if (nfse) return { id, aviso: await registrarNotaContabil(supabase, id, nfse) };
   }
   return { id };
+}
+
+/** Classifica a NFS-e e, se cair numa das categorias para a contabilidade, registra na lista. */
+async function registrarNotaContabil(supabase: SupabaseClient<Database>, documentoId: string, dados: DadosNota): Promise<string | undefined> {
+  const c = classificarNota(dados);
+  if (!c.categoria) return undefined;
+  const { error } = await supabase.rpc("registrar_nota_contabil", {
+    p_documento_id: documentoId,
+    p_categoria: c.categoria,
+    p_dados: {
+      prestador_documento: dados.prestadorDocumento ?? undefined,
+      prestador_nome: dados.prestadorNome ?? undefined,
+      numero: dados.numero ?? undefined,
+      data_emissao: dados.dataEmissao ?? undefined,
+      valor: dados.valor ?? undefined,
+      retencoes: dados.retencoes,
+      descricao_servico: dados.servicos.join("; ") || undefined,
+    },
+  });
+  return error ? `Nota não incluída na lista para a contabilidade: ${mensagemErro(error)}` : undefined;
 }

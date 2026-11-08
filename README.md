@@ -66,6 +66,18 @@ O modelo do PDF é provisório (`src/lib/pdf-op.ts`). Os dados da empresa ficam 
 - Ao fechar: se esgotado, cria um pagamento só com reposição + reembolso (ex.: fundo de R$ 100,00 com R$ 120,00 gastos → R$ 120,00, "reposição de R$ 100,00 + reembolso de R$ 20,00"). Se acabando, o saldo é registrado para repasse à empresa, sem pagamento; o reembolso só existe se houver excesso.
 - O pagamento de reposição/reembolso vai direto para o Financeiro pagar.
 
+## Notas para contabilidade
+
+Ao anexar uma nota a um pagamento (no cadastro ou depois), o sistema identifica estas categorias e as guarda na aba **Notas Fiscais para enviar para contabilidade**:
+
+- **Serviço tomado de PJ com retenção:** NFS-e de pessoa jurídica com INSS, IRRF, CSRF (PIS, COFINS e CSLL) ou ISS retido.
+- **Serviço tomado de PF:** NFS-e ou nota avulsa de pessoa física.
+- **MEI — serviços específicos:** MEI cuja nota contém somente hidráulica, eletricidade, pintura, alvenaria, carpintaria ou manutenção/reparo de veículos. Se houver qualquer outro serviço, a nota não entra.
+
+A identificação lê o XML (NFS-e municipal ABRASF ou nacional) e o texto de PDFs com camada de texto. Imagens (foto ou PDF digitalizado) não são identificadas automaticamente. Notas de produto (NF-e) não entram nesta lista. A aba é visível ao Financeiro e ao Suprimentos; só o Financeiro marca as notas como enviadas e pode exportar a planilha para o contador.
+
+As regras ficam em `src/lib/notas-contabeis.ts` e os testes em `tests/notas-contabeis.test.mts`.
+
 ## Inteligência de Compras
 
 - Ao anexar o **XML da NF-e** como nota fiscal, os itens são lidos automaticamente: descrição, NCM, unidade, quantidade, preço, fornecedor/CNPJ e data. A obra liga cada item à cidade e à UF.

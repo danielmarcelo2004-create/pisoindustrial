@@ -281,6 +281,44 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"notas_contabeis": {
+                  Row: {
+                    "categoria": Database["public"]['Enums']["categoria_nota_contabil"],"criada_em": string,"data_emissao": string | null,"descricao_servico": string | null,"documento_id": string,"enviada_em": string | null,"enviada_por": string | null,"id": string,"numero": string | null,"obra_id": string,"pagamento_id": string,"prestador_documento": string | null,"prestador_nome": string | null,"retencoes": NonNullable<Json>,"valor": number | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "categoria": Database["public"]['Enums']["categoria_nota_contabil"],"criada_em"?: string,"data_emissao"?: string | null,"descricao_servico"?: string | null,"documento_id": string,"enviada_em"?: string | null,"enviada_por"?: string | null,"id"?: string,"numero"?: string | null,"obra_id": string,"pagamento_id": string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"retencoes"?: NonNullable<Json>,"valor"?: number | null
+                  }
+                  Update: {
+                    "categoria"?: Database["public"]['Enums']["categoria_nota_contabil"],"criada_em"?: string,"data_emissao"?: string | null,"descricao_servico"?: string | null,"documento_id"?: string,"enviada_em"?: string | null,"enviada_por"?: string | null,"id"?: string,"numero"?: string | null,"obra_id"?: string,"pagamento_id"?: string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"retencoes"?: NonNullable<Json>,"valor"?: number | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "notas_contabeis_documento_id_fkey"
+      columns: ["documento_id"]
+isOneToOne: true
+      referencedRelation: "documentos"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "notas_contabeis_enviada_por_fkey"
+      columns: ["enviada_por"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "notas_contabeis_obra_id_fkey"
+      columns: ["obra_id"]
+isOneToOne: false
+      referencedRelation: "obras"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "notas_contabeis_pagamento_id_fkey"
+      columns: ["pagamento_id"]
+isOneToOne: false
+      referencedRelation: "pagamentos"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"notificacoes": {
                   Row: {
                     "created_at": string,"email_enviado_em": string | null,"email_erro": string | null,"email_status": string | null,"id": string,"lida_em": string | null,"link": string | null,"mensagem": string | null,"pagamento_id": string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em": string | null,"whatsapp_erro": string | null,"whatsapp_status": string | null
@@ -658,6 +696,9 @@ isOneToOne: false
 "marcar_assinatura_cadastro":
 { Args: { "p_assinar": boolean,"p_id": string }; Returns: undefined
                            },
+"marcar_nota_contabil_enviada":
+{ Args: { "p_enviada"?: boolean,"p_id": string }; Returns: undefined
+                           },
 "marcar_notificacoes_lidas":
 { Args: { "p_ids"?: (string)[] }; Returns: undefined
                            },
@@ -730,6 +771,9 @@ isOneToOne: false
 "registrar_nf":
 { Args: { "p_documento_id": string,"p_itens": Json,"p_nota": Json,"p_origem": string }; Returns: string
                            },
+"registrar_nota_contabil":
+{ Args: { "p_categoria": Database["public"]['Enums']["categoria_nota_contabil"],"p_dados": Json,"p_documento_id": string }; Returns: string
+                           },
 "remover_nf":
 { Args: { "p_nota_id": string }; Returns: undefined
                            },
@@ -738,7 +782,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "decisao_aprovacao": "aprovado"|"rejeitado","etapa_aprovacao": "engenheiro"|"administrador","fluxo_aprovacao": "A"|"B"|"C","forma_pagamento": "boleto"|"pix"|"transferencia"|"dinheiro"|"cartao"|"outro","perfil_usuario": "financeiro"|"suprimentos"|"engenheiro"|"administrador"|"administrador_master","status_fundo": "em_andamento"|"acabando"|"esgotado"|"fechado","status_gasto_fundo": "pendente"|"aprovado"|"recusado","status_obra": "ativa"|"suspensa"|"concluida","status_op": "em_elaboracao"|"enviada"|"em_analise"|"aprovada"|"rejeitada"|"paga"|"cancelada","status_pagamento": "aguardando_engenheiro"|"aguardando_administrador"|"aguardando_pagamento"|"pago"|"rejeitado"|"cancelado","tipo_documento": "boleto"|"nota_fiscal"|"ordem_pagamento"|"comprovante"|"outro"|"documento_assinado"
+            "categoria_nota_contabil": "tomado_pj_retencao"|"tomado_pf"|"mei_servicos_especificos","decisao_aprovacao": "aprovado"|"rejeitado","etapa_aprovacao": "engenheiro"|"administrador","fluxo_aprovacao": "A"|"B"|"C","forma_pagamento": "boleto"|"pix"|"transferencia"|"dinheiro"|"cartao"|"outro","perfil_usuario": "financeiro"|"suprimentos"|"engenheiro"|"administrador"|"administrador_master","status_fundo": "em_andamento"|"acabando"|"esgotado"|"fechado","status_gasto_fundo": "pendente"|"aprovado"|"recusado","status_obra": "ativa"|"suspensa"|"concluida","status_op": "em_elaboracao"|"enviada"|"em_analise"|"aprovada"|"rejeitada"|"paga"|"cancelada","status_pagamento": "aguardando_engenheiro"|"aguardando_administrador"|"aguardando_pagamento"|"pago"|"rejeitado"|"cancelado","tipo_documento": "boleto"|"nota_fiscal"|"ordem_pagamento"|"comprovante"|"outro"|"documento_assinado"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -858,7 +902,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "decisao_aprovacao": ["aprovado", "rejeitado"],"etapa_aprovacao": ["engenheiro", "administrador"],"fluxo_aprovacao": ["A", "B", "C"],"forma_pagamento": ["boleto", "pix", "transferencia", "dinheiro", "cartao", "outro"],"perfil_usuario": ["financeiro", "suprimentos", "engenheiro", "administrador", "administrador_master"],"status_fundo": ["em_andamento", "acabando", "esgotado", "fechado"],"status_gasto_fundo": ["pendente", "aprovado", "recusado"],"status_obra": ["ativa", "suspensa", "concluida"],"status_op": ["em_elaboracao", "enviada", "em_analise", "aprovada", "rejeitada", "paga", "cancelada"],"status_pagamento": ["aguardando_engenheiro", "aguardando_administrador", "aguardando_pagamento", "pago", "rejeitado", "cancelado"],"tipo_documento": ["boleto", "nota_fiscal", "ordem_pagamento", "comprovante", "outro", "documento_assinado"]
+            "categoria_nota_contabil": ["tomado_pj_retencao", "tomado_pf", "mei_servicos_especificos"],"decisao_aprovacao": ["aprovado", "rejeitado"],"etapa_aprovacao": ["engenheiro", "administrador"],"fluxo_aprovacao": ["A", "B", "C"],"forma_pagamento": ["boleto", "pix", "transferencia", "dinheiro", "cartao", "outro"],"perfil_usuario": ["financeiro", "suprimentos", "engenheiro", "administrador", "administrador_master"],"status_fundo": ["em_andamento", "acabando", "esgotado", "fechado"],"status_gasto_fundo": ["pendente", "aprovado", "recusado"],"status_obra": ["ativa", "suspensa", "concluida"],"status_op": ["em_elaboracao", "enviada", "em_analise", "aprovada", "rejeitada", "paga", "cancelada"],"status_pagamento": ["aguardando_engenheiro", "aguardando_administrador", "aguardando_pagamento", "pago", "rejeitado", "cancelado"],"tipo_documento": ["boleto", "nota_fiscal", "ordem_pagamento", "comprovante", "outro", "documento_assinado"]
           }
         }
 } as const

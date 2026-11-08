@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CompNfse xmlns="http://www.abrasf.org.br/nfse.xsd">
+  <Nfse>
+    <InfNfse>
+      <Numero>1042</Numero>
+      <DataEmissao>2026-11-03T10:15:00</DataEmissao>
+      <PrestadorServico>
+        <IdentificacaoPrestador><CpfCnpj><Cnpj>11222333000181</Cnpj></CpfCnpj></IdentificacaoPrestador>
+        <RazaoSocial>Instalações Elétricas Exemplo LTDA</RazaoSocial>
+      </PrestadorServico>
+      <Servico>
+        <Valores>
+          <ValorServicos>5000.00</ValorServicos>
+          <ValorInss>550.00</ValorInss>
+          <ValorIr>75.00</ValorIr>
+          <ValorCsll>50.00</ValorCsll>
+          <ValorPis>32.50</ValorPis>
+          <ValorCofins>150.00</ValorCofins>
+          <IssRetido>1</IssRetido>
+          <ValorIssRetido>250.00</ValorIssRetido>
+        </Valores>
+        <Discriminacao>Instalação de quadro elétrico do canteiro</Discriminacao>
+      </Servico>
+    </InfNfse>
+  </Nfse>
+</CompNfse>

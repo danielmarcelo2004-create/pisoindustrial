@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NFSe xmlns="http://www.sped.fazenda.gov.br/nfse">
+  <infNFSe Id="NFS35000000000000000000000000000000000000000000000">
+    <nNFSe>5531</nNFSe>
+    <dhProc>2026-11-06T11:00:00-03:00</dhProc>
+    <emit>
+      <CNPJ>98765432000155</CNPJ>
+      <xNome>Pintura e Acabamentos Exemplo LTDA</xNome>
+    </emit>
+    <valores>
+      <vServPrest><vServ>3200.00</vServ></vServPrest>
+      <trib>
+        <tribMun><tpRetISSQN>1</tpRetISSQN><vISSQN>160.00</vISSQN></tribMun>
+        <tribFed><vRetCP>352.00</vRetCP><vRetIRRF>0</vRetIRRF></tribFed>
+      </trib>
+    </valores>
+    <serv><cServ><xDescServ>Pintura de paredes internas</xDescServ></cServ></serv>
+    <DPS><infDPS><prest><regTrib><opSimpNac>3</opSimpNac></regTrib></prest></infDPS></DPS>
+  </infNFSe>
+</NFSe>

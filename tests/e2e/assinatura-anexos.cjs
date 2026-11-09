@@ -1,5 +1,6 @@
 // Assinatura: lote, rejeição e assinatura do documento com a imagem (PNG/JPG) no anexo.
 const { chromium } = require('playwright');
+const { carimbarPendentes } = require('./carimbo.cjs');
 const BASE = 'http://127.0.0.1:3000';
 const path = require('path');
 const BOLETO = path.join(__dirname, '..', 'exemplos', 'nfse-pdf-tabela-tomada-pela-empresa.pdf');
@@ -44,6 +45,7 @@ async function criarPagamento(fin, rotulo) {
   const r2 = 'Lote B ' + Date.now();
   await criarPagamento(fin, r1);
   await criarPagamento(fin, r2);
+  await carimbarPendentes('engenheiro@demo.local', SENHA, 'aguardando_engenheiro');
   await eng.p.goto(`${BASE}/aprovacoes`);
   const la = eng.p.locator('tr', { hasText: r1 }).first();
   const lb = eng.p.locator('tr', { hasText: r2 }).first();

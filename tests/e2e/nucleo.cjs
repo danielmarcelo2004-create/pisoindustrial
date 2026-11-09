@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { carimbarPendentes } = require('./carimbo.cjs');
 const fs = require('fs');
 const path = require('path');
 const DIR = path.join(__dirname, '.saida');
@@ -65,6 +66,8 @@ const shot = (page, nome) => page.screenshot({ path: path.join(DIR, nome + '.png
   await shot(page, '04-painel-engenheiro');
   await page.goto(BASE + '/aprovacoes');
   const linhas = await page.locator('tbody tr').count();
+  await carimbarPendentes('engenheiro@demo.local', SENHA, 'aguardando_engenheiro');
+  await page.reload();
   await page.check('input[aria-label="Selecionar todos"]');
   await page.click('text=Revisar e assinar selecionados');
   await page.check('input[name=conferi]');
@@ -82,6 +85,8 @@ const shot = (page, nome) => page.screenshot({ path: path.join(DIR, nome + '.png
   // 3. Administrador assina individualmente o novo pagamento
   ({ ctx, page } = await entrar(browser, 'administrador@demo.local'));
   await page.goto(urlNovo);
+  await carimbarPendentes('administrador@demo.local', SENHA, 'aguardando_administrador');
+  await page.reload();
   await page.getByText('Sua assinatura').waitFor();
   await page.check('input[name=conferi]');
   await page.fill('input[name=senha]', SENHA);

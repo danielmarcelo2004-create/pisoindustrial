@@ -82,7 +82,21 @@ async function pagamento(chave, obra, forn, descricao, valor, venc, forma = "bol
   await anexar(chave, id, "nota_fiscal", "nota-fiscal");
   return id;
 }
+// Quem aprova posiciona a própria assinatura no documento antes (regra de aprovação): registra a versão assinada.
+const carimbar = async (chave, id) => {
+  const pag = ok(await admin.from("pagamentos").select("id, obra_id, numero, versao").eq("id", id).single());
+  const bytes = pdf(`assinado por ${chave} - pagamento ${pag.numero}`);
+  const path = `${pag.obra_id}/${pag.id}/${randomUUID()}.pdf`;
+  ok(await u[chave].client.storage.from("documentos").upload(path, bytes, { contentType: "application/pdf" }));
+  ok(
+    await u[chave].client.rpc("registrar_documento", {
+      p_pagamento_id: pag.id, p_tipo: "documento_assinado", p_nome_arquivo: `assinado-${chave}.pdf`, p_storage_path: path,
+      p_mime_type: "application/pdf", p_tamanho: bytes.length, p_sha256: createHash("sha256").update(bytes).digest("hex"),
+    }),
+  );
+};
 const assinar = async (chave, id) => {
+  await carimbar(chave, id);
   const { versao } = ok(await admin.from("pagamentos").select("versao").eq("id", id).single());
   ok(await u[chave].client.rpc("decidir_aprovacao", { p_itens: [{ id, versao }], p_decisao: "aprovado", p_ip: "127.0.0.1" }));
 };

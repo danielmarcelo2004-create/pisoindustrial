@@ -7,7 +7,7 @@ import { Aviso, Botao, Campo, Cartao } from "@/components/ui";
 import { renderizarPagina, contarPaginas } from "@/lib/ocr/comprovantes";
 import { criarClienteNavegador } from "@/lib/supabase/navegador";
 
-type Doc = { id: string; nome: string; mime: string };
+type Doc = { id: string; nome: string; mime: string; tipo?: string };
 type Pos = { fx: number; fy: number; fw: number };
 
 async function sha256Hex(bytes: Uint8Array) {
@@ -29,7 +29,9 @@ export function AssinadorDocumentos({
   obraId: string;
 }) {
   const router = useRouter();
-  const [escolhido, setEscolhido] = useState<Doc | null>(documentos[0] ?? null);
+  // Começa pela versão assinada mais recente (assim as assinaturas se acumulam no mesmo documento).
+  const ultimaAssinada = [...documentos].reverse().find((d) => d.tipo === "documento_assinado");
+  const [escolhido, setEscolhido] = useState<Doc | null>(ultimaAssinada ?? documentos[0] ?? null);
   const [aberto, setAberto] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [arquivoOriginal, setArquivoOriginal] = useState<File | null>(null);

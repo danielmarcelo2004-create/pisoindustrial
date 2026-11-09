@@ -1,5 +1,6 @@
 // Fluxo de assinatura de pagamento (fluxo A: engenheiro -> administrador -> financeiro).
 const { chromium } = require('playwright');
+const { carimbarPendentes } = require('./carimbo.cjs');
 const BASE = 'http://127.0.0.1:3000';
 const path = require('path');
 const BOLETO = path.join(__dirname, '..', 'exemplos', 'nfse-pdf-tabela-tomada-pela-empresa.pdf');
@@ -42,6 +43,8 @@ async function entrar(browser, email) {
   // 2) Engenheiro assina pela aprovação
   const eng = await entrar(browser, 'engenheiro@demo.local');
   await eng.p.goto(`${BASE}/aprovacoes`);
+  await carimbarPendentes('engenheiro@demo.local', SENHA, 'aguardando_engenheiro');
+  await eng.p.goto(`${BASE}/aprovacoes`);
   const linhaEng = eng.p.locator('tr', { hasText: descricao.slice(0, 14) }).first();
   if ((await linhaEng.count()) === 0) falha('engenheiro não vê o pagamento para assinar', (await eng.p.textContent('main')).slice(0, 300));
   else {
@@ -65,6 +68,8 @@ async function entrar(browser, email) {
 
   // 3) Administrador assina
   const adm = await entrar(browser, 'administrador@demo.local');
+  await adm.p.goto(`${BASE}/aprovacoes`);
+  await carimbarPendentes('administrador@demo.local', SENHA, 'aguardando_administrador');
   await adm.p.goto(`${BASE}/aprovacoes`);
   const linhaAdm = adm.p.locator('tr', { hasText: descricao.slice(0, 14) }).first();
   if ((await linhaAdm.count()) === 0) falha('administrador não vê o pagamento para assinar', (await adm.p.textContent('main')).slice(0, 300));

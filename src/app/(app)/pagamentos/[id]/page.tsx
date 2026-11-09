@@ -384,6 +384,14 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
         </div>
 
         <div className="min-w-0 space-y-6">
+          {souAssinante &&
+            !ativos.some((d) => d.tipo === "documento_assinado" && d.enviado_por === u.id && d.pagamento_versao === p.versao) &&
+            ativos.some((d) => d.tipo !== "comprovante" && d.tipo !== "ordem_pagamento" && d.tipo !== "documento_assinado" && ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? "")) && (
+              <Aviso tipo="alerta">
+                Antes de assinar e aprovar, posicione sua assinatura no documento (botão “Abrir e posicionar a assinatura”, abaixo).
+                A aprovação só é aceita depois disso.
+              </Aviso>
+            )}
           {souAssinante && (
             <Cartao titulo="Sua assinatura" className="border-amber-300 ring-2 ring-amber-100">
               <p className="mb-3 text-sm text-slate-600">
@@ -521,7 +529,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
               documentos={ativos
                 .filter((d) => d.tipo !== "comprovante")
                 .filter((d) => ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? ""))
-                .map((d) => ({ id: d.id, nome: d.nome_arquivo, mime: d.mime_type ?? "application/pdf" }))}
+                .map((d) => ({ id: d.id, nome: d.nome_arquivo, mime: d.mime_type ?? "application/pdf", tipo: d.tipo }))}
               assinaturaUrl={assinaturaUrl}
               assinaturaMime={assinaturaMime}
               pagamentoId={p.id}

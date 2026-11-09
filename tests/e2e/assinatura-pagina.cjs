@@ -3,6 +3,7 @@ const { chromium } = require('playwright');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { PDFDocument, PDFName, PDFDict } = require('pdf-lib');
+const { carimbarPendentes } = require('./carimbo.cjs');
 const BASE = 'http://127.0.0.1:3000';
 const CONTRATO = path.join(__dirname, '..', 'exemplos', 'contrato-3-paginas.pdf');
 const ASSINATURA = path.join(__dirname, '..', '..', 'public', 'logo-empresa.jpg');
@@ -96,6 +97,7 @@ async function paginasComImagem(bytes) {
   await fin.setInputFiles('input[name=boleto]', CONTRATO);
   await Promise.all([fin.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/, { timeout: 120000 }), fin.click('button:has-text("Cadastrar e encaminhar")')]);
   const idAdm = fin.url().match(/[0-9a-f-]{36}/)[0];
+  await carimbarPendentes('engenheiro@demo.local', SENHA, 'aguardando_engenheiro');
   await eng.goto(`${BASE}/aprovacoes`);
   const linhaE = eng.locator('tr', { hasText: desc2.slice(0, 16) }).first();
   await linhaE.locator('input[type=checkbox]').check();
@@ -121,7 +123,7 @@ async function paginasComImagem(bytes) {
   const confirmouA = await adm.getByText(/Documento assinado\. O original/).waitFor({ timeout: 120000 }).then(() => true).catch(() => false);
   confirmouA ? ok('administrador assinou o documento com a imagem') : falha('administrador: assinatura do documento não confirmou');
   const { data: docsA } = await supa.from('documentos').select('id').eq('pagamento_id', idAdm).eq('tipo', 'documento_assinado').eq('ativo', true);
-  (docsA && docsA.length === 1) ? ok('versão assinada do administrador gravada') : falha('versão assinada do administrador não gravada', docsA?.length);
+  (docsA && docsA.length === 2) ? ok('versões assinadas gravadas: engenheiro e administrador') : falha('versões assinadas inesperadas', docsA?.length);
 
   await browser.close();
   console.log(process.exitCode ? 'RESULTADO: com falhas' : 'RESULTADO: tudo certo');

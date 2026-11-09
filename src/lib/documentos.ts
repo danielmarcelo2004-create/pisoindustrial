@@ -107,6 +107,7 @@ async function registrarNotaContabil(supabase: SupabaseClient<Database>, documen
       numero: dados.numero ?? undefined,
       data_emissao: dados.dataEmissao ?? undefined,
       valor: dados.valor ?? undefined,
+      valor_liquido: dados.valorLiquido ?? undefined,
       retencoes: dados.retencoes,
       descricao_servico: dados.servicos.join("; ") || undefined,
     },

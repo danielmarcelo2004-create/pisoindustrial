@@ -8,7 +8,7 @@ import { XMLParser } from "fast-xml-parser";
 //     alvenaria, carpintaria ou manutenção/reparo de veículos.
 // Quando a nota não se encaixa, o motivo é devolvido para conferência.
 
-export type CategoriaNota = "tomado_pj_retencao" | "tomado_pf" | "mei_servicos_especificos";
+export type CategoriaNota = "tomado_pj_retencao" | "tomado_pf" | "mei_servicos_especificos" | "medicao_emitida";
 
 export type Retencoes = { inss: number; irrf: number; csrf: number; iss: number };
 
@@ -20,6 +20,8 @@ export type DadosNota = {
   numero: string | null;
   dataEmissao: string | null; // AAAA-MM-DD
   valor: number | null;
+  valorLiquido: number | null;
+  medicao: boolean; // boletim de medição (BM)
   mei: boolean;
   servicos: string[];
   retencoes: Retencoes;
@@ -46,7 +48,12 @@ export function classificarNota(d: DadosNota, cnpjEmpresa: string): Classificaca
   if (!d.ehNfse) return { categoria: null, motivo: "não é NFS-e nem nota avulsa de serviço" };
   const doc = digitos(d.prestadorDocumento);
   const empresa = digitos(cnpjEmpresa);
-  if (doc === empresa) return { categoria: null, motivo: "nota emitida pela própria empresa (não é serviço tomado)" };
+  if (doc === empresa) {
+    // Emitida pela empresa: só interessa a nota de medição (boletim), que tem cálculo de impostos.
+    return d.medicao
+      ? { categoria: "medicao_emitida", motivo: null }
+      : { categoria: null, motivo: "nota emitida pela própria empresa (não é serviço tomado)" };
+  }
   const tomador = digitos(d.tomadorDocumento);
   if (tomador && tomador !== empresa) return { categoria: null, motivo: "a empresa não é a tomadora desta nota" };
 
@@ -72,6 +79,7 @@ export const ROTULO_CATEGORIA: Record<CategoriaNota, string> = {
   tomado_pj_retencao: "Serviço tomado de PJ com retenção",
   tomado_pf: "Serviço tomado de PF",
   mei_servicos_especificos: "MEI — serviços específicos",
+  medicao_emitida: "Medição emitida pela empresa",
 };
 
 // ----- NFS-e em XML (padrão municipal ABRASF e padrão nacional) -----
@@ -138,6 +146,8 @@ export function lerNfseXml(xml: string): DadosNota | null {
     numero: txt(achar(inf, ["Numero", "nNFSe"])),
     dataEmissao,
     valor: v("ValorServicos") || v("vServ") || v("vLiq") || null,
+    valorLiquido: v("ValorLiquidoNfse") || v("vLiq") || null,
+    medicao: /MEDI[CÇ][AÃ]O|\bBM\s?\d/i.test(descricao),
     mei,
     servicos,
     retencoes,
@@ -172,6 +182,20 @@ function valoresDaTabela(linhas: string[], cabecalho: RegExp): { primeiro: numbe
   return null;
 }
 
+/**
+ * Valor líquido do quadro de tributos em tabela: a linha de valores vem depois do cabeçalho que
+ * termina em "Valor Líquido (R$) Valor Total (R$)". O líquido é o penúltimo valor da linha.
+ */
+function liquidoDaTabela(linhas: string[]): number | null {
+  const i = linhas.findIndex((l) => /Valor L[IÍ]quido \(R\$\)\s*Valor Total/i.test(l));
+  if (i < 0) return null;
+  for (const linha of linhas.slice(i + 1, i + 4)) {
+    const dinheiro = linha.split(/\s+/).filter((t) => DINHEIRO.test(t));
+    if (dinheiro.length >= 2) return numBR(dinheiro[dinheiro.length - 2]);
+  }
+  return null;
+}
+
 /** Lê uma NFS-e em PDF com camada de texto. Notas só de imagem não são identificadas. */
 export function lerNfseTexto(texto: string): DadosNota | null {
   const t = texto.replace(/[ \t]+/g, " ");
@@ -201,6 +225,7 @@ export function lerNfseTexto(texto: string): DadosNota | null {
 
   const servicosM = t.match(/(?:DISCRIMINA[CÇ][AÃ]O(?:\s+DOS\s+SERVI[CÇ]OS)?|DESCRI[CÇ][AÃ]O DO SERVI[CÇ]O|DESCRI[CÇ][AÃ]O DOS SERVI[CÇ]OS)[:\s]*([\s\S]{0,1200}?)(?:\n\s*\n|TRIBUTA[CÇ][AÃ]O|VALOR|TOTAL|CONFORME|OUTRAS INFORMA|$)/i);
   const dataM = t.match(/EMISS[AÃ]O\D{0,25}(\d{2}\/\d{2}\/\d{4})/i);
+  const liquidoM = t.match(/VALOR L[IÍ]QUIDO DA NFS-e\D{0,20}([\d.]+,\d{2})/i);
   const valorM =
     t.match(/VALOR (?:TOTAL )?(?:DOS )?SERVI[CÇ]OS?\D{0,20}([\d.]+,\d{2})/i) ?? t.match(/VALOR DA OPERA[CÇ][AÃ]O[^\d]{0,30}([\d.]+,\d{2})/i);
   const numeroM = t.match(/N(?:ú|u)MERO DA NFS-?e\D{0,30}?(\d{1,12})/i) ?? t.match(/N(?:ú|u)mero\D{0,30}?(\d{1,12})/i);
@@ -213,6 +238,8 @@ export function lerNfseTexto(texto: string): DadosNota | null {
     numero: numeroM ? numeroM[1] : null,
     dataEmissao: dataM ? dataM[1].split("/").reverse().join("-") : null,
     valor: tabela ? tabela.primeiro : valorM ? numBR(valorM[1]) : null,
+    valorLiquido: liquidoM ? numBR(liquidoM[1]) : liquidoDaTabela(linhas),
+    medicao: /MEDI[CÇ][AÃ]O|\bBM\s?\d/i.test(t),
     mei: /\bMEI\b|Microempreendedor Individual/i.test(t),
     servicos: servicosM
       ? servicosM[1].split(/\n|;/).map((s) => s.trim()).filter((s) => s && !/^(DOS )?SERVI[ÇC]OS?$/i.test(s))

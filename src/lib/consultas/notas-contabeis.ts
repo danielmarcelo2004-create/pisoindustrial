@@ -11,6 +11,7 @@ export type NotaContabil = {
   numero: string | null;
   data_emissao: string | null;
   valor: number | null;
+  valor_liquido: number | null;
   retencoes: Partial<Record<"inss" | "irrf" | "csrf" | "iss", number>>;
   enviada_em: string | null;
   descricao_servico: string | null;
@@ -24,7 +25,7 @@ export async function listarNotasContabeis(situacao: SituacaoNota): Promise<Nota
   const supabase = await createClient();
   const { data } = await supabase
     .from("notas_contabeis")
-    .select("id, categoria, prestador_documento, prestador_nome, numero, data_emissao, valor, retencoes, enviada_em, descricao_servico, documento:documentos(id, ativo, nome_arquivo), pagamento:pagamentos(id, descricao), obra:obras(nome)")
+    .select("id, categoria, prestador_documento, prestador_nome, numero, data_emissao, valor, valor_liquido, retencoes, enviada_em, descricao_servico, documento:documentos(id, ativo, nome_arquivo), pagamento:pagamentos(id, descricao), obra:obras(nome)")
     .order("criada_em", { ascending: false })
     .limit(1000);
   return ((data ?? []) as unknown as NotaContabil[])

@@ -34,6 +34,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { href: "/provisoes", rotulo: "Provisões", icone: Icones.agenda },
     { href: "/fundos-fixos", rotulo: "Fundos fixos", icone: Icones.pagamentos },
     ...(fin || sup ? [{ href: "/notas-contabeis", rotulo: "Notas para contabilidade", icone: Icones.relatorios }] : []),
+    ...(fin ? [{ href: "/impostos-medicao", rotulo: "Cálculo de impostos (medições)", icone: Icones.relatorios }] : []),
     ...(fin || sup ? [{ href: "/fornecedores", rotulo: "Fornecedores", icone: Icones.fornecedores }] : []),
     { href: "/relatorios", rotulo: "Relatórios", icone: Icones.relatorios },
     ...(compras ? [{ href: "/compras", rotulo: "Inteligência de Compras", icone: Icones.compras }] : []),

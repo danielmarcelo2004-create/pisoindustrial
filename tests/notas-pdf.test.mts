@@ -64,12 +64,14 @@ test("DANFE de produto em PDF não é tratada como nota de serviço", async () =
   assert.equal(dados, null);
 });
 
-test("nota emitida pela própria empresa (layout tabular real) não é serviço tomado", async () => {
+test("boletim de medição emitido pela própria empresa: categoria medição, com valor total e líquido", async () => {
   const { dados, classificacao } = await identificar("nfse-pdf-tabela-emitida-pela-empresa.pdf");
   assert.ok(dados);
   assert.equal(dados.prestadorDocumento, "04.602.232/0001-70");
-  assert.equal(classificacao?.categoria, null);
-  assert.match(classificacao?.motivo ?? "", /própria empresa/);
+  assert.equal(dados.medicao, true);
+  assert.equal(dados.valor, 224599);
+  assert.equal(dados.valorLiquido, 208652.47);
+  assert.equal(classificacao?.categoria, "medicao_emitida");
 });
 
 test("nota tomada pela empresa em layout tabular: ISS retido e valor vêm da linha de valores", async () => {

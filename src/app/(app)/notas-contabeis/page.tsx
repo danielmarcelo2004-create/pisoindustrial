@@ -15,10 +15,11 @@ const SITUACOES: { valor: SituacaoNota; rotulo: string }[] = [
   { valor: "enviadas", rotulo: "Enviadas" },
   { valor: "todas", rotulo: "Todas" },
 ];
-const COR: Record<CategoriaNota, "azul" | "roxo" | "verde"> = {
+const COR: Record<CategoriaNota, "azul" | "roxo" | "verde" | "amarelo"> = {
   tomado_pj_retencao: "azul",
   tomado_pf: "roxo",
   mei_servicos_especificos: "verde",
+  medicao_emitida: "amarelo",
 };
 const RET: { chave: "inss" | "irrf" | "csrf" | "iss"; rotulo: string }[] = [
   { chave: "inss", rotulo: "INSS" },

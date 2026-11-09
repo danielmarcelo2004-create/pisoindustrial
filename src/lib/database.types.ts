@@ -455,6 +455,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"ordem_parcelas": {
+                  Row: {
+                    "id": string,"numero": number,"ordem_id": string,"valor": number,"vencimento": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "id"?: string,"numero": number,"ordem_id": string,"valor": number,"vencimento": string
+                  }
+                  Update: {
+                    "id"?: string,"numero"?: number,"ordem_id"?: string,"valor"?: number,"vencimento"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "ordem_parcelas_ordem_id_fkey"
+      columns: ["ordem_id"]
+isOneToOne: false
+      referencedRelation: "ordens_pagamento"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"ordens_pagamento": {
                   Row: {
                     "analisada_em": string | null,"cpf_cnpj": string | null,"created_at": string,"dados_bancarios": string | null,"desconto": number,"descricao": string,"enviada_em": string | null,"favorecido": string,"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": string | null,"numero_nf": string | null,"obra_id": string,"observacoes": string | null,"referencia": string | null,"solicitante_id": string,"status": Database["public"]['Enums']["status_op"],"updated_at": string,"vencimento": string | null
@@ -806,7 +826,10 @@ isOneToOne: false
 "remover_nf":
 { Args: { "p_nota_id": string }; Returns: undefined
                            },
-"salvar_op":
+"definir_parcelas_op":
+{ Args: { "p_id": string,"p_quantidade": number }; Returns: undefined
+                           }
+          "salvar_op":
 { Args: { "p_cpf_cnpj": string,"p_dados_bancarios": string,"p_desconto"?: number,"p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_id": string,"p_itens": Json,"p_numero_nf"?: string,"p_obra_id": string,"p_observacoes": string,"p_referencia"?: string,"p_vencimento": string }; Returns: string
                            }
           }

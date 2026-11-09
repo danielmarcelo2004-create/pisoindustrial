@@ -1,12 +1,13 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { cpfCnpj, data, dataHora, moeda } from "@/lib/formato";
+import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
+import { cpfCnpj, data, moeda } from "@/lib/formato";
 import { FORMAS_PAGAMENTO, type FormaPagamento } from "@/lib/rotulos";
 import { SISTEMA } from "@/lib/sistema";
 
 export type ItemPdfOP = { descricao: string; unidade: string | null; quantidade: number; valorUnitario: number; total: number };
+export type ParcelaPdfOP = { numero: number; valor: number; vencimento: string };
 
 export type DadosPdfOP = {
   numero: string | null;
@@ -22,21 +23,28 @@ export type DadosPdfOP = {
   solicitante: string;
   emitidaEm: string;
   itens: ItemPdfOP[];
+  parcelas?: ParcelaPdfOP[];
 };
 
-// Formulário em paisagem (A4), no modelo da planilha da empresa.
-const L = 841.89;
-const A = 595.28;
-const M = 28;
-const W = L - 2 * M;
-const LIMITE = A - 52;
+// Mesma grade da planilha modelo (formulário em paisagem, carta). Medidas em pontos do PDF,
+// tiradas do próprio modelo (colunas, linhas, cores e bordas). As fontes seguem o tamanho do modelo.
+const PAGINA_L = 792;
+const PAGINA_A = 612;
+const X = [18.0, 50.2, 214.2, 369.2, 446.7, 523.7, 593.8, 765.2]; // limites das colunas A..H
+const ALTURAS_MODELO = [36, 17.25, 17.25, 17.25, 51.75, 20.25, 53.25, 19.5, 26.45, 76.5, 59.25, 15, 16.5, 16.5, 16.5, 15.75, 15.75];
+const ESCALA = 0.4888;
+const Y0 = 53.9;
+const topo = (linha: number) => Y0 + ALTURAS_MODELO.slice(0, linha - 1).reduce((s, h) => s + h * ESCALA, 0); // linha 1-based
+const altura = (linha: number) => ALTURAS_MODELO[linha - 1] * ESCALA;
+const ALTURA_ITEM = altura(7);
 
-type Cor = ReturnType<typeof rgb>;
 const PRETO = rgb(0, 0, 0);
-const CINZA = rgb(0.35, 0.35, 0.35);
-const CINZA_CLARO = rgb(0.93, 0.93, 0.93);
-const AZUL = rgb(0.13, 0.36, 0.6);
-const MARCA_DAGUA = rgb(0.85, 0.2, 0.2);
+const BRANCO = rgb(1, 1, 1);
+const CINZA_CLARO = rgb(0.949, 0.949, 0.949);
+const AZUL_CLARO = rgb(0.588, 0.863, 0.973);
+const VERDE = rgb(0.573, 0.816, 0.314);
+const CREME = rgb(0.969, 0.953, 0.874);
+const VERMELHO = rgb(1, 0, 0);
 
 const WIN_ANSI_EXTRA = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
 function seguro(s: string): string {
@@ -74,7 +82,7 @@ function quebrar(texto: string, fonte: PDFFont, tamanho: number, largura: number
   return linhas.length ? linhas : [""];
 }
 
-/** Gera o PDF da Ordem de Pagamento no modelo da planilha da empresa. */
+/** Gera o PDF da Ordem de Pagamento com a mesma grade da planilha modelo da empresa. */
 export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.setTitle(`Ordem de Pagamento ${d.numero ?? "(rascunho)"}`);
@@ -82,194 +90,237 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
   pdf.setCreator(SISTEMA.nome);
   const reg = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const boldOblique = await pdf.embedFont(StandardFonts.HelveticaBoldOblique);
 
-  // Logo da empresa (JPEG em public/logo-empresa.jpg). Se faltar, usa o nome da empresa.
-  let logo: Awaited<ReturnType<PDFDocument["embedJpg"]>> | null = null;
+  // Logo do modelo (PNG da própria planilha)
+  let logo: PDFImage | null = null;
   try {
-    logo = await pdf.embedJpg(await readFile(path.join(process.cwd(), "public", "logo-empresa.jpg")));
+    logo = await pdf.embedPng(await readFile(path.join(process.cwd(), "public", "op", "logo-modelo-op.png")));
   } catch {
     logo = null;
   }
 
   const subtotal = d.itens.reduce((s, i) => s + i.total, 0);
 
-  // Colunas da tabela
-  const colDef: { id: string; titulo: string; w: number; al: "c" | "l" | "r" }[] = [
-    { id: "item", titulo: "ITEM", w: 40, al: "c" },
-    { id: "nome", titulo: "NOME DO PRODUTO/SERVIÇO/MATERIAL", w: 0, al: "l" },
-    { id: "centro", titulo: "CENTRO DE CUSTO", w: 170, al: "c" },
-    { id: "qtd", titulo: "QUANTIDADE", w: 70, al: "c" },
-    { id: "un", titulo: "UNIDADE", w: 62, al: "c" },
-    { id: "vu", titulo: "VALOR UNITÁRIO", w: 98, al: "r" },
-    { id: "total", titulo: "VALOR TOTAL", w: 104, al: "r" },
-  ];
-  const fixo = colDef.reduce((s, c) => (c.id === "nome" ? s : s + c.w), 0);
-  colDef.find((c) => c.id === "nome")!.w = W - fixo;
-  const col: Record<string, { x: number; w: number; al: "c" | "l" | "r" }> = {};
-  let cursor = M;
-  for (const c of colDef) {
-    col[c.id] = { x: cursor, w: c.w, al: c.al };
-    cursor += c.w;
-  }
+  const novaPagina = (): PDFPage => pdf.addPage([PAGINA_L, PAGINA_A]);
+  const yOf = (t: number) => PAGINA_A - t;
 
-  const yOf = (top: number) => A - top;
-  const texto = (p: PDFPage, t: string, x: number, top: number, o: { f?: PDFFont; s?: number; c?: Cor } = {}) =>
-    p.drawText(seguro(t), { x, y: yOf(top) - (o.s ?? 9), font: o.f ?? reg, size: o.s ?? 9, color: o.c ?? PRETO });
-  const textoAlin = (p: PDFPage, t: string, x0: number, x1: number, top: number, al: "c" | "l" | "r", o: { f?: PDFFont; s?: number; c?: Cor } = {}) => {
-    const w = (o.f ?? reg).widthOfTextAtSize(seguro(t), o.s ?? 9);
-    const x = al === "c" ? x0 + (x1 - x0 - w) / 2 : al === "r" ? x1 - w - 5 : x0 + 5;
-    texto(p, t, x, top, o);
-  };
-  const caixa = (p: PDFPage, x: number, top: number, w: number, h: number, o: { fill?: Cor; espessura?: number } = {}) =>
-    p.drawRectangle({ x, y: yOf(top) - h, width: w, height: h, borderColor: PRETO, borderWidth: o.espessura ?? 0.8, color: o.fill });
-  const linhaH = (p: PDFPage, x1: number, x2: number, top: number) =>
-    p.drawLine({ start: { x: x1, y: yOf(top) }, end: { x: x2, y: yOf(top) }, thickness: 0.8, color: PRETO });
-  const linhaV = (p: PDFPage, x: number, t1: number, t2: number) =>
-    p.drawLine({ start: { x, y: yOf(t1) }, end: { x, y: yOf(t2) }, thickness: 0.8, color: PRETO });
-
-  const paginas: PDFPage[] = [];
-  const novaPagina = () => {
-    const p = pdf.addPage([L, A]);
-    paginas.push(p);
-    return p;
-  };
-  const cabecalhoTabela = (p: PDFPage, top: number) => {
-    const h = 20;
-    caixa(p, M, top, W, h, { fill: CINZA_CLARO });
-    for (const c of colDef) {
-      const cc = col[c.id];
-      textoAlin(p, c.titulo, cc.x, cc.x + cc.w, top + 6, "c", { f: bold, s: 7.5 });
-      if (cc.x > M) linhaV(p, cc.x, top, top + h);
+  // Desenha texto com a linha de base no centro vertical do intervalo [t0, t1]
+  const textoCelula = (
+    p: PDFPage,
+    t: string,
+    x0: number,
+    x1: number,
+    t0: number,
+    t1: number,
+    al: "c" | "l" | "r",
+    o: { f?: PDFFont; s: number; c?: ReturnType<typeof rgb>; pad?: number } = { s: 6 },
+  ) => {
+    const f = o.f ?? reg;
+    const pad = o.pad ?? 4;
+    const linhas = quebrar(t, f, o.s, x1 - x0 - pad * 2);
+    const altLinha = o.s * 1.2;
+    const bloco = linhas.length * altLinha;
+    let y = yOf((t0 + t1) / 2) + bloco / 2 - o.s;
+    for (const l of linhas) {
+      const w = f.widthOfTextAtSize(l, o.s);
+      const x = al === "c" ? x0 + (x1 - x0 - w) / 2 : al === "r" ? x1 - pad - w : x0 + pad;
+      p.drawText(l, { x, y, font: f, size: o.s, color: o.c ?? PRETO });
+      y -= altLinha;
     }
-    return top + h;
+  };
+  const retangulo = (p: PDFPage, x0: number, x1: number, t0: number, t1: number, fill?: ReturnType<typeof rgb>) =>
+    p.drawRectangle({
+      x: x0,
+      y: yOf(t1),
+      width: x1 - x0,
+      height: t1 - t0,
+      borderColor: PRETO,
+      borderWidth: 0.8,
+      color: fill,
+    });
+  const linhaH = (p: PDFPage, x0: number, x1: number, t: number) =>
+    p.drawLine({ start: { x: x0, y: yOf(t) }, end: { x: x1, y: yOf(t) }, thickness: 0.8, color: PRETO });
+  const linhaV = (p: PDFPage, x: number, t0: number, t1: number) =>
+    p.drawLine({ start: { x, y: yOf(t0) }, end: { x, y: yOf(t1) }, thickness: 0.8, color: PRETO });
+  const fundo = (p: PDFPage, x0: number, x1: number, t0: number, t1: number, cor: ReturnType<typeof rgb>) =>
+    p.drawRectangle({ x: x0, y: yOf(t1), width: x1 - x0, height: t1 - t0, color: cor });
+
+  // Cabeçalho da tabela de itens (linha 6 do modelo: faixa verde)
+  const desenhaCabecalhoItens = (p: PDFPage, t0: number): number => {
+    const t1 = t0 + altura(6);
+    fundo(p, X[0], X[7], t0, t1, VERDE);
+    const cols: [string, number, number][] = [
+      ["ITEM", X[0], X[1]],
+      ["NOME DO PRODUTO/SERVIÇO/MATERIAL", X[1], X[2]],
+      ["CENTRO DE CUSTO", X[2], X[3]],
+      ["QUANTIDADE", X[3], X[4]],
+      ["UNIDADE", X[4], X[5]],
+      ["Valor Unitário", X[5], X[6]],
+      ["Valor Total", X[6], X[7]],
+    ];
+    for (const [titulo, a, b] of cols) {
+      retangulo(p, a, b, t0, t1);
+      textoCelula(p, titulo, a, b, t0, t1, "c", { f: bold, s: 5.4, pad: 2 });
+    }
+    return t1;
   };
 
-  let page = novaPagina();
-  let top = M;
+  // Desenha a linha de um item (linha 7 do modelo, repetida conforme a quantidade de itens)
+  const desenhaItem = (p: PDFPage, t0: number, idx: number, item: ItemPdfOP) => {
+    const t1 = t0 + ALTURA_ITEM;
+    retangulo(p, X[0], X[1], t0, t1);
+    retangulo(p, X[1], X[2], t0, t1);
+    retangulo(p, X[2], X[3], t0, t1);
+    retangulo(p, X[3], X[4], t0, t1, CREME);
+    retangulo(p, X[4], X[5], t0, t1);
+    retangulo(p, X[5], X[6], t0, t1, AZUL_CLARO);
+    retangulo(p, X[6], X[7], t0, t1, AZUL_CLARO);
+    textoCelula(p, String(idx + 1), X[0], X[1], t0, t1, "c", { s: 5.9 });
+    textoCelula(p, item.descricao, X[1], X[2], t0, t1, "c", { f: reg, s: 5.9 });
+    textoCelula(p, d.centroDeCusto, X[2], X[3], t0, t1, "c", { s: 5.9 });
+    textoCelula(p, item.quantidade.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }), X[3], X[4], t0, t1, "c", { s: 4.9 });
+    textoCelula(p, item.unidade ?? "", X[4], X[5], t0, t1, "c", { s: 5.9 });
+    textoCelula(p, moeda(item.valorUnitario), X[5], X[6], t0, t1, "c", { s: 5.4 });
+    textoCelula(p, moeda(item.total), X[6], X[7], t0, t1, "c", { s: 5.4 });
+    return t1;
+  };
 
-  // Cabeçalho: logo e CNPJ à esquerda; campos à direita
-  const hTopo = 92;
-  const xDir = M + 330;
-  const wDirRot = 150;
-  caixa(page, M, top, W, hTopo, { espessura: 1 });
-  linhaV(page, xDir, top, top + hTopo);
+  // ---------- Página 1: cabeçalho ----------
+  let pagina = novaPagina();
+  const paginas: PDFPage[] = [pagina];
+
+  // Título
+  retangulo(pagina, X[0], X[7], Y0, topo(2));
+  textoCelula(pagina, "ORDEM DE PAGAMENTO", X[0], X[7], Y0, topo(2), "c", { f: bold, s: 13.7 });
+  if (d.numero) textoCelula(pagina, d.numero, X[0], X[7], Y0, topo(2), "r", { f: bold, s: 4.6, pad: 6 });
+
+  // Logo (A2:B4) e CNPJ (A5:B5)
+  retangulo(pagina, X[0], X[2], topo(2), topo(5));
   if (logo) {
-    const lw = 220;
+    const lw = 81.5;
     const lh = (lw * logo.height) / logo.width;
-    page.drawImage(logo, { x: M + 14, y: yOf(top + 14) - lh, width: lw, height: lh });
-    texto(page, `CNPJ: ${SISTEMA.empresaCnpj}`, M + 14, top + hTopo - 18, { f: bold, s: 9 });
-  } else {
-    texto(page, SISTEMA.logoPequeno, M + 14, top + 12, { s: 9, c: CINZA });
-    texto(page, SISTEMA.logoGrande, M + 14, top + 22, { f: bold, s: 22, c: AZUL });
-    texto(page, `CNPJ: ${SISTEMA.empresaCnpj}`, M + 14, top + hTopo - 18, { f: bold, s: 9 });
+    pagina.drawImage(logo, { x: X[1] + 20.7, y: yOf(topo(2) + 2.6) - lh, width: lw, height: lh });
   }
+  retangulo(pagina, X[0], X[2], topo(5), topo(6));
+  textoCelula(pagina, `CNPJ: ${SISTEMA.empresaCnpj}`, X[0], X[2], topo(5), topo(6), "c", { f: boldOblique, s: 7.8, c: VERMELHO });
 
+  // Data de emissão (C2:E3 rótulo cinza; C4:E5 valor em vermelho)
+  retangulo(pagina, X[2], X[4], topo(2), topo(4), CINZA_CLARO);
+  textoCelula(pagina, "Data:", X[2], X[4], topo(2), topo(4), "c", { f: bold, s: 7.8 });
+  retangulo(pagina, X[2], X[4], topo(4), topo(6));
+  textoCelula(pagina, data(d.dataEmissao), X[2], X[4], topo(4), topo(6), "c", { f: boldOblique, s: 7.8, c: VERMELHO });
+
+  // Campos do fornecedor (F rótulo, G:H valor)
   const campos: [string, string][] = [
-    ["Data:", data(d.dataEmissao)],
     ["FORNECEDOR", d.favorecido.toUpperCase()],
     ["Nº da Nota Fiscal", d.numeroNf ?? "—"],
     ["Data de vencimento", d.vencimento ? data(d.vencimento) : "—"],
     ["CONDIÇÃO DE PGTO (pix ou boleto)", FORMAS_PAGAMENTO[d.formaPagamento].toUpperCase()],
   ];
-  const hLin = hTopo / campos.length;
-  campos.forEach(([rot, val], i) => {
-    const yy = top + i * hLin;
-    if (i > 0) linhaH(page, xDir, M + W, yy);
-    texto(page, rot, xDir + 6, yy + hLin / 2 - 4, { f: bold, s: 7, c: CINZA });
-    const x0 = xDir + wDirRot;
-    linhaV(page, x0, yy, yy + hLin);
-    const largura = M + W - x0 - 10;
-    let s = 9;
-    let txt = seguro(val);
-    while (s > 6.5 && bold.widthOfTextAtSize(txt, s) > largura) s -= 0.5;
-    while (txt.length > 1 && bold.widthOfTextAtSize(txt, s) > largura) txt = txt.slice(0, -1);
-    texto(page, txt, x0 + 6, yy + hLin / 2 - s / 2 - 1, { f: bold, s });
+  campos.forEach(([rotulo, valor], i) => {
+    const l = 2 + i;
+    retangulo(pagina, X[4], X[5], topo(l), topo(l + 1));
+    textoCelula(pagina, rotulo, X[4], X[5], topo(l), topo(l + 1), "l", { f: boldOblique, s: 6.35, pad: 3 });
+    retangulo(pagina, X[5], X[7], topo(l), topo(l + 1), AZUL_CLARO);
+    textoCelula(pagina, valor, X[5], X[7], topo(l), topo(l + 1), "c", { f: boldOblique, s: 6.35 });
   });
-  top += hTopo;
+  // Dados da data de emissão: a linha 5 do modelo é a condição de pagamento (F5:H5), já coberta acima.
 
-  // Título acima da tabela (faixa com a palavra ORDEM DE PAGAMENTO)
-  caixa(page, M, top, W, 26, { espessura: 1 });
-  textoAlin(page, "ORDEM DE PAGAMENTO", M, M + W, top + 7, "c", { f: bold, s: 14 });
-  if (d.numero) textoAlin(page, d.numero, M, M + W, top + 9, "r", { f: bold, s: 8 });
-  top += 26;
+  // Título da tabela e cabeçalho de itens (linhas 6)
+  let t = desenhaCabecalhoItens(pagina, topo(6));
 
-  // Tabela de itens
-  top = cabecalhoTabela(page, top);
+  // ---------- Itens ----------
   d.itens.forEach((item, idx) => {
-    const nomeL = quebrar(item.descricao, reg, 8.5, col.nome.w - 10);
-    const centroL = quebrar(d.centroDeCusto, reg, 8, col.centro.w - 10);
-    const hRow = Math.max(18, nomeL.length * 10.5 + 7, centroL.length * 10 + 8);
-    if (top + hRow > LIMITE) {
-      page = novaPagina();
-      top = M;
-      top = cabecalhoTabela(page, top);
+    if (t + ALTURA_ITEM > 430) {
+      pagina = novaPagina();
+      paginas.push(pagina);
+      t = desenhaCabecalhoItens(pagina, Y0);
     }
-    caixa(page, M, top, W, hRow);
-    for (const c of colDef) if (col[c.id].x > M) linhaV(page, col[c.id].x, top, top + hRow);
-    const yc = top + (hRow - 8) / 2;
-    textoAlin(page, String(idx + 1), col.item.x, col.item.x + col.item.w, yc, "c", { s: 8 });
-    nomeL.forEach((l, j) => texto(page, l, col.nome.x + 5, top + 5 + j * 10.5, { s: 8.5 }));
-    centroL.forEach((l, j) => textoAlin(page, l, col.centro.x, col.centro.x + col.centro.w, top + 5 + j * 10, "c", { s: 8 }));
-    const celula = (id: string, t: string, al: "c" | "l" | "r") => textoAlin(page, t, col[id].x, col[id].x + col[id].w, yc, al, { s: 8 });
-    celula("qtd", String(item.quantidade).replace(".", ","), "c");
-    celula("un", item.unidade ?? "", "c");
-    celula("vu", moeda(item.valorUnitario), "r");
-    celula("total", moeda(item.total), "r");
-    top += hRow;
+    t = desenhaItem(pagina, t, idx, item);
   });
 
-  // Total
-  if (top + 22 > LIMITE) {
-    page = novaPagina();
-    top = M;
-  }
-  caixa(page, col.vu.x, top, col.vu.w, 22, { fill: CINZA_CLARO });
-  caixa(page, col.total.x, top, col.total.w, 22, { fill: CINZA_CLARO });
-  textoAlin(page, "Total", col.vu.x, col.vu.x + col.vu.w, top + 7, "r", { f: bold, s: 9 });
-  textoAlin(page, moeda(subtotal), col.total.x, col.total.x + col.total.w, top + 6, "r", { f: bold, s: 10 });
-  top += 22;
+  // ---------- Bloco de pagamento, total, parcelas e assinatura ----------
+  // O bloco do modelo (linhas 8 a 17) começa logo após os itens; por isso desloca conforme a quantidade de itens.
+  const deslocamento = (d.itens.length - 1) * ALTURA_ITEM; // o modelo tem 1 linha de item; cada item extra empurra o bloco
+  const b = (linha: number) => topo(linha) + deslocamento;
+  const fimModelo = b(18);
 
-  // Bloco de pagamento e assinatura
+  // Pagamento: caixas A8:B11 e textos
   const linhasPag = [
-    ...(d.dadosBancarios ? d.dadosBancarios.split(/\r?\n/).flatMap((l) => quebrar(l, bold, 9, 360)) : []),
-    ...quebrar(`FAVORECIDO: ${d.favorecido}`, bold, 9, 360),
+    ...(d.dadosBancarios ? d.dadosBancarios.split(/\r?\n/).flatMap((l) => quebrar(l, bold, 6.35, 200)) : []),
+    ...quebrar(`FAVORECIDO: ${d.favorecido}`, bold, 6.35, 200),
     ...(d.cpfCnpj ? [`CPF/CNPJ: ${cpfCnpj(d.cpfCnpj)}`] : []),
   ];
-  const wPag = 420;
-  const hPag = 26 + linhasPag.length * 14 + 10;
-  if (top + hPag + 80 > LIMITE) {
-    page = novaPagina();
-    top = M;
-  }
-  caixa(page, M, top, wPag, hPag);
-  textoAlin(page, "PAGAMENTO", M, M + wPag, top + 7, "c", { f: bold, s: 10 });
-  linhasPag.forEach((l, j) => textoAlin(page, l, M, M + wPag, top + 26 + j * 14, "c", { f: bold, s: 9 }));
-
-  const sigTop = top + Math.max(hPag, 54) + 26;
-  // Linha de assinatura em toda a largura, como no modelo oficial (empresa abaixo da linha)
-  linhaH(page, M, M + W, sigTop + 36);
-  textoAlin(page, SISTEMA.empresa, M, M + W, sigTop + 42, "c", { s: 9 });
-  textoAlin(
-    page,
-    d.rascunho ? "Rascunho: sem assinatura registrada" : `Emitida eletronicamente por ${d.solicitante} em ${dataHora(d.emitidaEm)}`,
-    M,
-    M + W,
-    sigTop + 54,
-    "c",
-    { s: 7.5, c: CINZA },
-  );
-
-  // Rodapé e marca d'água
-  const totalP = paginas.length;
-  paginas.forEach((p, i) => {
-    p.drawLine({ start: { x: M, y: 36 }, end: { x: L - M, y: 36 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
-    p.drawText(seguro(`${d.numero ?? "Rascunho"} · ${SISTEMA.nome}`), { x: M, y: 24, size: 7, font: reg, color: CINZA });
-    const pg = `Página ${i + 1} de ${totalP}`;
-    p.drawText(pg, { x: L - M - reg.widthOfTextAtSize(pg, 7), y: 24, size: 7, font: reg, color: CINZA });
-    if (d.rascunho) {
-      p.drawText("RASCUNHO", { x: 230, y: 200, size: 110, font: bold, color: MARCA_DAGUA, opacity: 0.12, rotate: degrees(20) });
-    }
+  // Caixas do bloco (A8:B8 título; A9:B9, A10:B10 e A11:B11 linhas)
+  retangulo(pagina, X[0], X[2], b(8), b(9));
+  textoCelula(pagina, "PAGAMENTO", X[0], X[2], b(8), b(9), "c", { f: bold, s: 6.35 });
+  const linhasCaixa: [number, number][] = [
+    [b(9), b(10)],
+    [b(10), b(11)],
+    [b(11), b(12)],
+  ];
+  linhasCaixa.forEach(([a, c]) => retangulo(pagina, X[0], X[2], a, c));
+  // Pagamento: uma linha por informação, alinhada à esquerda, como no modelo
+  const entradas = linhasPag.slice(0, 3);
+  entradas.forEach((l, j) => {
+    const [a, c] = linhasCaixa[Math.min(j, 2)];
+    textoCelula(pagina, l, X[0], X[2], a, c, "l", { f: bold, s: 6.35 });
   });
+
+  // Total (G9 rótulo, H9 valor), como no modelo
+  retangulo(pagina, X[5], X[6], b(8), b(9), AZUL_CLARO);
+  retangulo(pagina, X[6], X[7], b(8), b(9), AZUL_CLARO);
+  textoCelula(pagina, "Total", X[5], X[6], b(9), b(10), "c", { f: bold, s: 5.4 });
+  retangulo(pagina, X[5], X[6], b(9), b(10));
+  retangulo(pagina, X[6], X[7], b(9), b(10), AZUL_CLARO);
+  textoCelula(pagina, moeda(subtotal), X[6], X[7], b(9), b(10), "c", { s: 5.4 });
+
+  // Parcelas (E10:H17): só quando a OP tem duas ou mais parcelas; o bloco cresce se precisar
+  const parcelas = d.parcelas && d.parcelas.length >= 2 ? d.parcelas : [];
+  let fimBloco = fimModelo;
+  if (parcelas.length) {
+    const altLinha = 7.4;
+    const topoParc = b(10);
+    retangulo(pagina, X[3], X[7], topoParc, topoParc + 9);
+    textoCelula(pagina, "PARCELAS", X[3], X[7], topoParc, topoParc + 9, "c", { f: bold, s: 5.4 });
+    const cabTopo = topoParc + 9;
+    retangulo(pagina, X[3], X[4], cabTopo, cabTopo + altLinha);
+    retangulo(pagina, X[4], X[5], cabTopo, cabTopo + altLinha);
+    retangulo(pagina, X[5], X[7], cabTopo, cabTopo + altLinha);
+    textoCelula(pagina, "Nº", X[3], X[4], cabTopo, cabTopo + altLinha, "c", { f: bold, s: 5 });
+    textoCelula(pagina, "Vencimento", X[4], X[5], cabTopo, cabTopo + altLinha, "c", { f: bold, s: 5 });
+    textoCelula(pagina, "Valor", X[5], X[7], cabTopo, cabTopo + altLinha, "c", { f: bold, s: 5 });
+    let y = cabTopo + altLinha;
+    for (const p of parcelas) {
+      if (y + altLinha > PAGINA_A - 60) break;
+      retangulo(pagina, X[3], X[4], y, y + altLinha);
+      retangulo(pagina, X[4], X[5], y, y + altLinha);
+      retangulo(pagina, X[5], X[7], y, y + altLinha);
+      textoCelula(pagina, String(p.numero), X[3], X[4], y, y + altLinha, "c", { s: 5 });
+      textoCelula(pagina, data(p.vencimento), X[4], X[5], y, y + altLinha, "c", { s: 5 });
+      textoCelula(pagina, moeda(p.valor), X[5], X[7], y, y + altLinha, "c", { s: 5 });
+      y += altLinha;
+    }
+    fimBloco = Math.max(fimBloco, y + 4);
+  }
+
+  // Borda externa do formulário (da linha 1 até o fim do bloco)
+  linhaV(pagina, X[0], Y0, fimBloco);
+  linhaV(pagina, X[7], Y0, fimBloco);
+  linhaH(pagina, X[0], X[7], fimBloco);
+
+  // Assinatura: linha curta centralizada e nome da empresa abaixo (linhas 15 e 16 do modelo)
+  const meio = (X[1] + X[6]) / 2;
+  linhaH(pagina, meio - 80, meio + 80, b(15) + 6);
+  textoCelula(pagina, SISTEMA.empresa, X[1], X[6], b(16), b(17), "c", { f: reg, s: 5.9 });
+
+  // Marca d'água de rascunho
+  if (d.rascunho) {
+    for (const p of paginas) {
+      p.drawText("RASCUNHO", { x: 230, y: 200, size: 110, font: bold, color: rgb(0.85, 0.2, 0.2), opacity: 0.12, rotate: degrees(20) });
+    }
+  }
 
   return pdf.save();
 }

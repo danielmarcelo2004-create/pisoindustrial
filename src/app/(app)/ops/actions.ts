@@ -73,6 +73,12 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
   });
   if (error) return { erro: mensagemErro(error) };
 
+  // Parcelas: recalculadas a partir do total e do primeiro vencimento (a OP continua sendo uma só).
+  const parcelas = Number(t(fd, "parcelas") || 1);
+  if (!Number.isInteger(parcelas) || parcelas < 1 || parcelas > 60) return { erro: "A quantidade de parcelas deve estar entre 1 e 60." };
+  const { error: erroParcelas } = await supabase.rpc("definir_parcelas_op", { p_id: data as string, p_quantidade: parcelas });
+  if (erroParcelas) return { erro: mensagemErro(erroParcelas) };
+
   revalidatePath("/ops");
   const destino = `/ops/${data}`;
   if (fd.get("acao") === "enviar") return enviarOP(data as string, null, fd);

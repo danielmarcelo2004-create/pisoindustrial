@@ -22,6 +22,7 @@ type Padrao = {
   dados_bancarios?: string | null;
   observacoes?: string | null;
   numero_nf?: string | null;
+  parcelas?: number;
   itens?: ItemPadrao[];
 };
 
@@ -102,8 +103,11 @@ export function FormOP({
               ))}
             </select>
           </Campo>
-          <Campo rotulo="Vencimento" obrigatorio ajuda="Obrigatório para enviar.">
+          <Campo rotulo="Primeiro vencimento" obrigatorio ajuda="Obrigatório para enviar. Nas demais parcelas, o vencimento é o mesmo dia de cada mês.">
             <input type="date" name="vencimento" defaultValue={padrao.vencimento ?? ""} className="campo" />
+          </Campo>
+          <Campo rotulo="Quantidade de parcelas" ajuda="Use 1 para pagamento único. O valor total da OP é dividido entre as parcelas.">
+            <input type="number" name="parcelas" min={1} max={60} defaultValue={padrao.parcelas ?? 1} required className="campo" />
           </Campo>
           <Campo rotulo="Favorecido (fornecedor)" obrigatorio>
             <input name="favorecido" required defaultValue={padrao.favorecido ?? ""} className="campo" maxLength={200} />

@@ -200,9 +200,9 @@ export function AssinadorDocumentos({
               </div>
             )}
             <p className="mb-3 text-xs text-slate-600">Escolha a página, arraste a assinatura para o lugar desejado e use o canto inferior direito para ajustar o tamanho. Só uma assinatura é colocada, na página escolhida.</p>
-            <div ref={contRef} className="relative mx-auto select-none overflow-hidden rounded border border-slate-300 bg-slate-100" style={{ touchAction: "none" }}>
+            <div ref={contRef} className="relative mx-auto inline-block max-w-full select-none overflow-hidden rounded border border-slate-300 bg-slate-100" style={{ touchAction: "none" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={preview} alt="Primeira página" className="block w-full" draggable={false} />
+              <img src={preview} alt="Página escolhida para a assinatura" className="block max-h-[60vh] max-w-full" draggable={false} />
               <div
                 onPointerDown={(e) => iniciar(e, "mover")}
                 onPointerMove={mover}

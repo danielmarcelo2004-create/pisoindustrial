@@ -174,10 +174,12 @@ test('fluxo A completo: engenheiro → administrador → financeiro → pago', a
   // versão desatualizada é recusada
   await rpcFalha('eng', 'decidir_aprovacao', { p_itens: [{ id, versao: p.versao + 5 }], p_decisao: 'aprovado' }, /alterado/)
 
+  await anexar('eng', p, 'documento_assinado') // o engenheiro assina o documento antes de aprovar
   await rpc('eng', 'decidir_aprovacao', { p_itens: [{ id, versao: p.versao }], p_decisao: 'aprovado', p_ip: '10.0.0.1' })
   p = await pagamento(id)
   assert.equal(p.status, 'aguardando_administrador')
 
+  await anexar('adm', p, 'documento_assinado')
   await rpc('adm', 'decidir_aprovacao', { p_itens: [{ id, versao: p.versao }], p_decisao: 'aprovado' })
   p = await pagamento(id)
   assert.equal(p.status, 'aguardando_pagamento')
@@ -185,7 +187,8 @@ test('fluxo A completo: engenheiro → administrador → financeiro → pago', a
   const { data: assin } = await u.fin.client.from('assinaturas').select('*').eq('pagamento_id', id).order('created_at')
   assert.equal(assin.length, 2)
   assert.match(assin[0].hash_integridade, /^[0-9a-f]{64}$/)
-  assert.equal(assin[0].conteudo_assinado.documentos.length, 1)
+  // o conteúdo assinado inclui o documento original e a versão assinada pelo engenheiro
+  assert.equal(assin[0].conteudo_assinado.documentos.length, 2)
 
   // financeiro foi notificado
   const { data: notifFin } = await u.fin.client.from('notificacoes').select('*').eq('pagamento_id', id)
@@ -203,13 +206,14 @@ test('fluxo A completo: engenheiro → administrador → financeiro → pago', a
   await assert.rejects(() => anexar('sup', p, 'outro'), /pagos ou cancelados/)
 
   const { data: tl } = await u.eng.client.from('auditoria').select('acao').eq('pagamento_id', id).order('id')
-  assert.deepEqual(tl.map((t) => t.acao), ['criou', 'anexou_documento', 'assinou', 'assinou', 'baixa', 'anexou_documento'])
+  assert.deepEqual(tl.map((t) => t.acao), ['criou', 'anexou_documento', 'anexou_documento', 'assinou', 'anexou_documento', 'assinou', 'baixa', 'anexou_documento'])
 })
 
 test('substituir documento após assinatura gera nova versão e reinicia o fluxo', async () => {
   const id = await novoPagamento('sup', obraA.id)
   let p = await pagamento(id)
   const doc1 = await anexar('sup', p)
+  await anexar('eng', p, 'documento_assinado')
   await rpc('eng', 'decidir_aprovacao', { p_itens: [{ id, versao: p.versao }], p_decisao: 'aprovado' })
   p = await pagamento(id)
   assert.equal(p.status, 'aguardando_administrador')
@@ -220,7 +224,7 @@ test('substituir documento após assinatura gera nova versão e reinicia o fluxo
   assert.equal(p.status, 'aguardando_engenheiro')
   assert.equal(p.versao, 2)
 
-  const { data: docs } = await admin.from('documentos').select('*').eq('pagamento_id', id).order('versao')
+  const { data: docs } = await admin.from('documentos').select('*').eq('pagamento_id', id).eq('tipo', 'boleto').order('versao')
   assert.equal(docs.length, 2)
   assert.equal(docs[0].ativo, false)
   assert.equal(docs[0].substituido_por, doc2)

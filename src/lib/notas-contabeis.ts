@@ -189,6 +189,7 @@ export function lerNfseTexto(texto: string): DadosNota | null {
   const docTom = aposTomador.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/);
 
   const nomeM =
+    aposPrestador.match(/Nome \/ Nome Empresarial\s*\n?\s*([^\n]+)/i) ??
     aposPrestador.match(/\bPRESTADOR\b\s*\n?\s*([^\n]*?)\s+(?:CNPJ|CPF)\b/i) ??
     aposPrestador.match(/RAZ[ÃA]O SOCIAL\s*\n?\s*([^\n]+)/i);
 
@@ -198,16 +199,17 @@ export function lerNfseTexto(texto: string): DadosNota | null {
   };
   const tabela = valoresDaTabela(linhas, /Valor dos Servi[çc]os/i);
 
-  const servicosM = t.match(/(?:DISCRIMINA[CÇ][AÃ]O(?:\s+DOS\s+SERVI[CÇ]OS)?|DESCRI[CÇ][AÃ]O DO SERVI[CÇ]O|DESCRI[CÇ][AÃ]O DOS SERVI[CÇ]OS)[:\s]*([\s\S]{0,400}?)(?:\n\s*\n|VALOR|TOTAL|CONFORME|$)/i);
+  const servicosM = t.match(/(?:DISCRIMINA[CÇ][AÃ]O(?:\s+DOS\s+SERVI[CÇ]OS)?|DESCRI[CÇ][AÃ]O DO SERVI[CÇ]O|DESCRI[CÇ][AÃ]O DOS SERVI[CÇ]OS)[:\s]*([\s\S]{0,1200}?)(?:\n\s*\n|TRIBUTA[CÇ][AÃ]O|VALOR|TOTAL|CONFORME|OUTRAS INFORMA|$)/i);
   const dataM = t.match(/EMISS[AÃ]O\D{0,25}(\d{2}\/\d{2}\/\d{4})/i);
-  const valorM = t.match(/VALOR (?:TOTAL )?(?:DOS )?SERVI[CÇ]OS?\D{0,20}([\d.]+,\d{2})/i);
-  const numeroM = t.match(/N(?:ú|u)mero\D{0,30}?(\d{1,12})/i);
+  const valorM =
+    t.match(/VALOR (?:TOTAL )?(?:DOS )?SERVI[CÇ]OS?\D{0,20}([\d.]+,\d{2})/i) ?? t.match(/VALOR DA OPERA[CÇ][AÃ]O[^\d]{0,30}([\d.]+,\d{2})/i);
+  const numeroM = t.match(/N(?:ú|u)MERO DA NFS-?e\D{0,30}?(\d{1,12})/i) ?? t.match(/N(?:ú|u)mero\D{0,30}?(\d{1,12})/i);
 
   return {
     ehNfse: true,
     prestadorDocumento: docPrest ? docPrest[0] : null,
     tomadorDocumento: docTom ? docTom[0] : null,
-    prestadorNome: nomeM ? nomeM[1].trim() || null : null,
+    prestadorNome: nomeM ? nomeM[1].replace(/^[\d.\-\/]+\s+/, "").trim() || null : null,
     numero: numeroM ? numeroM[1] : null,
     dataEmissao: dataM ? dataM[1].split("/").reverse().join("-") : null,
     valor: tabela ? tabela.primeiro : valorM ? numBR(valorM[1]) : null,

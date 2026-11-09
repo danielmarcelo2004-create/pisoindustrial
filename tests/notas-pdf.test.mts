@@ -94,3 +94,16 @@ test("nota cujo tomador é outra empresa não entra na lista", async () => {
   assert.equal(c.categoria, null);
   assert.match(c.motivo ?? "", /não é a tomadora/);
 });
+
+test("DANFSe de MEI com serviço de equipamentos eletrônicos: fica de fora, mesmo citando veículos no código de tributação", async () => {
+  const { dados, classificacao } = await identificar("danfse-mei-eletronicos.pdf");
+  assert.ok(dados);
+  assert.equal(dados.mei, true);
+  assert.equal(dados.numero, "20");
+  assert.equal(dados.valor, 930);
+  assert.equal(dados.prestadorDocumento, "53.953.945/0001-94");
+  assert.equal(dados.tomadorDocumento, "04.602.232/0001-70");
+  assert.deepEqual(dados.servicos, ["Prestação de serviço de manutenção em equipamentos eletrônicos."]);
+  assert.equal(classificacao?.categoria, null);
+  assert.match(classificacao?.motivo ?? "", /fora da lista/);
+});

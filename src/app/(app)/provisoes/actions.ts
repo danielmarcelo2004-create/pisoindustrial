@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { exigirPerfil } from "@/lib/auth";
 import { mensagemErro, type Estado } from "@/lib/erros";
 import { lerValor } from "@/lib/formato";
@@ -67,5 +68,6 @@ export async function alterarProvisao(id: string, status: "convertida" | "cancel
   if (error) return { erro: mensagemErro(error) };
   revalidatePath("/provisoes");
   revalidatePath("/agenda");
-  return { ok: status === "convertida" ? "Provisão marcada como lançada." : "Provisão cancelada." };
+  // A linha sai da situação "provisionada": volta à lista com a confirmação visível.
+  redirect(`/provisoes?aviso=${status}`);
 }

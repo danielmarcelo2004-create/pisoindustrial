@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FormAcao } from "@/components/form-acao";
-import { Cabecalho, Campo, Cartao, Selo, Vazio } from "@/components/ui";
+import { Aviso, Cabecalho, Campo, Cartao, Selo, Vazio } from "@/components/ui";
 import { getUsuario } from "@/lib/auth";
 import { data, moeda } from "@/lib/formato";
 import { createClient } from "@/lib/supabase/server";
@@ -15,7 +15,8 @@ const SITUACAO = {
   cancelada: { rotulo: "Cancelada", cor: "cinza" as const },
 };
 
-export default async function ProvisoesPage() {
+export default async function ProvisoesPage({ searchParams }: PageProps<"/provisoes">) {
+  const sp = await searchParams;
   const u = await getUsuario();
   const supabase = await createClient();
   const [{ data: provisoes }, { data: obras }] = await Promise.all([
@@ -31,6 +32,11 @@ export default async function ProvisoesPage() {
         titulo="Provisões de pagamento"
         subtitulo="Despesas futuras que ainda não têm valor definido. Não entram nos totais até virarem pagamento. O Financeiro e o Suprimentos registram; o Financeiro lança o pagamento."
       />
+      {sp.aviso && (
+        <div className="mb-6">
+          <Aviso tipo="sucesso">{sp.aviso === "convertida" ? "Provisão marcada como lançada." : "Provisão cancelada."}</Aviso>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         {podeCriar && (
           <Cartao titulo="Nova provisão" className="xl:col-span-1">

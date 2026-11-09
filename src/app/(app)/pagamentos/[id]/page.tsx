@@ -528,6 +528,8 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             <AssinadorDocumentos
               documentos={ativos
                 .filter((d) => d.tipo !== "comprovante")
+                // Só a versão assinada do conteúdo atual: versões assinadas de versões anteriores ficam de fora.
+                .filter((d) => d.tipo !== "documento_assinado" || d.pagamento_versao === p.versao)
                 .filter((d) => ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? ""))
                 .map((d) => ({ id: d.id, nome: d.nome_arquivo, mime: d.mime_type ?? "application/pdf", tipo: d.tipo }))}
               assinaturaUrl={assinaturaUrl}

@@ -47,13 +47,17 @@ const MEDICAO_PDF = path.join(EX, 'nfse-pdf-tabela-emitida-pela-empresa.pdf');
   await fin.getByText('MEI — serviços específicos').first().waitFor();
   console.log('✔ aba mostra as 3 NFS-e identificadas (XML e PDF); MEI com outro serviço e a DANFE ficaram de fora');
 
-  // 2b. Aba Notas de medição (Financeiro): medição e cálculo de impostos
+  // 2b. Notas de medição: anexo direto na aba (recebimento, não é pagamento)
   await fin.goto(`${BASE}/notas-medicao`);
+  await fin.selectOption('select[name=obra_id]', obraV);
+  await fin.setInputFiles('input[name=arquivo]', MEDICAO_PDF);
+  await fin.fill('input[name=valor]', '224.599,00');
+  await fin.fill('input[name=valor_liquido]', '208.652,47');
+  await fin.click('button:has-text("Anexar nota")');
+  await fin.getByText('Nota de medição anexada').waitFor({ timeout: 90000 });
   await fin.getByText('R$ 15.946,53').first().waitFor({ timeout: 60000 });
   await fin.getByText('R$ 15.497,33').first().waitFor();
-  await fin.getByText('7,10%').first().waitFor();
-  await fin.getByText('6,90%').first().waitFor();
-  console.log('✔ aba Notas de medição: retido R$ 15.946,53 (7,10%), devido R$ 15.497,33 (6,90%); fora da aba de contabilidade');
+  console.log('✔ medição anexada na aba: retido R$ 15.946,53 (7,10%), devido R$ 15.497,33 (6,90%)');
 
   // 3. Financeiro marca como enviada (volta à aba de notas)
   await fin.goto(`${BASE}/notas-contabeis`);

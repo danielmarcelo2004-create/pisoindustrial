@@ -50,8 +50,9 @@ export function classificarNota(d: DadosNota, cnpjEmpresa: string): Classificaca
   const empresa = digitos(cnpjEmpresa);
   if (doc === empresa) {
     // Emitida pela empresa: só interessa a nota de medição (boletim), que tem cálculo de impostos.
+    // Medição é recebimento: não entra como pagamento. Deve ser anexada em "Notas de medição".
     return d.medicao
-      ? { categoria: "medicao_emitida", motivo: null }
+      ? { categoria: null, motivo: "nota de medição: anexar em Notas de medição, não em pagamento" }
       : { categoria: null, motivo: "nota emitida pela própria empresa (não é serviço tomado)" };
   }
   const tomador = digitos(d.tomadorDocumento);

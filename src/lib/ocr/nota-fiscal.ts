@@ -39,6 +39,55 @@ const numBR = (s: string) => Number(s.replace(/\./g, "").replace(",", "."));
 const normalizar = (s: string) =>
   s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9,.\s]/g, " ").replace(/(\d),(\d)/g, "$1.$2").replace(/[,]/g, " ").replace(/\s+/g, " ").trim();
 
+const DINHEIRO_BR = /^\d{1,3}(\.\d{3})*,\d{2}$/;
+const UNIDADES = /^(M2|M3|M²|M³|M|KG|UN|UND|PC|PÇ|CX|MT|L|LT|TON|SC|JG|VB|GL|ML)$/;
+
+/**
+ * Itens no layout DANFE padrão: a linha do item começa com o código; a descrição pode ocupar
+ * mais de uma linha; a linha com NCM traz CST, CFOP, quantidade (4 casas), unitário e total.
+ * Só entra o item que fecha a conta (quantidade × unitário ≈ total).
+ */
+function itensDanfe(linhas: string[]): { itens: ItemNf[]; duvidosos: number } {
+  const itens: ItemNf[] = [];
+  let duvidosos = 0;
+  for (let i = 0; i < linhas.length; i++) {
+    if (!/^\d{3,6}\s+[A-Za-zÀ-ÿ]/.test(linhas[i])) continue;
+    // Junta as linhas até encontrar a linha com NCM (8 dígitos, CST de 3 e CFOP de 4).
+    let bloco = linhas[i];
+    let j = i;
+    while (!/\d{8}\s+\d{3}\s+\d{4}\s/.test(bloco) && j + 1 < linhas.length && j - i < 2) {
+      j++;
+      bloco += " " + linhas[j];
+    }
+    const m = bloco.match(/^(\d{3,6})\s+(.+?)\s+(\d{8})\s+(\d{3})\s+(\d{4})\s+(.*)$/);
+    if (!m) continue;
+    const [, codigo, descricaoRaw, ncm, , , resto] = m;
+    const tokens = resto.split(/\s+/);
+    const q = tokens.findIndex((t) => /^\d+,\d{4}$/.test(t));
+    if (q < 0 || tokens.length < q + 3) { duvidosos++; continue; }
+    const quantidade = numBR(tokens[q]);
+    const valorUnitario = Number(tokens[q + 1].replace(",", "."));
+    const valorTotal = DINHEIRO_BR.test(tokens[q + 2]) ? numBR(tokens[q + 2]) : NaN;
+    const unidade = tokens.find((t) => UNIDADES.test(t)) ?? null;
+    const descricao = descricaoRaw.replace(/\s+/g, " ").trim();
+    i = j;
+    if (!(quantidade > 0) || !Number.isFinite(valorUnitario) || !Number.isFinite(valorTotal) || !unidade) { duvidosos++; continue; }
+    if (Math.abs(quantidade * valorUnitario - valorTotal) > Math.max(0.05, valorTotal * 0.001)) { duvidosos++; continue; }
+    itens.push({
+      numero_item: itens.length + 1,
+      codigo,
+      descricao,
+      descricao_normalizada: normalizar(descricao),
+      ncm,
+      unidade: unidade.toUpperCase(),
+      quantidade,
+      valor_unitario: valorUnitario,
+      valor_total: valorTotal,
+    });
+  }
+  return { itens, duvidosos };
+}
+
 export function lerNotaTexto(texto: string): NotaLidaOcr {
   const motivos: string[] = [];
   const linhas = texto.split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
@@ -57,7 +106,7 @@ export function lerNotaTexto(texto: string): NotaLidaOcr {
   const emitenteLinha = linhas.find((l) => /\b(LTDA|EIRELI|S\/?A|ME|EPP)\b/i.test(l) && !/CNPJ|DESTINAT/i.test(l)) ?? null;
   const ufM = todo.match(/\bUF\b\D{0,5}\b([A-Z]{2})\b/);
 
-  const totalProdM = todo.match(/VALOR\s+TOTAL\s+DOS\s+PRODUTOS\D{0,12}([\d.]+,\d{2})/i);
+  const totalProdM = todo.match(/VALOR\s+TOTAL\s+DOS\s+PRODUTOS[\s\S]{0,160}?([\d.]+,\d{2})/i);
   const totalNfM = todo.match(/VALOR\s+TOTAL\s+DA\s+NOTA\D{0,12}([\d.]+,\d{2})/i);
   const freteM = todo.match(/VALOR\s+DO\s+FRETE\D{0,12}([\d.]+,\d{2})/i);
   const descM = todo.match(/VALOR\s+DO\s+DESCONTO\D{0,12}([\d.]+,\d{2})/i);
@@ -98,6 +147,17 @@ export function lerNotaTexto(texto: string): NotaLidaOcr {
       valor_unitario: valorUnitario,
       valor_total: valorTotal,
     });
+  }
+
+  // Layout DANFE (descrição quebrada em linhas): usado quando o padrão acima não acha itens.
+  if (itens.length === 0) {
+    const danfe = itensDanfe(linhas);
+    if (danfe.itens.length > 0) {
+      itens.push(...danfe.itens);
+      duvidosas = danfe.duvidosos;
+    } else {
+      duvidosas += danfe.duvidosos;
+    }
   }
 
   if (!emitenteCnpj) motivos.push("CNPJ do emitente não lido");

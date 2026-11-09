@@ -49,14 +49,14 @@ export default async function ProvisoesPage() {
                 <input name="descricao" required className="campo" maxLength={300} placeholder="Ex.: Conta de luz da casa alugada" />
               </Campo>
               <div className="grid grid-cols-2 gap-3">
-                <Campo rotulo="Mês de referência">
-                  <input type="month" name="mes_referencia" className="campo" />
-                </Campo>
-                <Campo rotulo="Vencimento">
+                <Campo rotulo="Primeiro vencimento" ajuda="Nas demais parcelas, o vencimento é o mesmo dia de cada mês.">
                   <input type="date" name="vencimento" className="campo" />
                 </Campo>
+                <Campo rotulo="Quantidade de meses" ajuda="Use 1 para uma provisão única. Ex.: 10 para um contrato de 10 meses.">
+                  <input type="number" name="meses" min={1} max={60} defaultValue={1} required className="campo" />
+                </Campo>
               </div>
-              <Campo rotulo="Valor estimado (R$)" ajuda="Pode deixar em branco quando ainda não souber o valor.">
+              <Campo rotulo="Valor de cada parcela (R$)" ajuda="Pode deixar em branco quando ainda não souber o valor.">
                 <input name="valor_estimado" inputMode="decimal" className="campo" placeholder="0,00" />
               </Campo>
               <Campo rotulo="Observações">

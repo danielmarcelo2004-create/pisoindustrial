@@ -319,6 +319,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"notas_medicao": {
+                  Row: {
+                    "criada_em": string,"criada_por": string,"data_emissao": string | null,"descricao": string | null,"id": string,"mime_type": string | null,"nome_arquivo": string,"numero": string | null,"obra_id": string,"prestador_documento": string | null,"prestador_nome": string | null,"sha256": string,"storage_path": string,"valor": number,"valor_liquido": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "criada_em"?: string,"criada_por"?: string,"data_emissao"?: string | null,"descricao"?: string | null,"id"?: string,"mime_type"?: string | null,"nome_arquivo": string,"numero"?: string | null,"obra_id": string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"sha256": string,"storage_path": string,"valor": number,"valor_liquido": number
+                  }
+                  Update: {
+                    "criada_em"?: string,"criada_por"?: string,"data_emissao"?: string | null,"descricao"?: string | null,"id"?: string,"mime_type"?: string | null,"nome_arquivo"?: string,"numero"?: string | null,"obra_id"?: string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"sha256"?: string,"storage_path"?: string,"valor"?: number,"valor_liquido"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "notas_medicao_criada_por_fkey"
+      columns: ["criada_por"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "notas_medicao_obra_id_fkey"
+      columns: ["obra_id"]
+isOneToOne: false
+      referencedRelation: "obras"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"notificacoes": {
                   Row: {
                     "created_at": string,"email_enviado_em": string | null,"email_erro": string | null,"email_status": string | null,"id": string,"lida_em": string | null,"link": string | null,"mensagem": string | null,"pagamento_id": string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em": string | null,"whatsapp_erro": string | null,"whatsapp_status": string | null
@@ -773,6 +799,9 @@ isOneToOne: false
                            },
 "registrar_nota_contabil":
 { Args: { "p_categoria": Database["public"]['Enums']["categoria_nota_contabil"],"p_dados": Json,"p_documento_id": string }; Returns: string
+                           },
+"registrar_nota_medicao":
+{ Args: { "p_dados": Json,"p_mime": string,"p_nome": string,"p_obra_id": string,"p_sha256": string,"p_storage_path": string }; Returns: string
                            },
 "remover_nf":
 { Args: { "p_nota_id": string }; Returns: undefined

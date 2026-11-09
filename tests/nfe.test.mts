@@ -54,3 +54,27 @@ test("normaliza descrições para comparação", () => {
   assert.equal(normalizarDescricao("  CIMENTO CP-II  50KG, Votorantim "), "cimento cp ii 50kg votorantim");
   assert.equal(normalizarDescricao("Aço CA-50 Ø 10,0mm"), "aco ca 50 10.0mm");
 });
+
+test("OCR de DANFE: grade da tabela, CST ilegível, quantidade com letra colada e unidade ausente", async () => {
+  const { lerNotaTexto } = await import("../src/lib/ocr/nota-fiscal.ts");
+  const texto = [
+    "CONSTRUTORA PARCERIA PROJETOS E CONSTRUCOES LTDA 04.602.232/0001-70 25/09/2026 10:45",
+    "NOME/RAZÃO SOCIAL CNPJ/CPF DATA DA EMISSÃO",
+    "ITABLOCK LTDA 57.087.364/0001-78 25/09/2026",
+    "Nº: 000.000.247",
+    "COD. DESCRIÇÃO DO PRODUTO/SERVIÇO NOM cst | croP | uno. QUANT. |VALORUNITARIO [vaLorTOTAL",
+    "16555 PISO INTERTRAVADOS DE CONCRETO 68101100 | ooo | 5101 40,000d 55,00000 2.200,00 2.200,00 418,00 | eso] 19,00 | oo 693.66",
+    "RETANGULAR 10X20X06 35MPA",
+    "16766 PISO INTERTRAVADOS DE CONCRETO 68101100 | oo | 5101 100,000d 65,00000 6.500,00 6.500,00 1235,00 | eso] 19,00 | oo 2049.45",
+    "VALOR TOTAL DOS PRODUTOS 8.700,00",
+    "VALOR TOTAL DA NOTA 8.700,00",
+  ].join("\n");
+  const r = lerNotaTexto(texto);
+  assert.equal(r.itens.length, 2);
+  assert.deepEqual(r.itens.map((i) => [i.codigo, i.quantidade, i.valor_unitario, i.valor_total]), [
+    ["16555", 40, 55, 2200],
+    ["16766", 100, 65, 6500],
+  ]);
+  assert.equal(r.itens[0].unidade, null);
+  assert.ok(!r.motivos.includes("nenhum item lido"));
+});

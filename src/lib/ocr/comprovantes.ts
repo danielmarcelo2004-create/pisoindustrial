@@ -30,12 +30,12 @@ export async function contarPaginas(arquivo: File): Promise<number> {
   return doc.numPages;
 }
 
-/** Renderiza uma página para imagem (PNG em data URL) com resolução boa para OCR. */
-export async function renderizarPagina(arquivo: File, numero: number): Promise<string> {
+/** Renderiza uma página do PDF como imagem. Para leitura (OCR) usa escala maior (~300 dpi). */
+export async function renderizarPagina(arquivo: File, numero: number, escala = 2.5): Promise<string> {
   const pdfjs = await carregarPdfjs();
   const doc = await pdfjs.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise;
   const page = await doc.getPage(numero);
-  const viewport = page.getViewport({ scale: 2.5 });
+  const viewport = page.getViewport({ scale: escala });
   const canvas = document.createElement("canvas");
   canvas.width = Math.floor(viewport.width);
   canvas.height = Math.floor(viewport.height);
@@ -59,6 +59,35 @@ export async function criarOcr() {
     gzip: true,
     cacheMethod: "none",
   });
+}
+
+/**
+ * Lê uma página de nota em duas partes: o cabeçalho (modo padrão) e a página em faixas horizontais
+ * com sobreposição (modo de linha). A tabela de produtos só sai inteira por faixa: lida de uma vez,
+ * o OCR separa as colunas em linhas diferentes e perde o produto de cada linha.
+ */
+export async function lerPaginaNota(worker: { recognize: (img: string) => Promise<{ data: { text: string } }>; setParameters: (p: Record<string, string>) => Promise<unknown> }, imagem: string) {
+  const cabecalho = await lerTexto(worker, imagem);
+  const img = new Image();
+  img.src = imagem;
+  await img.decode();
+  const FAIXAS = 8;
+  const sobra = Math.round(img.height * 0.04);
+  await worker.setParameters({ tessedit_pageseg_mode: "6" });
+  let faixas = "";
+  for (let i = 0; i < FAIXAS; i++) {
+    const y0 = Math.max(0, Math.round((img.height * i) / FAIXAS) - sobra);
+    const y1 = Math.min(img.height, Math.round((img.height * (i + 1)) / FAIXAS) + sobra);
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = y1 - y0;
+    const ctx = canvas.getContext("2d")!;
+    ctx.filter = "grayscale(100%) contrast(140%)";
+    ctx.drawImage(img, 0, y0, img.width, y1 - y0, 0, 0, img.width, y1 - y0);
+    faixas += "\n" + (await lerTexto(worker, canvas.toDataURL("image/png")));
+  }
+  await worker.setParameters({ tessedit_pageseg_mode: "3" });
+  return cabecalho + faixas;
 }
 
 /** Cria um PDF só com a página indicada (sem alterar o original). */

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Aviso, Botao, Cartao, Selo, Vazio } from "@/components/ui";
-import { contarPaginas, criarOcr, lerTexto, renderizarPagina } from "@/lib/ocr/comprovantes";
+import { contarPaginas, criarOcr, lerPaginaNota, lerTexto, renderizarPagina } from "@/lib/ocr/comprovantes";
 import { lerNotaTexto, type NotaLidaOcr } from "@/lib/ocr/nota-fiscal";
 import { registrarNotaLida } from "./actions";
 
@@ -25,13 +25,13 @@ export function FormLerNotas({ pendentes }: { pendentes: Pendente[] }) {
       const total = await contarPaginas(arquivo);
       let texto = "";
       for (let n = 1; n <= total; n++) {
-        texto += "\n" + (await lerTexto(worker, await renderizarPagina(arquivo, n)));
+        texto += "\n" + (await lerPaginaNota(worker, await renderizarPagina(arquivo, n, 4)));
       }
       return texto;
     }
     const url = URL.createObjectURL(arquivo);
     try {
-      return await lerTexto(worker, url);
+      return await lerPaginaNota(worker, url);
     } finally {
       URL.revokeObjectURL(url);
     }

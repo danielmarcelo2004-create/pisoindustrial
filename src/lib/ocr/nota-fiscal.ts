@@ -47,39 +47,49 @@ const UNIDADES = /^(M2|M3|M²|M³|M|KG|UN|UND|PC|PÇ|CX|MT|L|LT|TON|SC|JG|VB|GL|
  * mais de uma linha; a linha com NCM traz CST, CFOP, quantidade (4 casas), unitário e total.
  * Só entra o item que fecha a conta (quantidade × unitário ≈ total).
  */
-function itensDanfe(linhas: string[]): { itens: ItemNf[]; duvidosos: number } {
+function itensDanfe(linhasBrutas: string[]): { itens: ItemNf[]; duvidosos: number } {
   const itens: ItemNf[] = [];
+  const vistos = new Set<string>();
   let duvidosos = 0;
+  // O OCR costuma deixar barras e colchetes da grade da tabela no meio da linha.
+  const linhas = linhasBrutas.map((l) => l.replace(/[|[\]]/g, " ").replace(/\s+/g, " ").trim());
   for (let i = 0; i < linhas.length; i++) {
     if (!/^\d{3,6}\s+[A-Za-zÀ-ÿ]/.test(linhas[i])) continue;
-    // Junta as linhas até encontrar a linha com NCM (8 dígitos, CST de 3 e CFOP de 4).
+    // Junta as linhas até encontrar a linha com NCM (8 dígitos, CST de até 4 caracteres e CFOP de 4).
     let bloco = linhas[i];
     let j = i;
-    while (!/\d{8}\s+\d{3}\s+\d{4}\s/.test(bloco) && j + 1 < linhas.length && j - i < 2) {
+    while (!/\d{8}\s+(?:\S{1,4}\s+)?\d{4}\s/.test(bloco) && j + 1 < linhas.length && j - i < 2) {
       j++;
       bloco += " " + linhas[j];
     }
-    const m = bloco.match(/^(\d{3,6})\s+(.+?)\s+(\d{8})\s+(\d{3})\s+(\d{4})\s+(.*)$/);
+    const m = bloco.match(/^(\d{3,6})\s+(.+?)\s+(\d{8})\s+(?:\S{1,4}\s+)?(\d{4})\s+(.*)$/);
     if (!m) continue;
-    const [, codigo, descricaoRaw, ncm, , , resto] = m;
-    const tokens = resto.split(/\s+/);
-    const q = tokens.findIndex((t) => /^\d+,\d{4}$/.test(t));
+    const [, codigo, descricaoRaw, ncm, , resto] = m;
+    // Letras grudadas no número (ex.: "40,000d") são ruído do OCR.
+    const tokens = resto.split(/\s+/).map((t) => t.replace(/(?<=\d)[A-Za-z]{1,2}$/, ""));
+    const q = tokens.findIndex((t) => /^\d+,\d{3,4}$/.test(t));
     if (q < 0 || tokens.length < q + 3) { duvidosos++; continue; }
     const quantidade = numBR(tokens[q]);
     const valorUnitario = Number(tokens[q + 1].replace(",", "."));
     const valorTotal = DINHEIRO_BR.test(tokens[q + 2]) ? numBR(tokens[q + 2]) : NaN;
-    const unidade = tokens.find((t) => UNIDADES.test(t)) ?? null;
+    // A unidade pode faltar no OCR; o item só entra se quantidade × unitário bater com o total.
+    const unidade = tokens.slice(0, q).find((t) => UNIDADES.test(t)) ?? tokens.find((t) => UNIDADES.test(t)) ?? null;
     const descricao = descricaoRaw.replace(/\s+/g, " ").trim();
     i = j;
-    if (!(quantidade > 0) || !Number.isFinite(valorUnitario) || !Number.isFinite(valorTotal) || !unidade) { duvidosos++; continue; }
+    if (!(quantidade > 0) || !Number.isFinite(valorUnitario) || !Number.isFinite(valorTotal)) { duvidosos++; continue; }
     if (Math.abs(quantidade * valorUnitario - valorTotal) > Math.max(0.05, valorTotal * 0.001)) { duvidosos++; continue; }
+    // As faixas se sobrepõem: a mesma linha pode ser lida duas vezes. Se for mesmo um item repetido,
+    // a conferência com o total de produtos acusa a diferença.
+    const chave = [codigo, ncm, quantidade, valorUnitario, valorTotal].join("|");
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
     itens.push({
       numero_item: itens.length + 1,
       codigo,
       descricao,
       descricao_normalizada: normalizar(descricao),
       ncm,
-      unidade: unidade.toUpperCase(),
+      unidade: unidade ? unidade.toUpperCase() : null,
       quantidade,
       valor_unitario: valorUnitario,
       valor_total: valorTotal,
@@ -103,11 +113,15 @@ export function lerNotaTexto(texto: string): NotaLidaOcr {
   const serieM = todo.match(/S[ÉE]RIE\D{0,6}(\d{1,3})/i);
   const chaveDigitos = todo.replace(/[\s.\-]/g, "").match(/\d{44}/);
   const chave = chaveDigitos ? chaveDigitos[0] : null;
-  const emitenteLinha = linhas.find((l) => /\b(LTDA|EIRELI|S\/?A|ME|EPP)\b/i.test(l) && !/CNPJ|DESTINAT/i.test(l)) ?? null;
+  // Emitente: a razão social (LTDA etc.) que não é a própria empresa nem o destinatário.
+  const emitenteLinha = linhas.find((l) => /\b(LTDA|EIRELI|S\/?A|ME|EPP)\b/i.test(l) && !/CNPJ|DESTINAT|CONSTRUTORA PARCERIA|ENDERE|BAIRRO|CEP|DATA|\d{2}\.\d{3}\.\d{3}|\d{2}\/\d{2}\/\d{4}/i.test(l)) ?? null;
   const ufM = todo.match(/\bUF\b\D{0,5}\b([A-Z]{2})\b/);
 
   const totalProdM = todo.match(/VALOR\s+TOTAL\s+DOS\s+PRODUTOS[\s\S]{0,160}?([\d.]+,\d{2})/i);
-  const totalNfM = todo.match(/VALOR\s+TOTAL\s+DA\s+NOTA\D{0,12}([\d.]+,\d{2})/i);
+  // Valor total da nota: na linha de valores do rótulo, o último valor em reais (ex.: 0,00 0,00 ... 8.700,00).
+  const totalNfBloco = todo.match(/VALOR\s+TOTAL\s+DA\s+NOTA[\s\S]{0,200}/i);
+  const totalNfValores = totalNfBloco ? [...totalNfBloco[0].matchAll(/\d{1,3}(?:\.\d{3})*,\d{2}/g)].map((m) => m[0]) : [];
+  const totalNfM = totalNfValores.length ? ["", totalNfValores[totalNfValores.length - 1]] : null;
   const freteM = todo.match(/VALOR\s+DO\s+FRETE\D{0,12}([\d.]+,\d{2})/i);
   const descM = todo.match(/VALOR\s+DO\s+DESCONTO\D{0,12}([\d.]+,\d{2})/i);
   const valorProdutos = totalProdM ? numBR(totalProdM[1]) : null;

@@ -70,7 +70,8 @@ async function paginasComImagem(bytes) {
   await eng.click('button:has-text("Abrir e posicionar a assinatura")');
   await eng.getByText('Posicione sua assinatura').waitFor({ timeout: 120000 });
   const seletor = eng.locator('select').filter({ hasText: 'de 3' });
-  (await seletor.count()) ? ok('janela mostra seletor de página (3 páginas)') : falha('seletor de página não aparece');
+  const seletorVisivel = await seletor.waitFor({ timeout: 60000 }).then(() => true).catch(() => false);
+  seletorVisivel ? ok('janela mostra seletor de página (3 páginas)') : falha('seletor de página não aparece');
   await seletor.selectOption('1');
   await eng.waitForTimeout(1500);
   await eng.click('button:has-text("Confirmar assinatura")');

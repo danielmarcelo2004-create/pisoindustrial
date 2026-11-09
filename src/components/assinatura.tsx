@@ -16,6 +16,9 @@ export type ItemAssinavel = {
   vencimento: string;
   obra: string;
   etapa: string;
+  /** Há documento assinável sem a assinatura de quem aprova nesta versão. */
+  faltaAssinaturaDoc?: boolean;
+  temDocAssinavel?: boolean;
   documentos: number;
 };
 
@@ -197,6 +200,7 @@ export function SelecaoLote({ itens }: { itens: ItemAssinavel[] }) {
                   <th>Favorecido / descrição</th>
                   <th>Centro de custo</th>
                   <th>Etapa</th>
+                  <th>Documento</th>
                   <th className="text-right">Valor</th>
                 </tr>
               </thead>
@@ -220,6 +224,15 @@ export function SelecaoLote({ itens }: { itens: ItemAssinavel[] }) {
                     <td>{i.obra}</td>
                     <td>
                       <Selo cor="amarelo">{i.etapa}</Selo>
+                    </td>
+                    <td>
+                      {i.faltaAssinaturaDoc ? (
+                        <Selo cor="vermelho">Falta assinar o documento</Selo>
+                      ) : i.temDocAssinavel ? (
+                        <Selo cor="verde">Assinado</Selo>
+                      ) : (
+                        <span className="text-xs text-slate-500">sem documento</span>
+                      )}
                     </td>
                     <td className="text-right font-medium tabular-nums">{moeda(i.valor)}</td>
                   </tr>

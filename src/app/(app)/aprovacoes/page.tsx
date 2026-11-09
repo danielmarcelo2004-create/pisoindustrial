@@ -11,7 +11,7 @@ export default async function AprovacoesPage() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .rpc("minhas_pendencias")
-    .select("id, numero, versao, favorecido, descricao, valor, vencimento, status, obra:obras(nome), documentos(id, ativo, tipo)")
+    .select("id, numero, versao, favorecido, descricao, valor, vencimento, status, obra:obras(nome), documentos(id, ativo, tipo, mime_type, enviado_por, pagamento_versao)")
     .order("vencimento");
   if (error) throw new Error(error.message);
 
@@ -26,6 +26,16 @@ export default async function AprovacoesPage() {
     obra: p.obra?.nome ?? "",
     etapa: p.status === "aguardando_engenheiro" ? "Engenheiro" : "Administrador",
     documentos: (p.documentos ?? []).filter((d) => d.ativo && d.tipo !== "comprovante").length,
+    temDocAssinavel: (p.documentos ?? []).some(
+      (d) => d.ativo && d.tipo !== "comprovante" && d.tipo !== "ordem_pagamento" && d.tipo !== "documento_assinado" &&
+        ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? ""),
+    ),
+    faltaAssinaturaDoc:
+      (p.documentos ?? []).some(
+        (d) => d.ativo && d.tipo !== "comprovante" && d.tipo !== "ordem_pagamento" && d.tipo !== "documento_assinado" &&
+          ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? ""),
+      ) &&
+      !(p.documentos ?? []).some((d) => d.ativo && d.tipo === "documento_assinado" && d.enviado_por === u.id && d.pagamento_versao === p.versao),
   }));
 
   return (

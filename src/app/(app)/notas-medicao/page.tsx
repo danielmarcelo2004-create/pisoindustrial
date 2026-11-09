@@ -36,8 +36,8 @@ export default async function NotasMedicaoPage() {
         subtitulo="Notas emitidas pela empresa para recebimento. Não são pagamentos: o cálculo mostra o imposto retido pelo cliente e o imposto devido."
       />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <Cartao titulo="Anexar nota de medição" className="xl:col-span-1">
+      <div className="grid grid-cols-1 gap-6 2xl:grid-cols-3">
+        <Cartao titulo="Anexar nota de medição" className="2xl:col-span-1">
           <FormAcao action={anexarNotaMedicao} enviar="Anexar nota" pendente="Anexando…" limparAoConcluir>
             <Campo rotulo="Centro de custo" obrigatorio>
               <select name="obra_id" required className="campo" defaultValue="">
@@ -67,7 +67,7 @@ export default async function NotasMedicaoPage() {
           </FormAcao>
         </Cartao>
 
-        <div className="space-y-6 xl:col-span-2">
+        <div className="min-w-0 space-y-6 2xl:col-span-2">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <Cartao titulo="Notas"><p className="text-xl font-semibold tabular-nums">{notas?.length ?? 0}</p></Cartao>
             <Cartao titulo="Valor total"><p className="text-lg font-semibold whitespace-nowrap tabular-nums">{moeda(totalValor)}</p></Cartao>

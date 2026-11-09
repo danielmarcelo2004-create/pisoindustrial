@@ -34,6 +34,8 @@ export function AssinadorDocumentos({
   const [preview, setPreview] = useState<string | null>(null);
   const [arquivoOriginal, setArquivoOriginal] = useState<File | null>(null);
   const [pos, setPos] = useState<Pos>({ fx: 0.68, fy: 0.78, fw: 0.24 });
+  const [totalPaginas, setTotalPaginas] = useState(1);
+  const [paginaEscolhida, setPaginaEscolhida] = useState(1);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState("");
@@ -53,6 +55,8 @@ export function AssinadorDocumentos({
       setArquivoOriginal(arq);
       if (arq.type === "application/pdf") {
         const total = await contarPaginas(arq);
+        setTotalPaginas(total);
+        setPaginaEscolhida(total);
         if (total < 1) throw new Error("PDF sem páginas");
         setPreview(await renderizarPagina(arq, total));
       } else {
@@ -101,7 +105,7 @@ export function AssinadorDocumentos({
       let pagina;
       if (arquivoOriginal.type === "application/pdf") {
         doc = await PDFDoc.load(new Uint8Array(await arquivoOriginal.arrayBuffer()));
-        pagina = doc.getPage(doc.getPageCount() - 1);
+        pagina = doc.getPage(Math.min(paginaEscolhida, doc.getPageCount()) - 1);
       } else {
         // Imagem: vira uma página do PDF com o próprio tamanho da imagem.
         doc = await PDFDoc.create();
@@ -168,7 +172,34 @@ export function AssinadorDocumentos({
               <h3 className="text-base font-semibold">Posicione sua assinatura</h3>
               <button type="button" onClick={() => setAberto(false)} className="rounded p-1 text-slate-500 hover:bg-slate-100" aria-label="Fechar">✕</button>
             </div>
-            <p className="mb-3 text-xs text-slate-600">Arraste a assinatura para o lugar desejado e use o canto inferior direito para ajustar o tamanho. A assinatura vai na última página, que é a mostrada.</p>
+            {totalPaginas > 1 && (
+              <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+                <label className="flex items-center gap-2">
+                  <span className="font-medium text-slate-700">Página da assinatura</span>
+                  <select
+                    className="campo w-auto"
+                    value={paginaEscolhida}
+                    disabled={ocupado}
+                    onChange={async (e) => {
+                      const n = Number(e.target.value);
+                      if (!arquivoOriginal || arquivoOriginal.type !== "application/pdf") return;
+                      setOcupado(true);
+                      try {
+                        setPreview(await renderizarPagina(arquivoOriginal, n));
+                        setPaginaEscolhida(n);
+                      } finally {
+                        setOcupado(false);
+                      }
+                    }}
+                  >
+                    {Array.from({ length: totalPaginas }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>{n} de {totalPaginas}{n === totalPaginas ? " (última)" : ""}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+            <p className="mb-3 text-xs text-slate-600">Escolha a página, arraste a assinatura para o lugar desejado e use o canto inferior direito para ajustar o tamanho. Só uma assinatura é colocada, na página escolhida.</p>
             <div ref={contRef} className="relative mx-auto select-none overflow-hidden rounded border border-slate-300 bg-slate-100" style={{ touchAction: "none" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={preview} alt="Primeira página" className="block w-full" draggable={false} />

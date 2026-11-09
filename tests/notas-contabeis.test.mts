@@ -2,12 +2,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { classificarNota, lerNfseTexto, lerNfseXml, type DadosNota } from "../src/lib/notas-contabeis.ts";
+import { classificarNota as classificarComCnpj, lerNfseTexto, lerNfseXml, type DadosNota } from "../src/lib/notas-contabeis.ts";
+
+const EMPRESA = "04.602.232/0001-70";
+const classificarNota = (d: DadosNota) => classificarComCnpj(d, EMPRESA);
 
 const exemplo = (nome: string) => readFileSync(new URL(`./exemplos/${nome}`, import.meta.url), "utf8");
 const base: DadosNota = {
   ehNfse: true,
   prestadorDocumento: "11222333000181",
+  tomadorDocumento: null,
   prestadorNome: "Teste",
   numero: "1",
   dataEmissao: "2026-11-01",

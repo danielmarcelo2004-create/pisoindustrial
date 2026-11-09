@@ -7,6 +7,7 @@ import type { TipoDocumento } from "@/lib/rotulos";
 import { lerNFe } from "@/lib/nfe";
 import { classificarNota, lerNfseTexto, lerNfseXml, type DadosNota } from "@/lib/notas-contabeis";
 import { extrairTextoPdf } from "@/lib/pdf-texto";
+import { SISTEMA } from "@/lib/sistema";
 
 export const TAMANHO_MAXIMO = 25 * 1024 * 1024;
 
@@ -95,7 +96,7 @@ export async function enviarDocumento(
 
 /** Classifica a NFS-e e, se cair numa das categorias para a contabilidade, registra na lista. */
 async function registrarNotaContabil(supabase: SupabaseClient<Database>, documentoId: string, dados: DadosNota): Promise<string | undefined> {
-  const c = classificarNota(dados);
+  const c = classificarNota(dados, SISTEMA.empresaCnpj);
   if (!c.categoria) return undefined;
   const { error } = await supabase.rpc("registrar_nota_contabil", {
     p_documento_id: documentoId,

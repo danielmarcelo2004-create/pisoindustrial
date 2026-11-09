@@ -3,7 +3,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { extrairTextoPdf } from "../src/lib/pdf-texto.ts";
-import { classificarNota, lerNfseTexto } from "../src/lib/notas-contabeis.ts";
+import { classificarNota as classificarComCnpj, lerNfseTexto } from "../src/lib/notas-contabeis.ts";
+
+const EMPRESA = "04.602.232/0001-70";
+const classificarNota = (d: Parameters<typeof classificarComCnpj>[0]) => classificarComCnpj(d, EMPRESA);
+
 
 const pdf = (nome: string) => readFileSync(new URL(`./exemplos/${nome}`, import.meta.url));
 
@@ -58,4 +62,35 @@ test("MEI com um serviço fora da lista em PDF: não entra", async () => {
 test("DANFE de produto em PDF não é tratada como nota de serviço", async () => {
   const { dados } = await identificar("danfe-produto.pdf");
   assert.equal(dados, null);
+});
+
+test("nota emitida pela própria empresa (layout tabular real) não é serviço tomado", async () => {
+  const { dados, classificacao } = await identificar("nfse-pdf-tabela-emitida-pela-empresa.pdf");
+  assert.ok(dados);
+  assert.equal(dados.prestadorDocumento, "04.602.232/0001-70");
+  assert.equal(classificacao?.categoria, null);
+  assert.match(classificacao?.motivo ?? "", /própria empresa/);
+});
+
+test("nota tomada pela empresa em layout tabular: ISS retido e valor vêm da linha de valores", async () => {
+  const { dados, classificacao } = await identificar("nfse-pdf-tabela-tomada-pela-empresa.pdf");
+  assert.ok(dados);
+  assert.equal(dados.prestadorDocumento, "11.222.333/0001-81");
+  assert.equal(dados.tomadorDocumento, "04.602.232/0001-70");
+  assert.equal(dados.prestadorNome, "EMPRESA PRESTADORA EXEMPLO LTDA");
+  assert.equal(dados.valor, 224599);
+  assert.equal(dados.retencoes.iss, 3930.48);
+  assert.equal(dados.retencoes.inss, 8647.06);
+  assert.equal(dados.dataEmissao, "2026-10-08");
+  assert.equal(classificacao?.categoria, "tomado_pj_retencao");
+});
+
+test("nota cujo tomador é outra empresa não entra na lista", async () => {
+  const texto = (await extrairTextoPdf(pdf("nfse-pdf-tabela-tomada-pela-empresa.pdf"))).replace(
+    "04.602.232/0001-70",
+    "99.888.777/0001-66",
+  );
+  const c = classificarNota(lerNfseTexto(texto)!);
+  assert.equal(c.categoria, null);
+  assert.match(c.motivo ?? "", /não é a tomadora/);
 });

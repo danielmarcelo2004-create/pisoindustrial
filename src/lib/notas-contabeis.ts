@@ -15,6 +15,7 @@ export type Retencoes = { inss: number; irrf: number; csrf: number; iss: number 
 export type DadosNota = {
   ehNfse: boolean;
   prestadorDocumento: string | null;
+  tomadorDocumento: string | null;
   prestadorNome: string | null;
   numero: string | null;
   dataEmissao: string | null; // AAAA-MM-DD
@@ -35,9 +36,19 @@ const SERVICOS_MEI: RegExp[] = [
   /(manuten[cç][aã]o|repar[oa]|conserto)[^.]{0,60}ve[ií]culo|ve[ií]culo[^.]{0,60}(manuten[cç][aã]o|repar[oa]|conserto)/i,
 ];
 
-export function classificarNota(d: DadosNota): Classificacao {
+const digitos = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
+
+/**
+ * `cnpjEmpresa`: CNPJ da empresa dona do sistema. Só são classificadas notas em que ela é a
+ * tomadora dos serviços (quando o tomador é conhecido) e nunca notas que ela mesma emitiu.
+ */
+export function classificarNota(d: DadosNota, cnpjEmpresa: string): Classificacao {
   if (!d.ehNfse) return { categoria: null, motivo: "não é NFS-e nem nota avulsa de serviço" };
-  const doc = (d.prestadorDocumento ?? "").replace(/\D/g, "");
+  const doc = digitos(d.prestadorDocumento);
+  const empresa = digitos(cnpjEmpresa);
+  if (doc === empresa) return { categoria: null, motivo: "nota emitida pela própria empresa (não é serviço tomado)" };
+  const tomador = digitos(d.tomadorDocumento);
+  if (tomador && tomador !== empresa) return { categoria: null, motivo: "a empresa não é a tomadora desta nota" };
 
   if (doc.length === 11) return { categoria: "tomado_pf", motivo: null };
 
@@ -100,6 +111,8 @@ export function lerNfseXml(xml: string): DadosNota | null {
   // Prestador: quem presta o serviço (no padrão nacional, o emitente).
   const prestador = achar(inf, ["PrestadorServico", "Prestador", "emit"]);
   const documentoPrestador = txt(achar(prestador, ["Cnpj", "CNPJ", "Cpf", "CPF"]));
+  const tomador = achar(inf, ["TomadorServico", "toma"]);
+  const documentoTomador = txt(achar(tomador, ["Cnpj", "CNPJ", "Cpf", "CPF"]));
   const mei = txt(achar(inf, ["opSimpNac"])) === "2" || txt(achar(inf, ["RegimeEspecialTributario"])) === "5";
 
   const valores = (achar(inf, ["Valores", "valores"]) ?? {}) as No;
@@ -120,6 +133,7 @@ export function lerNfseXml(xml: string): DadosNota | null {
   return {
     ehNfse: true,
     prestadorDocumento: documentoPrestador,
+    tomadorDocumento: documentoTomador,
     prestadorNome: txt(achar(prestador, ["RazaoSocial", "xNome"])),
     numero: txt(achar(inf, ["Numero", "nNFSe"])),
     dataEmissao,
@@ -133,34 +147,70 @@ export function lerNfseXml(xml: string): DadosNota | null {
 // ----- NFS-e em PDF com camada de texto -----
 
 const numBR = (s: string) => Number(s.replace(/\./g, "").replace(",", "."));
+const DINHEIRO = /^\d{1,3}(\.\d{3})*,\d{2}$/;
 
-/** Lê o texto de uma NFS-e em PDF. Heurística: notas sem camada de texto não são identificadas. */
+/**
+ * Valores do quadro "VALORES" de notas de layout tabular: a linha de valores vem logo depois do
+ * cabeçalho. Retorna o primeiro valor da linha (valor do serviço) e o último (ISS retido, quando o
+ * cabeçalho tem a coluna "ISS Retido").
+ */
+function valoresDaTabela(linhas: string[], cabecalho: RegExp): { primeiro: number; ultimo: number; cabecalhoTemIssRetido: boolean } | null {
+  const i = linhas.findIndex((l) => cabecalho.test(l));
+  if (i < 0) return null;
+  for (let j = i + 1; j < Math.min(linhas.length, i + 4); j++) {
+    const dinheiro = linhas[j].split(/\s+/).filter((t) => DINHEIRO.test(t));
+    if (dinheiro.length >= 4) {
+      // O cabeçalho pode quebrar em mais de uma linha: procura "ISS Retido" até a linha de valores.
+      const cabecalho = linhas.slice(i, j).join(" ");
+      return {
+        primeiro: numBR(dinheiro[0]),
+        ultimo: numBR(dinheiro[dinheiro.length - 1]),
+        cabecalhoTemIssRetido: /ISS\s+Retido/i.test(cabecalho),
+      };
+    }
+  }
+  return null;
+}
+
+/** Lê uma NFS-e em PDF com camada de texto. Notas só de imagem não são identificadas. */
 export function lerNfseTexto(texto: string): DadosNota | null {
   const t = texto.replace(/[ \t]+/g, " ");
+  const linhas = t.split("\n").map((l) => l.trim()).filter(Boolean);
   const ehNfse = /NFS-?e\b|NOTA FISCAL (DE )?SERVI[CÇ]O|NOTA FISCAL AVULSA/i.test(t) && !/DANFE/i.test(t);
   if (!ehNfse) return null;
 
-  // Documento do prestador: primeiro CNPJ/CPF depois do rótulo PRESTADOR.
-  const inicioPrestador = t.search(/PRESTADOR/i);
-  const aposPrestador = inicioPrestador >= 0 ? t.slice(inicioPrestador, inicioPrestador + 600) : "";
-  const docM = aposPrestador.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/);
+  // Prestador: primeiro CNPJ/CPF depois do rótulo PRESTADOR.
+  const iPrest = t.search(/\bPRESTADOR\b/i);
+  const aposPrestador = iPrest >= 0 ? t.slice(iPrest, iPrest + 600) : "";
+  const docPrest = aposPrestador.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/);
+  // Tomador: primeiro CNPJ/CPF depois do rótulo TOMADOR.
+  const iTom = t.search(/TOMADOR/i);
+  const aposTomador = iTom >= 0 ? t.slice(iTom, iTom + 300) : "";
+  const docTom = aposTomador.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/);
+
+  const nomeM =
+    aposPrestador.match(/\bPRESTADOR\b\s*\n?\s*([^\n]*?)\s+(?:CNPJ|CPF)\b/i) ??
+    aposPrestador.match(/RAZ[ÃA]O SOCIAL\s*\n?\s*([^\n]+)/i);
+
   const retencao = (rotulo: RegExp) => {
     const m = t.match(rotulo);
     return m ? numBR(m[1]) : 0;
   };
-  const servicosM = t.match(/(?:DISCRIMINA[CÇ][AÃ]O(?:\s+DOS\s+SERVI[CÇ]OS)?|DESCRI[CÇ][AÃ]O DO SERVI[CÇ]O)[:\s]*([\s\S]{0,400}?)(?:\n\s*\n|VALOR|TOTAL|$)/i);
+  const tabela = valoresDaTabela(linhas, /Valor dos Servi[çc]os/i);
+
+  const servicosM = t.match(/(?:DISCRIMINA[CÇ][AÃ]O(?:\s+DOS\s+SERVI[CÇ]OS)?|DESCRI[CÇ][AÃ]O DO SERVI[CÇ]O|DESCRI[CÇ][AÃ]O DOS SERVI[CÇ]OS)[:\s]*([\s\S]{0,400}?)(?:\n\s*\n|VALOR|TOTAL|CONFORME|$)/i);
   const dataM = t.match(/EMISS[AÃ]O\D{0,25}(\d{2}\/\d{2}\/\d{4})/i);
   const valorM = t.match(/VALOR (?:TOTAL )?(?:DOS )?SERVI[CÇ]OS?\D{0,20}([\d.]+,\d{2})/i);
-  const numeroM = t.match(/N(?:ú|u)mero\D{0,30}?(\d{1,12})/i) ?? t.match(/N[º°o]\.?\s*(\d{1,12})/i);
-  const nomeM = aposPrestador.match(/PRESTADOR\s*\n?\s*([^\n]*?)\s+(?:CNPJ|CPF)\b/i);
+  const numeroM = t.match(/N(?:ú|u)mero\D{0,30}?(\d{1,12})/i);
 
   return {
     ehNfse: true,
-    prestadorDocumento: docM ? docM[0] : null,
+    prestadorDocumento: docPrest ? docPrest[0] : null,
+    tomadorDocumento: docTom ? docTom[0] : null,
     prestadorNome: nomeM ? nomeM[1].trim() || null : null,
     numero: numeroM ? numeroM[1] : null,
     dataEmissao: dataM ? dataM[1].split("/").reverse().join("-") : null,
-    valor: valorM ? numBR(valorM[1]) : null,
+    valor: tabela ? tabela.primeiro : valorM ? numBR(valorM[1]) : null,
     mei: /\bMEI\b|Microempreendedor Individual/i.test(t),
     servicos: servicosM
       ? servicosM[1].split(/\n|;/).map((s) => s.trim()).filter((s) => s && !/^(DOS )?SERVI[ÇC]OS?$/i.test(s))
@@ -169,7 +219,10 @@ export function lerNfseTexto(texto: string): DadosNota | null {
       inss: retencao(/INSS\D{0,30}([\d.]+,\d{2})/i),
       irrf: retencao(/IRRF\D{0,30}([\d.]+,\d{2})/i),
       csrf: retencao(/CSRF\D{0,30}([\d.]+,\d{2})/i),
-      iss: retencao(/ISS\s*RETIDO\D{0,30}([\d.]+,\d{2})/i),
+      // Tabela de valores: ISS retido é a última coluna da linha. Sem tabela, procura o rótulo.
+      iss: tabela
+        ? tabela.cabecalhoTemIssRetido ? tabela.ultimo : 0
+        : retencao(/ISS\s*RETIDO\D{0,30}([\d.]+,\d{2})/i),
     },
   };
 }

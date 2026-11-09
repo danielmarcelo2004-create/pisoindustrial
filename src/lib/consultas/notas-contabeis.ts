@@ -20,15 +20,23 @@ export type NotaContabil = {
   obra: { nome: string } | null;
 };
 
-/** Notas identificadas (somente as dos documentos ainda ativos, sem as substituídas). */
+/** Notas de medição (emitidas pela empresa) ficam na aba própria; esta lista é só das notas de serviço. */
 export async function listarNotasContabeis(situacao: SituacaoNota): Promise<NotaContabil[]> {
+  return (await listarNotas()).filter((n) => n.categoria !== "medicao_emitida")
+    .filter((n) => situacao === "todas" || (situacao === "enviadas" ? !!n.enviada_em : !n.enviada_em));
+}
+
+/** Notas de medição emitidas pela empresa (aba Notas de medição). */
+export async function listarNotasMedicao(): Promise<NotaContabil[]> {
+  return (await listarNotas()).filter((n) => n.categoria === "medicao_emitida");
+}
+
+async function listarNotas(): Promise<NotaContabil[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("notas_contabeis")
     .select("id, categoria, prestador_documento, prestador_nome, numero, data_emissao, valor, valor_liquido, retencoes, enviada_em, descricao_servico, documento:documentos(id, ativo, nome_arquivo), pagamento:pagamentos(id, descricao), obra:obras(nome)")
     .order("criada_em", { ascending: false })
     .limit(1000);
-  return ((data ?? []) as unknown as NotaContabil[])
-    .filter((n) => n.documento?.ativo)
-    .filter((n) => situacao === "todas" || (situacao === "enviadas" ? !!n.enviada_em : !n.enviada_em));
+  return ((data ?? []) as unknown as NotaContabil[]).filter((n) => n.documento?.ativo);
 }

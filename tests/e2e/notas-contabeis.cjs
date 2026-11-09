@@ -42,19 +42,18 @@ const MEDICAO_PDF = path.join(EX, 'nfse-pdf-tabela-emitida-pela-empresa.pdf');
   await fin.getByText('Maria Hidráulica MEI').first().waitFor({ timeout: 60000 });
   await fin.getByText('529.982.247-25').waitFor({ timeout: 60000 });
   const linhas = await fin.$$eval('tbody tr', (trs) => trs.length);
-  if (linhas !== 4) throw new Error(`esperava 4 notas na aba, veio ${linhas}`);
+  if (linhas !== 3) throw new Error(`esperava 3 notas de serviço na aba, veio ${linhas}`);
   await fin.getByText('Serviço tomado de PJ com retenção').first().waitFor();
   await fin.getByText('MEI — serviços específicos').first().waitFor();
-  await fin.getByText('Medição emitida pela empresa').first().waitFor();
   console.log('✔ aba mostra as 3 NFS-e identificadas (XML e PDF); MEI com outro serviço e a DANFE ficaram de fora');
 
-  // 2b. Aba de cálculo de impostos das medições (Financeiro)
-  await fin.goto(`${BASE}/impostos-medicao`);
+  // 2b. Aba Notas de medição (Financeiro): medição e cálculo de impostos
+  await fin.goto(`${BASE}/notas-medicao`);
   await fin.getByText('R$ 15.946,53').first().waitFor({ timeout: 60000 });
   await fin.getByText('R$ 15.497,33').first().waitFor();
   await fin.getByText('7,10%').first().waitFor();
   await fin.getByText('6,90%').first().waitFor();
-  console.log('✔ cálculo: retido R$ 15.946,53 (7,10%), devido R$ 15.497,33 (6,90%)');
+  console.log('✔ aba Notas de medição: retido R$ 15.946,53 (7,10%), devido R$ 15.497,33 (6,90%); fora da aba de contabilidade');
 
   // 3. Financeiro marca como enviada (volta à aba de notas)
   await fin.goto(`${BASE}/notas-contabeis`);

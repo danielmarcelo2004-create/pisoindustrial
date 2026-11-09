@@ -1,18 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Cabecalho, Cartao, Dado, Vazio } from "@/components/ui";
+import { Cabecalho, Cartao, Vazio } from "@/components/ui";
 import { exigirPerfil } from "@/lib/auth";
-import { listarNotasContabeis } from "@/lib/consultas/notas-contabeis";
+import { listarNotasMedicao } from "@/lib/consultas/notas-contabeis";
 import { calcularImpostosMedicao, TAXA_IMPOSTO_DEVIDO } from "@/lib/impostos-medicao";
 import { data, moeda } from "@/lib/formato";
 
-export const metadata: Metadata = { title: "Cálculo de impostos das medições" };
+export const metadata: Metadata = { title: "Notas de medição" };
 
 const pct = (v: number) => `${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 
 export default async function ImpostosMedicaoPage() {
   await exigirPerfil("financeiro");
-  const medicoes = (await listarNotasContabeis("todas")).filter((n) => n.categoria === "medicao_emitida");
+  const medicoes = await listarNotasMedicao();
 
   const linhas = medicoes.map((n) => ({ n, calc: calcularImpostosMedicao(n.valor, n.valor_liquido) }));
   const calculadas = linhas.flatMap((l) => (l.calc ? [l.calc] : []));
@@ -24,7 +24,7 @@ export default async function ImpostosMedicaoPage() {
   return (
     <>
       <Cabecalho
-        titulo="Cálculo de impostos das medições"
+        titulo="Notas de medição"
         subtitulo={`Imposto retido = valor total − valor líquido. Imposto devido = ${TAXA_IMPOSTO_DEVIDO * 100}% do valor total − imposto retido. Os percentuais são sobre o valor total da nota.`}
       />
 
@@ -44,7 +44,7 @@ export default async function ImpostosMedicaoPage() {
       <div className="mt-6">
         <Cartao titulo={`Medições (${medicoes.length})`} semPadding>
           {!medicoes.length ? (
-            <Vazio>Nenhuma nota de medição emitida pela empresa foi identificada ainda. As notas entram aqui quando são anexadas a um pagamento.</Vazio>
+            <Vazio>Nenhuma nota de medição foi identificada ainda. As notas entram aqui quando são anexadas a um pagamento.</Vazio>
           ) : (
             <div className="overflow-x-auto">
               <table className="tabela">
@@ -104,7 +104,7 @@ export default async function ImpostosMedicaoPage() {
         </Cartao>
       </div>
       <p className="mt-4 text-xs text-slate-500">Valores negativos em vermelho indicam que a retenção já passou dos 14% da nota.</p>
-      <div className="mt-2"><Dado rotulo="Fonte">Notas para contabilidade, categoria Medição emitida pela empresa.</Dado></div>
+      
     </>
   );
 }

@@ -505,6 +505,17 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
               )}
             </Cartao>
           )}
+          {!assinaturaUrl &&
+            ((p.status === "aguardando_engenheiro" && u.perfil === "engenheiro") ||
+              (p.status === "aguardando_administrador" && (u.perfil === "administrador" || u.perfil === "administrador_master"))) &&
+            ativos.some((d) => d.tipo !== "comprovante" && ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? "")) && (
+              <Cartao titulo="Sua assinatura">
+                <Aviso tipo="alerta">
+                  Para assinar os documentos deste pagamento, cadastre antes sua assinatura (PNG ou JPG) em{" "}
+                  <Link href="/perfil" className="font-medium underline">Minha assinatura</Link>.
+                </Aviso>
+              </Cartao>
+            )}
           {assinaturaUrl && p.status !== "cancelado" && (
             <AssinadorDocumentos
               documentos={ativos

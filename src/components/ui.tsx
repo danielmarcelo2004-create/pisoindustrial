@@ -181,7 +181,7 @@ export function Indicador({
     <div className="relative h-full overflow-hidden rounded-lg border border-slate-200 bg-white p-4 shadow-xs transition hover:border-slate-300">
       <span className={cx("absolute inset-y-0 left-0 w-1", barra)} />
       <div className="text-xs font-medium tracking-wide text-slate-500 uppercase">{rotulo}</div>
-      <div className="mt-1 text-2xl font-semibold text-slate-900 tabular-nums">{valor}</div>
+      <div className={cx("mt-1 font-semibold whitespace-nowrap text-slate-900 tabular-nums", typeof valor === "string" ? "text-lg xl:text-base 2xl:text-lg" : "text-2xl")}>{valor}</div>
       {detalhe && <div className="mt-1 text-xs text-slate-500">{detalhe}</div>}
     </div>
   );

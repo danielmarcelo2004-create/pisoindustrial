@@ -80,7 +80,7 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
         <Indicador rotulo="Pagos no mês" valor={moeda(pagosMes)} cor="verde" href="/pagamentos?status=pago" />
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+      <div className="mt-6 grid grid-cols-1 gap-6 2xl:grid-cols-2">
         <Cartao
           titulo={assinante ? "Aguardando sua assinatura" : (u.perfil === "financeiro" || u.perfil === "administrador_master") ? "Liberados para pagamento" : "Em aprovação"}
           acoes={

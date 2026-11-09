@@ -47,7 +47,7 @@ export function TabelaPagamentos({
             <th>Favorecido / descrição</th>
             {colunaObra && <th>Centro de custo</th>}
             <th className="text-right">Valor</th>
-            <th>Forma</th>
+            {!compacto && <th>Forma</th>}
             <th>Situação</th>
           </tr>
         </thead>
@@ -71,7 +71,7 @@ export function TabelaPagamentos({
               </td>
               {colunaObra && <td className="min-w-40 text-slate-700">{p.obra?.nome}</td>}
               <td className="text-right font-medium whitespace-nowrap tabular-nums">{moeda(p.valor)}</td>
-              <td className="whitespace-nowrap text-slate-700">{FORMAS_PAGAMENTO[p.forma_pagamento]}</td>
+              {!compacto && <td className="whitespace-nowrap text-slate-700">{FORMAS_PAGAMENTO[p.forma_pagamento]}</td>}
               <td>
                 <SeloStatus status={p.status} />
               </td>

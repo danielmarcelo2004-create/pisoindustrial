@@ -509,9 +509,9 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             ((p.status === "aguardando_engenheiro" && u.perfil === "engenheiro") ||
               (p.status === "aguardando_administrador" && (u.perfil === "administrador" || u.perfil === "administrador_master"))) &&
             ativos.some((d) => d.tipo !== "comprovante" && ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? "")) && (
-              <Cartao titulo="Sua assinatura">
+              <Cartao titulo="Assinatura necessária">
                 <Aviso tipo="alerta">
-                  Para assinar os documentos deste pagamento, cadastre antes sua assinatura (PNG ou JPG) em{" "}
+                  Para assinar os documentos deste pagamento, cadastre antes a imagem da assinatura (PNG ou JPG) em{" "}
                   <Link href="/perfil" className="font-medium underline">Minha assinatura</Link>.
                 </Aviso>
               </Cartao>

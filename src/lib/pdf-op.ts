@@ -246,13 +246,14 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
   linhasPag.forEach((l, j) => textoAlin(page, l, M, M + wPag, top + 26 + j * 14, "c", { f: bold, s: 9 }));
 
   const sigTop = top + Math.max(hPag, 54) + 26;
-  linhaH(page, M + W * 0.5, M + W - 30, sigTop + 36);
-  textoAlin(page, SISTEMA.empresa, M + W * 0.5, M + W - 30, sigTop + 42, "c", { s: 9 });
+  // Linha de assinatura em toda a largura, como no modelo oficial (empresa abaixo da linha)
+  linhaH(page, M, M + W, sigTop + 36);
+  textoAlin(page, SISTEMA.empresa, M, M + W, sigTop + 42, "c", { s: 9 });
   textoAlin(
     page,
     d.rascunho ? "Rascunho: sem assinatura registrada" : `Emitida eletronicamente por ${d.solicitante} em ${dataHora(d.emitidaEm)}`,
-    M + W * 0.5,
-    M + W - 30,
+    M,
+    M + W,
     sigTop + 54,
     "c",
     { s: 7.5, c: CINZA },

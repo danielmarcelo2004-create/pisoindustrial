@@ -71,10 +71,14 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
         acoes={<Selo cor={st.cor}>{st.rotulo}</Selo>}
       />
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Cartao titulo="Valor do fundo"><p className="text-xl font-semibold tabular-nums">{moeda(f.valor)}</p></Cartao>
         <Cartao titulo="Gasto aprovado"><p className="text-xl font-semibold tabular-nums">{moeda(gastoAprovado)}</p></Cartao>
         <Cartao titulo="Saldo"><p className="text-xl font-semibold tabular-nums">{fechado ? "—" : moeda(Math.max(saldo, 0))}</p></Cartao>
+        <Cartao titulo="Reembolso">
+          <p className="text-xl font-semibold tabular-nums">{moeda(reembolsoPrevisto)}</p>
+          <p className="text-xs text-slate-500">Gasto aprovado acima do valor do fundo</p>
+        </Cartao>
         <Cartao titulo="Pode gastar?"><p className="text-sm">{fechado ? "Fundo fechado" : admin ? "Acompanhe e decida os gastos" : "Lance gastos com comprovante assinado"}</p></Cartao>
       </div>
 

@@ -826,7 +826,10 @@ isOneToOne: false
 "remover_nf":
 { Args: { "p_nota_id": string }; Returns: undefined
                            },
-"definir_parcelas_op":
+"remover_anexo_gasto":
+{ Args: { "p_anexo_id": string }; Returns: undefined
+                           }
+          "definir_parcelas_op":
 { Args: { "p_id": string,"p_quantidade": number }; Returns: undefined
                            }
           "salvar_op":

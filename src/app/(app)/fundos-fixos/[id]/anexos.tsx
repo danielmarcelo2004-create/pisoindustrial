@@ -15,11 +15,35 @@ type Alvo = { arquivo: File; nome: string; preview: string };
 const POS_INICIAL: Pos = { fx: 0.68, fy: 0.78, fw: 0.24 };
 const EXTENSOES: Record<string, string> = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg" };
 
+/** Texto do erro, qualquer que seja o valor lançado (Error, objeto do Supabase ou texto). */
+function mensagemDe(e: unknown): string {
+  if (e instanceof Error && e.message) return e.message;
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string") {
+    return (e as { message: string }).message;
+  }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return "erro desconhecido";
+  }
+}
+
+/** Tipo do arquivo pelo nome, para quando o banco não guardou o tipo. */
+function tipoPeloNome(nome: string): string | null {
+  const ext = nome.toLowerCase().split(".").pop();
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  return null;
+}
+
 export function AnexosGasto({
   gastoId,
   fundoId,
   anexos,
   podeEnviar,
+  podeRemover,
   assinaturaUrl,
   assinaturaMime,
 }: {
@@ -27,6 +51,7 @@ export function AnexosGasto({
   fundoId: string;
   anexos: AnexoGasto[];
   podeEnviar: boolean;
+  podeRemover: boolean;
   assinaturaUrl: string | null;
   assinaturaMime: "image/png" | "image/jpeg";
 }) {
@@ -50,6 +75,23 @@ export function AnexosGasto({
     }
     if (janela) janela.location.href = data.signedUrl;
     else window.open(data.signedUrl, "_blank");
+  }
+
+  async function remover(a: AnexoGasto) {
+    if (!window.confirm(`Remover "${a.nome_arquivo}" deste gasto? O arquivo continua guardado, mas deixa de estar anexado.`)) return;
+    setErro("");
+    setOk("");
+    setOcupado(true);
+    try {
+      const { error } = await criarClienteNavegador().rpc("remover_anexo_gasto", { p_anexo_id: a.id });
+      if (error) throw new Error(error.message);
+      setOk("Anexo removido do gasto.");
+      router.refresh();
+    } catch (e) {
+      setErro(`Não foi possível remover: ${mensagemDe(e)}`);
+    } finally {
+      setOcupado(false);
+    }
   }
 
   async function montarAlvo(arquivo: File, nome: string) {
@@ -99,7 +141,7 @@ export function AnexosGasto({
         setOk("Comprovante anexado. Cadastre sua assinatura em Perfil para assiná-lo.");
       }
     } catch (e) {
-      setErro(`Não foi possível anexar: ${(e as Error).message}`);
+      setErro(`Não foi possível anexar: ${mensagemDe(e)}`);
     } finally {
       setOcupado(false);
     }
@@ -112,10 +154,13 @@ export function AnexosGasto({
     try {
       const { data, error } = await criarClienteNavegador().storage.from("documentos").createSignedUrl(a.storage_path, 300);
       if (error || !data) throw new Error("não foi possível abrir o anexo");
-      const blob = await (await fetch(data.signedUrl)).blob();
-      await montarAlvo(new File([blob], a.nome_arquivo, { type: a.mime_type ?? blob.type }), a.nome_arquivo);
+      const resposta = await fetch(data.signedUrl);
+      if (!resposta.ok) throw new Error(`o arquivo não pôde ser baixado (${resposta.status})`);
+      const blob = await resposta.blob();
+      const tipo = a.mime_type ?? tipoPeloNome(a.nome_arquivo) ?? blob.type;
+      await montarAlvo(new File([blob], a.nome_arquivo, { type: tipo }), a.nome_arquivo);
     } catch (e) {
-      setErro(`Não foi possível assinar: ${(e as Error).message}`);
+      setErro(`Não foi possível assinar: ${mensagemDe(e)}`);
     } finally {
       setOcupado(false);
     }
@@ -186,7 +231,7 @@ export function AnexosGasto({
       setOk("Comprovante assinado. O original foi preservado e a versão assinada ficou anexada ao gasto.");
       router.refresh();
     } catch (e) {
-      setErro(`Não foi possível assinar: ${(e as Error).message}`);
+      setErro(`Não foi possível assinar: ${mensagemDe(e)}`);
     } finally {
       setOcupado(false);
     }
@@ -209,6 +254,11 @@ export function AnexosGasto({
               {podeEnviar && !a.assinado && assinaturaUrl && (
                 <button type="button" onClick={() => assinarExistente(a)} disabled={ocupado} className="text-xs text-marca-700 hover:underline disabled:opacity-60">
                   Assinar
+                </button>
+              )}
+              {podeRemover && (
+                <button type="button" onClick={() => remover(a)} disabled={ocupado} className="text-xs text-red-700 hover:underline disabled:opacity-60">
+                  Remover
                 </button>
               )}
             </li>

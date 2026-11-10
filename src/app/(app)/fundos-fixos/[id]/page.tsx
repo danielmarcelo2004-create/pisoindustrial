@@ -111,6 +111,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
                         fundoId={f.id}
                         anexos={(g.anexos ?? []) as AnexoGasto[]}
                         podeEnviar={minhas && !fechado}
+                        podeRemover={minhas && !fechado && g.status === "pendente"}
                         assinaturaUrl={assinaturaUrl}
                         assinaturaMime={assinaturaMime}
                       />

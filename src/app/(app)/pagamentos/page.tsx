@@ -53,6 +53,36 @@ export default async function PagamentosPage({ searchParams }: PageProps<"/pagam
     provisoes = (lista ?? []) as typeof provisoes;
   }
 
+  // Parcelas a pagar de pagamentos parcelados, no filtro de datas: cada uma no seu vencimento.
+  let parcelasLista: { id: string; numero: number; vencimento: string; valor: number; pagamentoId: string; descricao: string; favorecido: string; obra: string }[] = [];
+  if (mostrarProvisoes) {
+    let pq = supabase
+      .from("pagamento_parcelas")
+      .select("id, numero, vencimento, valor_base, multa, juros, desconto, pagamento:pagamentos!inner(id, descricao, favorecido, status, obra_id, obra:obras(nome))")
+      .eq("status", "a_pagar")
+      .in("pagamento.status", ["aguardando_engenheiro", "aguardando_administrador", "aguardando_pagamento"])
+      .order("vencimento", { ascending: true })
+      .limit(300);
+    if (filtros.de) pq = pq.gte("vencimento", filtros.de);
+    if (filtros.ate) pq = pq.lte("vencimento", filtros.ate);
+    if (filtros.obra) pq = pq.eq("pagamento.obra_id", filtros.obra);
+    if (filtros.busca) pq = pq.or(`descricao.ilike.%${filtros.busca}%,favorecido.ilike.%${filtros.busca}%`, { referencedTable: "pagamentos" });
+    const { data: pcs } = await pq;
+    parcelasLista = (pcs ?? []).map((pc) => {
+      const pg = pc.pagamento as unknown as { id: string; descricao: string; favorecido: string; obra: { nome: string } | null };
+      return {
+        id: pc.id,
+        numero: pc.numero,
+        vencimento: pc.vencimento,
+        valor: Math.round((Number(pc.valor_base) + Number(pc.multa) + Number(pc.juros) - Number(pc.desconto)) * 100) / 100,
+        pagamentoId: pg.id,
+        descricao: pg.descricao,
+        favorecido: pg.favorecido,
+        obra: pg.obra?.nome ?? "",
+      };
+    });
+  }
+
   const qs = new URLSearchParams(Object.entries(filtros).filter(([, v]) => v) as [string, string][]);
   const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
   const linkPagina = (n: number) => {
@@ -128,6 +158,37 @@ export default async function PagamentosPage({ searchParams }: PageProps<"/pagam
           </div>
         </form>
       </Cartao>
+
+      {parcelasLista.length > 0 && (
+        <Cartao titulo={`Parcelas a pagar no filtro (${parcelasLista.length}) · cada uma no seu vencimento`} semPadding className="mb-4">
+          <div className="overflow-x-auto">
+            <table className="tabela">
+              <thead>
+                <tr>
+                  <th>Vencimento</th>
+                  <th>Favorecido / descrição</th>
+                  <th>Centro de custo</th>
+                  <th>Parcela</th>
+                  <th className="text-right">Valor</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {parcelasLista.map((pc) => (
+                  <tr key={pc.id}>
+                    <td className="whitespace-nowrap tabular-nums">{data(pc.vencimento)}</td>
+                    <td className="min-w-48"><span className="font-medium">{pc.favorecido}</span><div className="text-xs text-slate-500">{pc.descricao}</div></td>
+                    <td>{pc.obra}</td>
+                    <td className="whitespace-nowrap">{pc.numero}ª</td>
+                    <td className="text-right font-medium tabular-nums">{moeda(pc.valor)}</td>
+                    <td><Link href={`/pagamentos/${pc.pagamentoId}`} className="text-marca-700 hover:underline">Ver pagamento</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Cartao>
+      )}
 
       {provisoes.length > 0 && (
         <Cartao titulo={`Provisões no filtro (${provisoes.length}) · não entram na soma`} semPadding className="mb-4">

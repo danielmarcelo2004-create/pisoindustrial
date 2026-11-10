@@ -10,6 +10,10 @@ import { criarFundo } from "./actions";
 
 export const metadata: Metadata = { title: "Fundos fixos" };
 
+function str(v: string | string[] | undefined) {
+  return typeof v === "string" ? v : "";
+}
+
 export default async function FundosFixosPage({ searchParams }: PageProps<"/fundos-fixos">) {
   const sp = await searchParams;
   const u = await getUsuario();
@@ -32,6 +36,23 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
       ? supabase.from("profiles").select("id, nome, perfil").in("perfil", ["engenheiro", "suprimentos"]).eq("ativo", true).order("nome")
       : Promise.resolve({ data: [] as { id: string; nome: string; perfil: string }[] }),
   ]);
+
+  // Filtros da lista (não confundir com os parâmetros que preenchem o formulário de criação)
+  const fObra = str(sp.fobra);
+  const fPessoa = str(sp.fpessoa);
+  const fSit = str(sp.fsit);
+  const fBusca = str(sp.fbusca).trim().toLowerCase();
+  const centros = [...new Map((fundos ?? []).map((f) => [f.obra?.id ?? "", f.obra?.nome ?? ""])).entries()].filter(([id]) => id).sort((a, b) => a[1].localeCompare(b[1]));
+  const responsaveis = [...new Map((fundos ?? []).map((f) => [f.pessoa?.id ?? "", f.pessoa?.nome ?? ""])).entries()].filter(([id]) => id).sort((a, b) => a[1].localeCompare(b[1]));
+  const filtrados = (fundos ?? []).filter((f) => {
+    if (fObra && f.obra?.id !== fObra) return false;
+    if (fPessoa && f.pessoa?.id !== fPessoa) return false;
+    if (fSit === "fechado" && f.status !== "fechado") return false;
+    if (fSit === "aberto" && f.status === "fechado") return false;
+    if (fBusca && !`${f.obra?.nome ?? ""} ${f.pessoa?.nome ?? ""}`.toLowerCase().includes(fBusca)) return false;
+    return true;
+  });
+  const filtroAtivo = !!(fObra || fPessoa || fSit || fBusca);
 
   const gastosPorFundo = new Map<string, number[]>();
   for (const g of aprovados ?? []) gastosPorFundo.set(g.fundo_id, [...(gastosPorFundo.get(g.fundo_id) ?? []), g.valor]);
@@ -123,9 +144,39 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
             </Cartao>
           )}
 
-          <Cartao titulo={`Fundos (${fundos?.length ?? 0})`} semPadding>
+          <Cartao titulo={`Fundos (${filtrados.length}${filtroAtivo ? ` de ${fundos?.length ?? 0}` : ""})`} semPadding>
+            <form method="get" className="grid gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-4" role="search">
+              <input name="fbusca" defaultValue={fBusca} placeholder="Buscar centro de custo ou responsável…" className="campo" aria-label="Buscar fundo" />
+              <select name="fobra" defaultValue={fObra} className="campo" aria-label="Centro de custo">
+                <option value="">Todos os centros de custo</option>
+                {centros.map(([id, nome]) => (
+                  <option key={id} value={id}>{nome}</option>
+                ))}
+              </select>
+              <select name="fpessoa" defaultValue={fPessoa} className="campo" aria-label="Responsável">
+                <option value="">Todos os responsáveis</option>
+                {responsaveis.map(([id, nome]) => (
+                  <option key={id} value={id}>{nome}</option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <select name="fsit" defaultValue={fSit} className="campo min-w-0 flex-1" aria-label="Situação">
+                  <option value="">Todas as situações</option>
+                  <option value="aberto">Em aberto</option>
+                  <option value="fechado">Fechado</option>
+                </select>
+                <button type="submit" className="rounded-md bg-marca-700 px-3 text-sm font-medium text-white">Filtrar</button>
+              </div>
+              {filtroAtivo && (
+                <div className="sm:col-span-2 xl:col-span-4">
+                  <Link href="/fundos-fixos" className="text-xs text-marca-700 hover:underline">Limpar filtros</Link>
+                </div>
+              )}
+            </form>
             {!fundos?.length ? (
               <Vazio>Nenhum fundo fixo cadastrado.</Vazio>
+            ) : !filtrados.length ? (
+              <Vazio>Nenhum fundo encontrado com esses filtros.</Vazio>
             ) : (
               <div className="overflow-x-auto">
                 <table className="tabela">
@@ -140,7 +191,7 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
                     </tr>
                   </thead>
                   <tbody>
-                    {fundos.map((f) => {
+                    {filtrados.map((f) => {
                       const saldo = saldoDoFundo(f.valor, gastosPorFundo.get(f.id) ?? []);
                       const st = STATUS_FUNDO[f.status] ?? STATUS_FUNDO.em_andamento;
                       return (

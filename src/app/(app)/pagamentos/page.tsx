@@ -4,7 +4,7 @@ import { TabelaPagamentos } from "@/components/pagamentos";
 import { Cabecalho, Cartao, LinkBotao, classeBotao } from "@/components/ui";
 import { getUsuario } from "@/lib/auth";
 import { listarPagamentos, POR_PAGINA, somar, type FiltrosPagamento } from "@/lib/consultas/pagamentos";
-import { moeda } from "@/lib/formato";
+import { data, moeda } from "@/lib/formato";
 import { FORMAS_PAGAMENTO, STATUS_PAGAMENTO } from "@/lib/rotulos";
 import { createClient } from "@/lib/supabase/server";
 
@@ -33,6 +33,25 @@ export default async function PagamentosPage({ searchParams }: PageProps<"/pagam
     listarPagamentos(filtros, pagina),
     supabase.from("obras").select("id, nome").order("nome"),
   ]);
+
+  // Provisões em aberto que casam com os filtros: aparecem para saber o que vence no dia,
+  // mas não entram na soma (ainda não são pagamento). Só quando o filtro não é de pagamentos já lançados.
+  const mostrarProvisoes = !filtros.status || filtros.status === "abertos";
+  let provisoes: { id: string; descricao: string; vencimento: string | null; valor_estimado: number | null; mes_referencia: string | null; obra: { nome: string } | null }[] = [];
+  if (mostrarProvisoes) {
+    let q = supabase
+      .from("provisoes")
+      .select("id, descricao, vencimento, valor_estimado, mes_referencia, obra:obras(nome)")
+      .eq("status", "provisionada")
+      .order("vencimento", { ascending: true, nullsFirst: false })
+      .limit(300);
+    if (filtros.obra) q = q.eq("obra_id", filtros.obra);
+    if (filtros.de) q = q.gte("vencimento", filtros.de);
+    if (filtros.ate) q = q.lte("vencimento", filtros.ate);
+    if (filtros.busca) q = q.ilike("descricao", `%${filtros.busca}%`);
+    const { data: lista } = await q;
+    provisoes = (lista ?? []) as typeof provisoes;
+  }
 
   const qs = new URLSearchParams(Object.entries(filtros).filter(([, v]) => v) as [string, string][]);
   const paginas = Math.max(1, Math.ceil(total / POR_PAGINA));
@@ -109,6 +128,41 @@ export default async function PagamentosPage({ searchParams }: PageProps<"/pagam
           </div>
         </form>
       </Cartao>
+
+      {provisoes.length > 0 && (
+        <Cartao titulo={`Provisões no filtro (${provisoes.length}) · não entram na soma`} semPadding className="mb-4">
+          <div className="overflow-x-auto">
+            <table className="tabela">
+              <thead>
+                <tr>
+                  <th>Descrição</th>
+                  <th>Centro de custo</th>
+                  <th>Referência</th>
+                  <th>Vencimento</th>
+                  <th className="text-right">Valor estimado</th>
+                  <th>Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {provisoes.map((pr) => (
+                  <tr key={pr.id}>
+                    <td className="min-w-48 font-medium">{pr.descricao}</td>
+                    <td>{pr.obra?.nome}</td>
+                    <td className="whitespace-nowrap">{pr.mes_referencia ?? "—"}</td>
+                    <td className="whitespace-nowrap tabular-nums">{pr.vencimento ? data(pr.vencimento) : "—"}</td>
+                    <td className="text-right tabular-nums">{pr.valor_estimado === null ? <span className="text-slate-400">a definir</span> : moeda(pr.valor_estimado)}</td>
+                    <td>
+                      <Link href="/provisoes" className="text-marca-700 hover:underline">
+                        Provisionada
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Cartao>
+      )}
 
       <Cartao semPadding>
         <TabelaPagamentos itens={itens} />

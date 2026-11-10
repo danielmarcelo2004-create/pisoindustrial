@@ -15,7 +15,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const [{ count: naoLidas }, pend] = await Promise.all([
     supabase.from("notificacoes").select("id", { count: "exact", head: true }).is("lida_em", null),
     u.perfil === "engenheiro" || u.perfil === "administrador" || u.perfil === "administrador_master"
-      ? supabase.rpc("minhas_pendencias", undefined, { count: "exact", head: true })
+      ? supabase
+          .rpc("minhas_pendencias", undefined, { count: "exact", head: true })
+          .in("status", ["aguardando_engenheiro", "aguardando_administrador"])
       : Promise.resolve({ count: 0 }),
   ]);
 

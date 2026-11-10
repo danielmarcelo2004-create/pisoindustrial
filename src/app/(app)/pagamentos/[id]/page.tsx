@@ -453,6 +453,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
           {(parcelas?.length || podeParcelar) && (
             <Cartao titulo={`Parcelas${parcelas?.length ? ` (${parcelas.length})` : ""}`} semPadding={!!parcelas?.length}>
               {parcelas && parcelas.length > 0 && (
+                <div className="overflow-x-auto">
                 <table className="tabela">
                   <thead>
                     <tr>
@@ -485,11 +486,11 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                             )}
                           </td>
                           {baixa && (
-                            <td className="whitespace-nowrap">
+                            <td>
                               {pc.status !== "pago" && p.status === "aguardando_pagamento" && (
                                 <details>
                                   <summary className="cursor-pointer text-xs text-marca-700">Pagar esta parcela</summary>
-                                  <div className="mt-2 w-64">
+                                  <div className="mt-2 w-56">
                                     <FormAcao action={registrarBaixaParcela.bind(null, pc.id, p.id)} enviar="Confirmar pagamento" variante="sucesso" className="space-y-2">
                                       <input type="date" name="pago_em" required defaultValue={hojeISO()} className="campo" />
                                       <input name="observacao" placeholder="Observação (opcional)" className="campo" />
@@ -504,6 +505,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
               {podeParcelar && (
                 <div className={parcelas?.length ? "border-t border-slate-200 p-4" : ""}>

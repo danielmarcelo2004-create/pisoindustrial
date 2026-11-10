@@ -386,7 +386,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
         <div className="min-w-0 space-y-6">
           {souAssinante &&
             !ativos.some((d) => d.tipo === "documento_assinado" && d.enviado_por === u.id && d.pagamento_versao === p.versao) &&
-            ativos.some((d) => d.tipo !== "comprovante" && d.tipo !== "ordem_pagamento" && d.tipo !== "documento_assinado" && ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? "")) && (
+            ativos.some((d) => d.tipo !== "comprovante" && d.tipo !== "documento_assinado" && ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? "")) && (
               <Aviso tipo="alerta">
                 Antes de assinar e aprovar, posicione sua assinatura no documento (botão “Abrir e posicionar a assinatura”, abaixo).
                 A aprovação só é aceita depois disso.

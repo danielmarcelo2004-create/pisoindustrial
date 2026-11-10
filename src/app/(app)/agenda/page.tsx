@@ -11,6 +11,15 @@ export const metadata: Metadata = { title: "Agenda de pagamentos" };
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
+type ProvisaoAgenda = {
+  id: string;
+  descricao: string;
+  vencimento: string | null;
+  valor_estimado: number | null;
+  mes_referencia: string | null;
+  obra: { nome: string } | null;
+};
+
 function mesValido(s: unknown, padrao: string) {
   return typeof s === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(s) ? s : padrao;
 }
@@ -41,6 +50,30 @@ function Lista({ id, titulo, itens, cor }: { id: string; titulo: string; itens: 
   );
 }
 
+function ListaProvisoes({ id, titulo, itens }: { id: string; titulo: string; itens: ProvisaoAgenda[] }) {
+  return (
+    <div id={id} className="scroll-mt-20">
+      <Cartao titulo={<span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-violet-500" />{titulo}</span>} semPadding>
+        {!itens.length ? (
+          <div className="px-4 py-4 text-sm text-slate-500">Nenhuma provisão.</div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {itens.map((pr) => (
+              <li key={pr.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                <span>
+                  <span className="font-medium">{pr.descricao}</span>
+                  <span className="text-slate-500"> · {pr.obra?.nome}{pr.mes_referencia ? ` · ref. ${pr.mes_referencia}` : ""}</span>
+                </span>
+                <span className="tabular-nums text-slate-600">{pr.valor_estimado === null ? "valor a definir" : moeda(pr.valor_estimado)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Cartao>
+    </div>
+  );
+}
+
 export default async function AgendaPage({ searchParams }: PageProps<"/agenda">) {
   const sp = await searchParams;
   const hoje = hojeISO();
@@ -57,6 +90,17 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
   const vencidos = abertos.filter((p) => p.vencimento < hoje);
   const deHoje = abertos.filter((p) => p.vencimento === hoje);
   const proximos = abertos.filter((p) => p.vencimento > hoje && p.vencimento <= somarDias(hoje, 15));
+
+  // Provisões em aberto por data de vencimento (aparecem na agenda para não serem esquecidas;
+  // não entram nos totais, pois ainda não são pagamentos)
+  const provPorDia = new Map<string, ProvisaoAgenda[]>();
+  for (const pr of (provisoes ?? []) as ProvisaoAgenda[]) {
+    if (!pr.vencimento) continue;
+    const l = provPorDia.get(pr.vencimento) ?? [];
+    l.push(pr);
+    provPorDia.set(pr.vencimento, l);
+  }
+  const provisoesHoje = (provisoes ?? []).filter((pr) => pr.vencimento === hoje) as ProvisaoAgenda[];
 
   // Totais por data
   const porDia = new Map<string, PagamentoLista[]>();
@@ -113,6 +157,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
           {celulas.map((dia, i) => {
             if (!dia) return <div key={i} className="min-h-16 bg-slate-50/60 sm:min-h-20" />;
             const itens = porDia.get(dia) ?? [];
+            const provs = provPorDia.get(dia) ?? [];
             const vencido = dia < hoje && itens.length > 0;
             const ehHoje = dia === hoje;
             return (
@@ -132,6 +177,11 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
                 >
                   {Number(dia.slice(8))}
                 </span>
+                {provs.length > 0 && (
+                  <span className="mt-0.5 rounded bg-violet-50 px-1 py-0.5 text-[10px] font-medium text-violet-800">
+                    {provs.length} prov.
+                  </span>
+                )}
                 {itens.length > 0 && (
                   <span
                     className={cx(
@@ -153,8 +203,9 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
       </Cartao>
 
       {diaSel && (
-        <div id="dia" className="mt-6 scroll-mt-20">
+        <div id="dia" className="mt-6 scroll-mt-20 space-y-6">
           <Lista id="dia-lista" titulo={`Vencimento em ${data(diaSel)}`} itens={porDia.get(diaSel) ?? []} cor="bg-marca-500" />
+          <ListaProvisoes id="dia-provisoes" titulo={`Provisões que vencem em ${data(diaSel)} · não entram nos totais`} itens={provPorDia.get(diaSel) ?? []} />
         </div>
       )}
 
@@ -183,6 +234,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
       <div className="mt-6 space-y-6">
         <Lista id="vencidos" titulo="Vencidos" itens={vencidos} cor="bg-red-500" />
         <Lista id="hoje" titulo="Vencem hoje" itens={deHoje} cor="bg-amber-500" />
+        <ListaProvisoes id="hoje-provisoes" titulo="Provisões que vencem hoje · não entram nos totais" itens={provisoesHoje} />
         <Lista id="proximos" titulo="Próximos 15 dias" itens={proximos} cor="bg-sky-500" />
       </div>
     </>

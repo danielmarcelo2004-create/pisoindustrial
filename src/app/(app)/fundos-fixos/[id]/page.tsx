@@ -7,7 +7,7 @@ import { getUsuario } from "@/lib/auth";
 import { STATUS_FUNDO, STATUS_GASTO, saldoDoFundo } from "@/lib/fundos";
 import { data, moeda } from "@/lib/formato";
 import { createClient } from "@/lib/supabase/server";
-import { decidirGasto, fecharFundo, lancarGasto } from "../actions";
+import { decidirGasto, excluirGasto, fecharFundo, lancarGasto } from "../actions";
 import { AnexosGasto, type AnexoGasto } from "./anexos";
 
 export const metadata: Metadata = { title: "Fundo fixo" };
@@ -115,6 +115,9 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
                         assinaturaUrl={assinaturaUrl}
                         assinaturaMime={assinaturaMime}
                       />
+                      {fin && !fechado && (
+                        <FormAcao action={excluirGasto.bind(null, f.id, g.id)} enviar="Excluir gasto" variante="fantasma" confirmar="Excluir este gasto? Os comprovantes deixam de estar anexados a ele." />
+                      )}
                       {admin && pendente && (
                         <div className="grid gap-3 rounded-md bg-amber-50 p-3 sm:grid-cols-2">
                           <FormAcao action={decidirGasto.bind(null, f.id, g.id, true)} enviar="Aprovar gasto" className="space-y-2" />

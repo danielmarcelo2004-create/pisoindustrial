@@ -826,7 +826,10 @@ isOneToOne: false
 "remover_nf":
 { Args: { "p_nota_id": string }; Returns: undefined
                            },
-"remover_anexo_gasto":
+"excluir_gasto_fundo":
+{ Args: { "p_gasto_id": string }; Returns: undefined
+                           }
+          "remover_anexo_gasto":
 { Args: { "p_anexo_id": string }; Returns: undefined
                            }
           "definir_parcelas_op":

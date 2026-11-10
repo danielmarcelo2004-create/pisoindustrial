@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Aviso, Botao, Campo } from "@/components/ui";
 import { criarClienteNavegador } from "@/lib/supabase/navegador";
+import { formatoImagem } from "@/lib/imagem-pdf";
 import { useRouter } from "next/navigation";
 
 export function FormAssinatura({ userId }: { userId: string }) {
@@ -20,9 +21,11 @@ export function FormAssinatura({ userId }: { userId: string }) {
     setEnviando(true);
     try {
       const sb = criarClienteNavegador();
-      const ext = arquivo.type === "image/png" ? "png" : "jpg";
+      const formato = formatoImagem(new Uint8Array(await arquivo.slice(0, 8).arrayBuffer()));
+      if (!formato) throw new Error("o arquivo não é uma imagem PNG ou JPG válida");
+      const ext = formato === "png" ? "png" : "jpg";
       const caminho = `${userId}/assinatura.${ext}`;
-      const { error } = await sb.storage.from("assinaturas").upload(caminho, arquivo, { upsert: true, contentType: arquivo.type });
+      const { error } = await sb.storage.from("assinaturas").upload(caminho, arquivo, { upsert: true, contentType: formato === "png" ? "image/png" : "image/jpeg" });
       if (error) throw new Error(error.message);
       const { error: e2 } = await sb.rpc("definir_assinatura", { p_path: caminho });
       if (e2) throw new Error(e2.message);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { embutirImagem } from "@/lib/imagem-pdf";
 import type { PDFDocument as PDFDocumento } from "pdf-lib";
 import { useRouter } from "next/navigation";
 import { Aviso, Botao, Campo, Cartao } from "@/components/ui";
@@ -115,11 +116,11 @@ export function AssinadorDocumentos({
         img.src = preview!;
         await img.decode();
         const bytes = new Uint8Array(await arquivoOriginal.arrayBuffer());
-        const embutida = arquivoOriginal.type === "image/png" ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+        const embutida = await embutirImagem(doc, bytes);
         pagina = doc.addPage([embutida.width, embutida.height]);
         pagina.drawImage(embutida, { x: 0, y: 0, width: embutida.width, height: embutida.height });
       }
-      const sig = assinaturaMime === "image/png" ? await doc.embedPng(sigBytes) : await doc.embedJpg(sigBytes);
+      const sig = await embutirImagem(doc, sigBytes);
       const { width: pw, height: ph } = pagina.getSize();
       const w = pos.fw * pw;
       const h = w * (sig.height / sig.width);

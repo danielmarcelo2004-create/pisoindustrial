@@ -74,3 +74,13 @@ export async function fecharFundo(fundoId: string, _: Estado, fd: FormData): Pro
   revalidatePath("/agenda");
   redirect(`/fundos-fixos?fechado=${data ? "pagamento" : "saldo"}`);
 }
+
+export async function excluirGasto(fundoId: string, gastoId: string, _: Estado, __: FormData): Promise<Estado> {
+  await exigirPerfil("financeiro");
+  if (!UUID.test(gastoId)) return { erro: "Gasto não encontrado." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("excluir_gasto_fundo", { p_gasto_id: gastoId });
+  if (error) return { erro: mensagemErro(error) };
+  revalidar(fundoId);
+  return { ok: "Gasto excluído." };
+}

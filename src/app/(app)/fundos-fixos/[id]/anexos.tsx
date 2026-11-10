@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Aviso, Botao } from "@/components/ui";
 import { sha256Hex } from "@/lib/fundos";
 import { renderizarPagina, contarPaginas } from "@/lib/ocr/comprovantes";
+import { embutirImagem } from "@/lib/imagem-pdf";
 import { criarClienteNavegador } from "@/lib/supabase/navegador";
 
 export type AnexoGasto = { id: string; storage_path: string; nome_arquivo: string; mime_type: string | null; assinado: boolean };
@@ -203,11 +204,11 @@ export function AnexosGasto({
       } else {
         doc = await PDFDoc.create();
         const bytes = new Uint8Array(await alvo.arquivo.arrayBuffer());
-        const embutida = alvo.arquivo.type === "image/png" ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+        const embutida = await embutirImagem(doc, bytes);
         pagina = doc.addPage([embutida.width, embutida.height]);
         pagina.drawImage(embutida, { x: 0, y: 0, width: embutida.width, height: embutida.height });
       }
-      const sig = assinaturaMime === "image/png" ? await doc.embedPng(sigBytes) : await doc.embedJpg(sigBytes);
+      const sig = await embutirImagem(doc, sigBytes);
       const { width: pw, height: ph } = pagina.getSize();
       const w = pos.fw * pw;
       const h = w * (sig.height / sig.width);

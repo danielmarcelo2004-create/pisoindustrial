@@ -15,7 +15,9 @@ export default async function AprovacoesPage() {
     .order("vencimento");
   if (error) throw new Error(error.message);
 
-  const itens: ItemAssinavel[] = (data ?? []).map((p) => ({
+  // Só o que pede aprovação/assinatura nesta tela. Pagamentos já liberados (aguardando pagamento) são de quem dá baixa.
+  const aprovar = (data ?? []).filter((p) => p.status === "aguardando_engenheiro" || p.status === "aguardando_administrador");
+  const itens: ItemAssinavel[] = aprovar.map((p) => ({
     id: p.id,
     numero: p.numero,
     versao: p.versao,

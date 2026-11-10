@@ -44,6 +44,28 @@ function lerItens(fd: FormData): ItemOP[] | string {
   return itens;
 }
 
+function lerParcelas(fd: FormData): { vencimento: string; valor: number }[] | string {
+  let bruto: unknown;
+  try {
+    bruto = JSON.parse(t(fd, "parcelas_json") || "[]");
+  } catch {
+    return "Parcelas inválidas.";
+  }
+  if (!Array.isArray(bruto)) return "Parcelas inválidas.";
+  if (bruto.length > 60) return "Máximo de 60 parcelas.";
+  if (bruto.length === 1) return "Use uma parcela só como pagamento único (deixe a quantidade em 1).";
+  const lista: { vencimento: string; valor: number }[] = [];
+  for (const [i, b] of bruto.entries()) {
+    const it = b as Record<string, unknown>;
+    const vencimento = String(it.vencimento ?? "");
+    const valor = Math.round(Number(it.valor) * 100) / 100;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento)) return `Parcela ${i + 1}: informe o vencimento.`;
+    if (!(valor > 0)) return `Parcela ${i + 1}: informe o valor.`;
+    lista.push({ vencimento, valor });
+  }
+  return lista;
+}
+
 export async function salvarOP(id: string | null, _: Estado, fd: FormData): Promise<Estado> {
   await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const obra = t(fd, "obra_id");
@@ -73,10 +95,10 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
   });
   if (error) return { erro: mensagemErro(error) };
 
-  // Parcelas: recalculadas a partir do total e do primeiro vencimento (a OP continua sendo uma só).
-  const parcelas = Number(t(fd, "parcelas") || 1);
-  if (!Number.isInteger(parcelas) || parcelas < 1 || parcelas > 60) return { erro: "A quantidade de parcelas deve estar entre 1 e 60." };
-  const { error: erroParcelas } = await supabase.rpc("definir_parcelas_op", { p_id: data as string, p_quantidade: parcelas });
+  // Parcelas informadas no formulário (vencimento e valor de cada uma). Uma parcela só = pagamento único.
+  const parcelas = lerParcelas(fd);
+  if (typeof parcelas === "string") return { erro: parcelas };
+  const { error: erroParcelas } = await supabase.rpc("definir_parcelas_op", { p_id: data as string, p_parcelas: parcelas });
   if (erroParcelas) return { erro: mensagemErro(erroParcelas) };
 
   revalidatePath("/ops");

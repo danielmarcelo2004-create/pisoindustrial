@@ -23,8 +23,32 @@ type Padrao = {
   observacoes?: string | null;
   numero_nf?: string | null;
   parcelas?: number;
+  parcelasValores?: { vencimento: string; valor: number }[];
   itens?: ItemPadrao[];
 };
+
+type Parcela = { vencimento: string; valor: string };
+
+/** Soma meses a uma data ISO, mantendo o último dia do mês quando o dia não existe (31/01 + 1 = 28/02). */
+function somarMeses(iso: string, meses: number): string {
+  const [a, m, d] = iso.split("-").map(Number);
+  const alvo = new Date(Date.UTC(a, m - 1 + meses, 1));
+  const ultimo = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate();
+  const dia = Math.min(d, ultimo);
+  return `${alvo.getUTCFullYear()}-${String(alvo.getUTCMonth() + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
+/** Gera N parcelas: valores iguais (centavos sobram na última) e vencimentos mensais a partir do primeiro. */
+function gerarParcelas(n: number, primeiro: string, total: number): Parcela[] {
+  if (n < 2) return [];
+  const cents = Math.round(total * 100);
+  const base = Math.floor(cents / n);
+  const ultima = cents - base * (n - 1);
+  return Array.from({ length: n }, (_, i) => ({
+    vencimento: primeiro ? somarMeses(primeiro, i) : "",
+    valor: ((i === n - 1 ? ultima : base) / 100).toFixed(2).replace(".", ","),
+  }));
+}
 
 /** "1.234,56" ou "1234.56" → número (NaN se vazio/inválido) */
 function num(s: string): number {
@@ -61,11 +85,44 @@ export function FormOP({
       : [itemVazio()],
   );
   const [obra, setObra] = useState(padrao.obra_id ?? "");
+  const [venc1, setVenc1] = useState(padrao.vencimento ?? "");
+  const [qtdParc, setQtdParc] = useState(String(padrao.parcelas ?? 1));
+  const [parcelas, setParcelas] = useState<Parcela[]>(() =>
+    padrao.parcelasValores?.length && (padrao.parcelas ?? 1) > 1
+      ? padrao.parcelasValores.map((p) => ({ vencimento: p.vencimento, valor: paraCampo(p.valor, 2) }))
+      : [],
+  );
 
   const totais = itens.map((i) => Math.round(num(i.quantidade) * num(i.valor_unitario) * 100) / 100);
   const subtotal = totais.reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0);
   const total = subtotal;
   const obraSel = obras.find((o) => o.id === obra);
+
+  const nParc = Math.min(Math.max(Math.floor(Number(qtdParc) || 1), 1), 60);
+  const parcelasAtivas = nParc > 1;
+  // A tabela de parcelas sempre acompanha a quantidade e o primeiro vencimento; a primeira linha espelha o vencimento da OP.
+  const parcelasExibidas: Parcela[] = parcelasAtivas
+    ? parcelas.length === nParc
+      ? parcelas.map((p, i) => (i === 0 ? { ...p, vencimento: venc1 } : p))
+      : gerarParcelas(nParc, venc1, total)
+    : [];
+  const somaParcelas = parcelasExibidas.reduce((s, p) => s + num(p.valor), 0);
+  const parcelasBatem = !parcelasAtivas || Math.abs(somaParcelas - total) < 0.005;
+  const parcelasJson = JSON.stringify(
+    parcelasAtivas ? parcelasExibidas.map((p) => ({ vencimento: p.vencimento, valor: num(p.valor) })) : [],
+  );
+
+  const mudarQuantidade = (v: string) => {
+    setQtdParc(v);
+    const n = Math.min(Math.max(Math.floor(Number(v) || 1), 1), 60);
+    setParcelas(n > 1 ? gerarParcelas(n, venc1, total) : []);
+  };
+  const mudarVencimento = (v: string) => {
+    setVenc1(v);
+    if (parcelasAtivas) setParcelas(gerarParcelas(nParc, v, total));
+  };
+  const mudarParcela = (i: number, campo: keyof Parcela, v: string) =>
+    setParcelas(parcelasExibidas.map((p, j) => (j === i ? { ...p, [campo]: v } : p)));
 
   const alterar = (i: number, campo: keyof Item, v: string) =>
     setItens((xs) => xs.map((x, j) => (j === i ? { ...x, [campo]: v } : x)));
@@ -103,11 +160,11 @@ export function FormOP({
               ))}
             </select>
           </Campo>
-          <Campo rotulo="Primeiro vencimento" obrigatorio ajuda="Obrigatório para enviar. Nas demais parcelas, o vencimento é o mesmo dia de cada mês.">
-            <input type="date" name="vencimento" defaultValue={padrao.vencimento ?? ""} className="campo" />
+          <Campo rotulo="Vencimento" obrigatorio ajuda={parcelasAtivas ? "Vencimento da 1ª parcela. As demais podem ser ajustadas na tabela abaixo." : "Obrigatório para enviar."}>
+            <input type="date" name="vencimento" value={venc1} onChange={(e) => mudarVencimento(e.target.value)} className="campo" />
           </Campo>
-          <Campo rotulo="Quantidade de parcelas" ajuda="Use 1 para pagamento único. O valor total da OP é dividido entre as parcelas.">
-            <input type="number" name="parcelas" min={1} max={60} defaultValue={padrao.parcelas ?? 1} required className="campo" />
+          <Campo rotulo="Quantidade de parcelas" ajuda="Use 1 para pagamento único. Você pode ajustar vencimento e valor de cada parcela.">
+            <input type="number" name="parcelas" min={1} max={60} value={qtdParc} onChange={(e) => mudarQuantidade(e.target.value)} required className="campo" />
           </Campo>
           <Campo rotulo="Favorecido (fornecedor)" obrigatorio>
             <input name="favorecido" required defaultValue={padrao.favorecido ?? ""} className="campo" maxLength={200} />
@@ -209,6 +266,57 @@ export function FormOP({
           </table>
         </div>
       </Cartao>
+
+      <input type="hidden" name="parcelas_json" value={parcelasJson} />
+      {parcelasAtivas && (
+        <Cartao titulo={`Parcelas (${nParc})`} semPadding>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+                <th className="px-4 py-2">Nº</th>
+                <th className="px-4 py-2">Vencimento</th>
+                <th className="px-4 py-2 text-right">Valor (R$)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parcelasExibidas.map((p, i) => (
+                <tr key={i} className="border-b border-slate-100">
+                  <td className="px-4 py-2 tabular-nums">{i + 1}</td>
+                  <td className="px-4 py-2">
+                    {i === 0 ? (
+                      <span className="tabular-nums">{venc1 ? venc1.split("-").reverse().join("/") : "—"}</span>
+                    ) : (
+                      <input type="date" value={p.vencimento} onChange={(e) => mudarParcela(i, "vencimento", e.target.value)} className="campo" aria-label={`Vencimento da parcela ${i + 1}`} />
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <input inputMode="decimal" value={p.valor} onChange={(e) => mudarParcela(i, "valor", e.target.value)} className="campo w-32 text-right tabular-nums" aria-label={`Valor da parcela ${i + 1}`} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={2} className="px-4 py-3 text-right text-sm text-slate-600">
+                  Soma das parcelas: <span className="tabular-nums font-semibold">{moeda(somaParcelas)}</span> de {moeda(total)}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <Botao type="button" variante="secundario" tamanho="sm" onClick={() => setParcelas(gerarParcelas(nParc, venc1, total))}>
+                    Dividir igualmente
+                  </Botao>
+                </td>
+              </tr>
+              {!parcelasBatem && (
+                <tr>
+                  <td colSpan={3} className="px-4 pb-3 text-xs text-red-600">
+                    A soma das parcelas precisa ser igual ao total da OP ({moeda(total)}). Ajuste os valores ou use "Dividir igualmente".
+                  </td>
+                </tr>
+              )}
+            </tfoot>
+          </table>
+        </Cartao>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <BotaoEnviar name="acao" value="salvar" variante="secundario">

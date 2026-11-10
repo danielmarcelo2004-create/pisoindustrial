@@ -833,7 +833,7 @@ isOneToOne: false
 { Args: { "p_anexo_id": string }; Returns: undefined
                            }
           "definir_parcelas_op":
-{ Args: { "p_id": string,"p_quantidade": number }; Returns: undefined
+{ Args: { "p_id": string,"p_parcelas": Json }; Returns: undefined
                            }
           "salvar_op":
 { Args: { "p_cpf_cnpj": string,"p_dados_bancarios": string,"p_desconto"?: number,"p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_id": string,"p_itens": Json,"p_numero_nf"?: string,"p_obra_id": string,"p_observacoes": string,"p_referencia"?: string,"p_vencimento": string }; Returns: string

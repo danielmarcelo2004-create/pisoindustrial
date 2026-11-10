@@ -22,7 +22,7 @@ export default async function EditarOPPage({ params }: PageProps<"/ops/[id]/edit
       <FormOP
         action={salvarOP.bind(null, id)}
         obras={obras}
-        padrao={{ ...op, itens: op.ordem_itens, parcelas: Math.max(1, op.ordem_parcelas?.length ?? 1) }}
+        padrao={{ ...op, itens: op.ordem_itens, parcelas: Math.max(1, op.ordem_parcelas?.length ?? 1), parcelasValores: op.ordem_parcelas?.map((p) => ({ vencimento: p.vencimento, valor: Number(p.valor) })) }}
       />
     </>
   );

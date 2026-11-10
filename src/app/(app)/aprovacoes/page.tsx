@@ -26,6 +26,7 @@ export default async function AprovacoesPage() {
     obra: p.obra?.nome ?? "",
     etapa: p.status === "aguardando_engenheiro" ? "Engenheiro" : "Administrador",
     documentos: (p.documentos ?? []).filter((d) => d.ativo && d.tipo !== "comprovante").length,
+    temOP: (p.documentos ?? []).some((d) => d.ativo && d.tipo === "ordem_pagamento"),
     temDocAssinavel: (p.documentos ?? []).some(
       (d) => d.ativo && d.tipo !== "comprovante" && d.tipo !== "ordem_pagamento" && d.tipo !== "documento_assinado" &&
         ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? ""),

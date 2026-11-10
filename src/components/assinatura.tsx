@@ -19,6 +19,8 @@ export type ItemAssinavel = {
   /** Há documento assinável sem a assinatura de quem aprova nesta versão. */
   faltaAssinaturaDoc?: boolean;
   temDocAssinavel?: boolean;
+  /** Há a ordem de pagamento (PDF gerado) anexada. Não exige assinatura de documento. */
+  temOP?: boolean;
   documentos: number;
 };
 
@@ -231,7 +233,7 @@ export function SelecaoLote({ itens }: { itens: ItemAssinavel[] }) {
                       ) : i.temDocAssinavel ? (
                         <Selo cor="verde">Assinado</Selo>
                       ) : (
-                        <span className="text-xs text-slate-500">sem documento</span>
+                        <span className="text-xs text-slate-500">{i.temOP ? "OP anexada" : "sem documento"}</span>
                       )}
                     </td>
                     <td className="text-right font-medium tabular-nums">{moeda(i.valor)}</td>

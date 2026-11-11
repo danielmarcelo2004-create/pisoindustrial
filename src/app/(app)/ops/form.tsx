@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
 import { BotaoEnviar, FormAcao } from "@/components/form-acao";
-import { Botao, Campo, Cartao } from "@/components/ui";
+import { Aviso, Botao, Campo, Cartao } from "@/components/ui";
 import type { Estado } from "@/lib/erros";
+import { criarClienteNavegador } from "@/lib/supabase/navegador";
+import { salvarRascunhoAjax } from "./actions";
+import { AnexosOP, type AnexoOP } from "./anexos-op";
+import { AssinarOP } from "./assinar-op";
 
 type Item = { descricao: string; unidade: string; quantidade: string; valor_unitario: string };
 type ItemPadrao = {
@@ -67,15 +71,60 @@ export function FormOP({
   padrao = {},
   podeAssinar = false,
   assinarPadrao = false,
-  anexos,
+  ordemId: ordemIdInicial = null,
+  anexosIniciais = [],
+  assinaturaUrl = null,
+  ehEngenheiro = false,
+  assinaturaCriador = null,
 }: {
   action: (e: Estado, fd: FormData) => Promise<Estado>;
   obras: { id: string; nome: string; cidade: string; uf: string; temAdministrador: boolean }[];
   padrao?: Padrao;
   podeAssinar?: boolean;
   assinarPadrao?: boolean;
-  anexos?: ReactNode;
+  ordemId?: string | null;
+  anexosIniciais?: AnexoOP[];
+  assinaturaUrl?: string | null;
+  ehEngenheiro?: boolean;
+  assinaturaCriador?: { pos: { fx: number; fy: number; fw: number }; atual: boolean } | null;
 }) {
+  // Rascunho: na criação ele nasce ao clicar em "Salvar rascunho para anexar", sem sair da tela.
+  const [ordemId, setOrdemId] = useState<string | null>(ordemIdInicial);
+  const [obraSalva, setObraSalva] = useState(padrao.obra_id ?? "");
+  const [anexos, setAnexos] = useState<AnexoOP[]>(anexosIniciais);
+  const [erroRascunho, setErroRascunho] = useState("");
+  const [salvandoRascunho, setSalvandoRascunho] = useState(false);
+  const botaoRef = useRef<HTMLButtonElement>(null);
+
+  async function salvarParaAnexar() {
+    setErroRascunho("");
+    setSalvandoRascunho(true);
+    try {
+      const formulario = botaoRef.current?.closest("form") ?? undefined;
+      const r = await salvarRascunhoAjax(new FormData(formulario));
+      if (r.erro || !r.id) {
+        setErroRascunho(r.erro ?? "Não foi possível salvar o rascunho.");
+        return;
+      }
+      setOrdemId(r.id);
+      setObraSalva(obra);
+    } catch {
+      setErroRascunho("Não foi possível salvar o rascunho. Tente de novo.");
+    } finally {
+      setSalvandoRascunho(false);
+    }
+  }
+
+  async function recarregarAnexos() {
+    if (!ordemId) return;
+    const { data } = await criarClienteNavegador()
+      .from("ordem_anexos")
+      .select("id, storage_path, nome_arquivo, mime_type, assinado")
+      .eq("ordem_id", ordemId)
+      .order("created_at");
+    setAnexos((data ?? []) as AnexoOP[]);
+  }
+
   const [itens, setItens] = useState<Item[]>(
     padrao.itens?.length
       ? padrao.itens.map((i) => ({
@@ -270,11 +319,44 @@ export function FormOP({
       </Cartao>
 
       <input type="hidden" name="parcelas_json" value={parcelasJson} />
-      {anexos && (
-        <Cartao titulo="Comprovantes, recibos e notas">
-          {anexos}
+      <input type="hidden" name="ordem_id" value={ordemId ?? ""} />
+      {ehEngenheiro && (
+        <Cartao titulo="Assinatura do engenheiro">
+          {ordemId ? (
+            <AssinarOP
+              ordemId={ordemId}
+              assinaturaUrl={assinaturaUrl}
+              posSalva={assinaturaCriador?.pos ?? null}
+              assinada={!!assinaturaCriador?.atual}
+              desatualizada={!!assinaturaCriador && !assinaturaCriador.atual}
+            />
+          ) : (
+            <p className="text-sm text-slate-600">Salve o rascunho para assinar a OP. A assinatura entra no PDF quando a solicitação for enviada.</p>
+          )}
         </Cartao>
       )}
+      <Cartao titulo="Comprovantes, recibos e notas">
+        {ordemId ? (
+          <AnexosOP
+            ordemId={ordemId}
+            obraId={obraSalva}
+            anexos={anexos}
+            podeAssinar={ehEngenheiro}
+            assinaturaUrl={assinaturaUrl}
+            onMudou={recarregarAnexos}
+          />
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Salve o rascunho para anexar comprovantes, recibos ou notas aqui mesmo. Engenheiro e administrador assinam cada arquivo antes de anexar.
+            </p>
+            {erroRascunho && <Aviso tipo="erro">{erroRascunho}</Aviso>}
+            <Botao ref={botaoRef} type="button" variante="secundario" onClick={salvarParaAnexar} disabled={salvandoRascunho}>
+              {salvandoRascunho ? "Salvando rascunho…" : "Salvar rascunho para anexar"}
+            </Botao>
+          </div>
+        )}
+      </Cartao>
       {parcelasAtivas && (
         <Cartao titulo={`Parcelas (${nParc})`} semPadding>
           <table className="w-full text-sm">
@@ -316,7 +398,7 @@ export function FormOP({
               {!parcelasBatem && (
                 <tr>
                   <td colSpan={3} className="px-4 pb-3 text-xs text-red-600">
-                    A soma das parcelas precisa ser igual ao total da OP ({moeda(total)}). Ajuste os valores ou use "Dividir igualmente".
+                    A soma das parcelas precisa ser igual ao total da OP ({moeda(total)}). Ajuste os valores ou use &quot;Dividir igualmente&quot;.
                   </td>
                 </tr>
               )}

@@ -4,6 +4,7 @@ import { exigirPerfil } from "@/lib/auth";
 import { obrasParaOP } from "@/lib/consultas/obras-op";
 import { salvarOP } from "../actions";
 import { FormOP } from "../form";
+import { assinaturaDoUsuario } from "../assinatura-usuario";
 
 export const metadata: Metadata = { title: "Nova solicitação de OP" };
 
@@ -44,11 +45,8 @@ export default async function NovaOPPage({ searchParams }: PageProps<"/ops/nova"
           padrao={padrao}
           podeAssinar={podeAssinar}
           assinarPadrao={t("assinar") === "1"}
-          anexos={
-            <p className="text-sm text-slate-600">
-              Salve o rascunho para anexar comprovantes, recibos ou notas. Engenheiro e administrador assinam cada arquivo antes de anexar.
-            </p>
-          }
+          ehEngenheiro={u.perfil === "engenheiro"}
+          assinaturaUrl={await assinaturaDoUsuario(u.id, u.perfil === "engenheiro")}
         />
       )}
     </>

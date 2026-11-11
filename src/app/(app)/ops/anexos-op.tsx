@@ -40,12 +40,14 @@ export function AnexosOP({
   anexos,
   podeAssinar,
   assinaturaUrl,
+  onMudou,
 }: {
   ordemId: string;
   obraId: string;
   anexos: AnexoOP[];
   podeAssinar: boolean;
   assinaturaUrl: string | null;
+  onMudou?: () => void;
 }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
@@ -98,6 +100,7 @@ export function AnexosOP({
     });
     if (error) throw new Error(error.message);
     setOk("Arquivo anexado.");
+    onMudou?.();
     router.refresh();
   }
 
@@ -136,6 +139,7 @@ export function AnexosOP({
       const { error } = await criarClienteNavegador().rpc("remover_anexo_op", { p_anexo_id: a.id });
       if (error) throw new Error(error.message);
       setOk("Anexo removido.");
+      onMudou?.();
       router.refresh();
     } catch (e) {
       setErro(`Não foi possível remover: ${mensagemDe(e)}`);
@@ -206,6 +210,7 @@ export function AnexosOP({
       if (error) throw new Error(error.message);
       setAlvo(null);
       setOk("Arquivo assinado e anexado.");
+      onMudou?.();
       router.refresh();
     } catch (e) {
       setErro(`Não foi possível assinar: ${mensagemDe(e)}`);

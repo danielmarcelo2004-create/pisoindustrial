@@ -490,10 +490,23 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                               {pc.status !== "pago" && p.status === "aguardando_pagamento" && (
                                 <details>
                                   <summary className="cursor-pointer text-xs text-marca-700">Pagar esta parcela</summary>
-                                  <div className="mt-2 w-56">
-                                    <FormAcao action={registrarBaixaParcela.bind(null, pc.id, p.id)} enviar="Confirmar pagamento" variante="sucesso" className="space-y-2">
-                                      <input type="date" name="pago_em" required defaultValue={hojeISO()} className="campo" />
-                                      <input name="observacao" placeholder="Observação (opcional)" className="campo" />
+                                  <div className="mt-2 w-72">
+                                    <FormAcao action={registrarBaixaParcela.bind(null, pc.id, p.id)} enviar="Confirmar pagamento" variante="sucesso" className="space-y-3">
+                                      <p className="text-xs text-slate-600">Valor da parcela: <strong>{moeda(pc.valor_base)}</strong>. Houve multa, juros ou desconto?</p>
+                                      <div className="grid grid-cols-3 gap-2">
+                                        <Campo rotulo="Multa (R$)"><input name="multa" inputMode="decimal" placeholder="0,00" className="campo tabular-nums" /></Campo>
+                                        <Campo rotulo="Juros (R$)"><input name="juros" inputMode="decimal" placeholder="0,00" className="campo tabular-nums" /></Campo>
+                                        <Campo rotulo="Desconto (R$)"><input name="desconto" inputMode="decimal" placeholder="0,00" className="campo tabular-nums" /></Campo>
+                                      </div>
+                                      <Campo rotulo="Motivo" ajuda="Obrigatório se houver multa, juros ou desconto.">
+                                        <input name="motivo" className="campo" />
+                                      </Campo>
+                                      <Campo rotulo="Data do pagamento">
+                                        <input type="date" name="pago_em" required defaultValue={hojeISO()} className="campo" />
+                                      </Campo>
+                                      <Campo rotulo="Observação (opcional)">
+                                        <input name="observacao" className="campo" />
+                                      </Campo>
                                     </FormAcao>
                                   </div>
                                 </details>
@@ -507,7 +520,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                 </table>
                 </div>
               )}
-              {podeParcelar && (
+              {podeParcelar && !(parcelas && parcelas.length > 0) && (
                 <div className={parcelas?.length ? "border-t border-slate-200 p-4" : ""}>
                   {parcelas?.length ? <p className="mb-3 text-xs text-slate-500">Para refazer a divisão, informe as parcelas de novo.</p> : null}
                   <FormParcelas pagamentoId={p.id} valorTotal={Number(p.valor)} action={definirParcelas} />

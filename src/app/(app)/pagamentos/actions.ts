@@ -243,10 +243,36 @@ export async function registrarBaixaParcela(parcelaId: string, pagamentoId: stri
   const pagoEm = String(fd.get("pago_em") ?? "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(pagoEm)) return { erro: "Informe a data do pagamento." };
   const supabase = await createClient();
+  const { data: pc, error: erroPc } = await supabase.from("pagamento_parcelas").select("valor_base").eq("id", parcelaId).single();
+  if (erroPc || !pc) return { erro: "Parcela não encontrada." };
+
+  // Multa, juros e desconto são informados na baixa; se houver algum, o motivo é obrigatório.
+  const valorCampo = (nome: string) => {
+    const t = String(fd.get(nome) ?? "").trim();
+    if (!t) return 0;
+    const n = Number(t.replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : NaN;
+  };
+  const multa = valorCampo("multa");
+  const juros = valorCampo("juros");
+  const desconto = valorCampo("desconto");
+  if ([multa, juros, desconto].some((v) => Number.isNaN(v))) return { erro: "Multa, juros e desconto devem ser valores em reais." };
+  const motivo = String(fd.get("motivo") ?? "").trim();
+  const houveAjuste = multa > 0 || juros > 0 || desconto > 0;
+  if (houveAjuste && !motivo) return { erro: "Informe o motivo da multa, juros ou desconto." };
+  const valorPago = Math.round((Number(pc.valor_base) + multa + juros - desconto) * 100) / 100;
+  if (valorPago <= 0) return { erro: "O valor pago precisa ser maior que zero." };
+
+  const partes = [
+    String(fd.get("observacao") ?? "").trim(),
+    houveAjuste ? `Multa R$ ${multa.toFixed(2)}, juros R$ ${juros.toFixed(2)}, desconto R$ ${desconto.toFixed(2)}. Motivo: ${motivo}` : "",
+  ].filter(Boolean);
+
   const { error } = await supabase.rpc("registrar_baixa_parcela", {
     p_parcela_id: parcelaId,
     p_pago_em: pagoEm,
-    p_observacao: String(fd.get("observacao") ?? "").trim() || undefined,
+    p_valor_pago: valorPago,
+    p_observacao: partes.join(" · ") || undefined,
   });
   if (error) return { erro: mensagemErro(error) };
   revalidatePath(`/pagamentos/${pagamentoId}`);

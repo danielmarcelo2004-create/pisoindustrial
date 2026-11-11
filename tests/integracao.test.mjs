@@ -409,6 +409,8 @@ test('OP: envio cria pagamento direto ao administrador e acompanha o status até
 
   await rpc('adm', 'marcar_op_em_analise', { p_pagamento_id: pagId })
   assert.equal((await op()).status, 'em_analise')
+  // o PDF da OP também é assinado por quem aprova: o administrador assina antes de aprovar
+  await anexar('adm', p, 'documento_assinado')
   await rpc('adm', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'aprovado' })
   assert.equal((await op()).status, 'aprovada')
   const { data: n } = await u.eng.client.from('notificacoes').select('titulo').eq('pagamento_id', pagId)

@@ -48,18 +48,23 @@ export function FormParcelas({
         </p>
         <div className="space-y-2">
           {linhas.map((l, i) => (
-            <div key={i} className="grid grid-cols-2 gap-2 rounded-md border border-slate-200 p-3 sm:grid-cols-6">
-              <Campo rotulo={`Parcela ${i + 1} · valor`}><input className="campo tabular-nums" inputMode="decimal" value={l.valor} onChange={(e) => alterar(i, "valor", e.target.value)} required /></Campo>
-              <Campo rotulo="Vencimento"><input type="date" className="campo" value={l.vencimento} onChange={(e) => alterar(i, "vencimento", e.target.value)} required /></Campo>
-              <Campo rotulo="Multa (R$)"><input className="campo tabular-nums" inputMode="decimal" value={l.multa} onChange={(e) => alterar(i, "multa", e.target.value)} /></Campo>
-              <Campo rotulo="Juros (R$)"><input className="campo tabular-nums" inputMode="decimal" value={l.juros} onChange={(e) => alterar(i, "juros", e.target.value)} /></Campo>
-              <Campo rotulo="Desconto (R$)"><input className="campo tabular-nums" inputMode="decimal" value={l.desconto} onChange={(e) => alterar(i, "desconto", e.target.value)} /></Campo>
-              <Campo rotulo="Motivo (se houver multa, juros ou desconto)"><input className="campo" value={l.motivo} onChange={(e) => alterar(i, "motivo", e.target.value)} /></Campo>
-              {linhas.length > 2 && (
-                <button type="button" className="text-xs text-red-700 hover:underline sm:col-span-6 sm:justify-self-end" onClick={() => setLinhas((xs) => xs.filter((_, j) => j !== i))}>
-                  Remover parcela {i + 1}
-                </button>
-              )}
+            <div key={i} className="space-y-3 rounded-md border border-slate-200 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-700">Parcela {i + 1}</span>
+                {linhas.length > 2 && (
+                  <button type="button" className="text-xs text-red-700 hover:underline" onClick={() => setLinhas((xs) => xs.filter((_, j) => j !== i))}>
+                    Remover
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Campo rotulo="Valor (R$)"><input className="campo tabular-nums" inputMode="decimal" placeholder="0,00" value={l.valor} onChange={(e) => alterar(i, "valor", e.target.value)} required /></Campo>
+                <Campo rotulo="Vencimento"><input type="date" className="campo" value={l.vencimento} onChange={(e) => alterar(i, "vencimento", e.target.value)} required /></Campo>
+                <Campo rotulo="Multa (R$)"><input className="campo tabular-nums" inputMode="decimal" placeholder="0,00" value={l.multa} onChange={(e) => alterar(i, "multa", e.target.value)} /></Campo>
+                <Campo rotulo="Juros (R$)"><input className="campo tabular-nums" inputMode="decimal" placeholder="0,00" value={l.juros} onChange={(e) => alterar(i, "juros", e.target.value)} /></Campo>
+                <Campo rotulo="Desconto (R$)"><input className="campo tabular-nums" inputMode="decimal" placeholder="0,00" value={l.desconto} onChange={(e) => alterar(i, "desconto", e.target.value)} /></Campo>
+                <Campo rotulo="Motivo"><input className="campo" placeholder="se houver multa, juros ou desconto" value={l.motivo} onChange={(e) => alterar(i, "motivo", e.target.value)} /></Campo>
+              </div>
             </div>
           ))}
         </div>

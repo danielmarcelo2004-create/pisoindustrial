@@ -528,7 +528,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                 </Aviso>
               </Cartao>
             )}
-          {assinaturaUrl && p.status !== "cancelado" && (
+          {assinaturaUrl && p.status !== "cancelado" && ["engenheiro", "administrador", "administrador_master"].includes(u.perfil) && (
             <AssinadorDocumentos
               documentos={ativos
                 .filter((d) => d.tipo !== "comprovante")

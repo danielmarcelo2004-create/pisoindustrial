@@ -19,7 +19,7 @@ const ASSINATURA = path.join(__dirname, '..', '..', 'public', 'logo-empresa.jpg'
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log('[pageerror]', e.message.slice(0, 200)));
   await page.goto('http://127.0.0.1:3000/login');
-  await page.fill('input[name=email]', 'financeiro@demo.local');
+  await page.fill('input[name=email]', 'engenheiro@demo.local');
   await page.fill('input[name=senha]', SENHA);
   await Promise.all([page.waitForURL((u) => !u.pathname.startsWith('/login')), page.click('button:has-text("Entrar")')]);
 

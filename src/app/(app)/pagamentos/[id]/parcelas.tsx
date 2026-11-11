@@ -63,7 +63,7 @@ export function FormParcelas({
                 <Campo rotulo="Multa (R$)"><input className="campo tabular-nums" inputMode="decimal" placeholder="0,00" value={l.multa} onChange={(e) => alterar(i, "multa", e.target.value)} /></Campo>
                 <Campo rotulo="Juros (R$)"><input className="campo tabular-nums" inputMode="decimal" placeholder="0,00" value={l.juros} onChange={(e) => alterar(i, "juros", e.target.value)} /></Campo>
                 <Campo rotulo="Desconto (R$)"><input className="campo tabular-nums" inputMode="decimal" placeholder="0,00" value={l.desconto} onChange={(e) => alterar(i, "desconto", e.target.value)} /></Campo>
-                <Campo rotulo="Motivo"><input className="campo" placeholder="se houver multa, juros ou desconto" value={l.motivo} onChange={(e) => alterar(i, "motivo", e.target.value)} /></Campo>
+                <Campo rotulo="Motivo" className="col-span-2"><input className="campo" placeholder="se houver multa, juros ou desconto" value={l.motivo} onChange={(e) => alterar(i, "motivo", e.target.value)} /></Campo>
               </div>
             </div>
           ))}

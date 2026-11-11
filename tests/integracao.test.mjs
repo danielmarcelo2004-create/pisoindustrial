@@ -669,3 +669,17 @@ test('assinatura em cadeia: cada anexo tem a própria versão mais recente', asy
   // o engenheiro não assina de novo a mesma cadeia
   await assert.rejects(() => assinar('eng', pag, notaEng), /versão mais recente|já recebeu|row-level security/)
 })
+
+test('suprimentos cria OP em qualquer obra, mesmo sem acesso liberado', async () => {
+  const { data: obra } = await u.fin.client.from('obras').insert({ nome: `Obra sup ${sufixo}`, cidade: 'Feira de Santana', uf: 'BA', fluxo: 'C' }).select().single()
+  const id = await salvarOP('sup', obra.id)
+  assert.ok(id)
+})
+
+test('suprimentos anexa boleto e nota em qualquer obra; outros tipos continuam restritos', async () => {
+  const { data: obra } = await u.fin.client.from('obras').insert({ nome: `Obra sup anexo ${sufixo}`, cidade: 'Feira de Santana', uf: 'BA', fluxo: 'C' }).select().single()
+  const pag = await pagamento(await novoPagamento('fin', obra.id))
+  await anexar('sup', pag, 'boleto')
+  await anexar('sup', pag, 'nota_fiscal')
+  await assert.rejects(() => anexar('sup', pag, 'outro'), /permissão|row-level security/)
+})

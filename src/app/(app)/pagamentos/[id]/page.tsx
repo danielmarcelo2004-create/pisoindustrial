@@ -348,7 +348,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                 </ul>
               </details>
             )}
-            {(atua || (baixa && (p.status === "pago" || p.status === "aguardando_pagamento"))) && (
+            {(atua || (u.perfil === "suprimentos" && !finalizado) || (baixa && (p.status === "pago" || p.status === "aguardando_pagamento"))) && (
               <div className="border-t border-slate-200 px-4 py-3">
                 <details>
                   <summary className="cursor-pointer text-sm font-medium text-marca-700">+ Anexar documento</summary>

@@ -60,7 +60,7 @@ async function entrar(browser, email) {
   await page.fill('input[aria-label="Valor unitário do item 2"]', '8,90');
   await page.getByText('R$ 1.199,45').first().waitFor(); // 750 + 449,45
   await shot(page, '31-nova-op');
-  await Promise.all([page.waitForURL(/\/ops\/[0-9a-f-]{36}\?salva/), page.click('button:has-text("Salvar rascunho")')]);
+  await Promise.all([page.waitForURL(/\/ops\/[0-9a-f-]{36}\/editar\?salva/), page.click('button:has-text("Salvar rascunho")')]);
   await page.getByText('Em elaboração').first().waitFor();
   ok('Engenheiro salvou rascunho de OP com 2 itens (total calculado R$ 1.199,45)');
 

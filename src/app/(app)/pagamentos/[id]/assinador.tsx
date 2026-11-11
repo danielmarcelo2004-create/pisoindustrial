@@ -8,12 +8,48 @@ import { Aviso, Botao, Campo, Cartao } from "@/components/ui";
 import { renderizarPagina, contarPaginas } from "@/lib/ocr/comprovantes";
 import { criarClienteNavegador } from "@/lib/supabase/navegador";
 
-type Doc = { id: string; nome: string; mime: string; tipo?: string };
+type Doc = {
+  id: string;
+  nome: string;
+  mime: string;
+  tipo?: string;
+  base?: string | null;
+  versao?: number;
+  enviadoPorId?: string | null;
+  enviadoPorNome?: string | null;
+};
 type Pos = { fx: number; fy: number; fw: number };
 
 async function sha256Hex(bytes: Uint8Array) {
   const buf = await crypto.subtle.digest("SHA-256", bytes as BufferSource);
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Cadeia de assinaturas: cada versão assinada aponta para a versão que ela assina.
+ * Só a versão mais recente de cada cadeia recebe a próxima assinatura; as anteriores ficam no histórico.
+ */
+function cadeias(documentos: Doc[]) {
+  const porId = new Map(documentos.map((d) => [d.id, d]));
+  const temFilho = new Set(documentos.map((d) => d.base).filter((b): b is string => !!b));
+  const raiz = (d: Doc): Doc => {
+    let atual = d;
+    while (atual.base && porId.get(atual.base)) atual = porId.get(atual.base)!;
+    return atual;
+  };
+  // Assinaturas da cadeia, da raiz até a versão de quem chamou.
+  const assinantesDe = (d: Doc): Doc[] => {
+    const lista: Doc[] = [];
+    let atual: Doc | undefined = d;
+    while (atual) {
+      if (atual.tipo === "documento_assinado") lista.unshift(atual);
+      atual = atual.base ? porId.get(atual.base) : undefined;
+    }
+    return lista;
+  };
+  const pontas = documentos.filter((d) => !temFilho.has(d.id) && d.tipo !== "comprovante");
+  const historico = documentos.filter((d) => temFilho.has(d.id) && d.tipo !== "comprovante");
+  return { pontas, historico, raiz, assinantesDe };
 }
 
 export function AssinadorDocumentos({
@@ -22,17 +58,25 @@ export function AssinadorDocumentos({
   assinaturaMime,
   pagamentoId,
   obraId,
+  usuarioId,
 }: {
   documentos: Doc[];
   assinaturaUrl: string;
   assinaturaMime: "image/png" | "image/jpeg";
   pagamentoId: string;
   obraId: string;
+  usuarioId: string;
 }) {
   const router = useRouter();
-  // Começa pela versão assinada mais recente (assim as assinaturas se acumulam no mesmo documento).
-  const ultimaAssinada = [...documentos].reverse().find((d) => d.tipo === "documento_assinado");
-  const [escolhido, setEscolhido] = useState<Doc | null>(ultimaAssinada ?? documentos[0] ?? null);
+  const { pontas, historico, raiz, assinantesDe } = cadeias(documentos);
+  const jaAssinou = (d: Doc) => assinantesDe(d).some((x) => x.enviadoPorId === usuarioId);
+  const textoAssinantes = (d: Doc) => {
+    const nomes = assinantesDe(d).map((x) => x.enviadoPorNome ?? "—");
+    return nomes.length ? `assinado por ${nomes.join(" e ")}` : "sem assinatura";
+  };
+  // Começa pela versão mais recente que ainda não foi assinada por quem está usando a tela.
+  const pendentes = pontas.filter((d) => !jaAssinou(d));
+  const [escolhido, setEscolhido] = useState<Doc | null>(pendentes[0] ?? null);
   const [aberto, setAberto] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [arquivoOriginal, setArquivoOriginal] = useState<File | null>(null);
@@ -131,10 +175,10 @@ export function AssinadorDocumentos({
       const caminho = `${obraId}/${pagamentoId}/${crypto.randomUUID()}.pdf`;
       const up = await sb.storage.from("documentos").upload(caminho, saida, { contentType: "application/pdf" });
       if (up.error) throw new Error(up.error.message);
-      const { error } = await sb.rpc("registrar_documento", {
+      const { error } = await sb.rpc("registrar_assinatura", {
         p_pagamento_id: pagamentoId,
-        p_tipo: "documento_assinado",
-        p_nome_arquivo: `${escolhido.nome.replace(/\.[^.]+$/, "")} - assinado.pdf`.slice(0, 200),
+        p_base_id: escolhido.id,
+        p_nome_arquivo: `${raiz(escolhido).nome.replace(/\.[^.]+$/, "")} - assinado.pdf`.slice(0, 200),
         p_storage_path: caminho,
         p_mime_type: "application/pdf",
         p_tamanho: saida.length,
@@ -157,13 +201,26 @@ export function AssinadorDocumentos({
       {ok && <div className="mb-3"><Aviso tipo="sucesso">{ok}</Aviso></div>}
       {erro && <div className="mb-3"><Aviso tipo="erro">{erro}</Aviso></div>}
       <div className="space-y-3">
-        <Campo rotulo="Documento">
-          <select className="campo" value={escolhido?.id ?? ""} onChange={(e) => setEscolhido(documentos.find((d) => d.id === e.target.value) ?? null)}>
-            {documentos.map((d) => (
-              <option key={d.id} value={d.id}>{d.nome}</option>
+        <Campo rotulo="Documento" ajuda="Só a versão mais recente de cada documento pode ser assinada.">
+          <select className="campo" value={escolhido?.id ?? ""} onChange={(e) => setEscolhido(pontas.find((d) => d.id === e.target.value) ?? null)}>
+            {pontas.map((d) => (
+              <option key={d.id} value={d.id} disabled={jaAssinou(d)}>
+                {raiz(d).nome} · {textoAssinantes(d)}{jaAssinou(d) ? " (você já assinou)" : ""}
+              </option>
             ))}
           </select>
         </Campo>
+        {escolhido && <p className="text-xs text-slate-600">Você está assinando: <strong>{raiz(escolhido).nome}</strong> · {textoAssinantes(escolhido)}</p>}
+        {historico.length > 0 && (
+          <details className="text-xs text-slate-600">
+            <summary className="cursor-pointer">Histórico ({historico.length} versão(ões) anterior(es), não assinável)</summary>
+            <ul className="mt-2 space-y-1">
+              {historico.map((d) => (
+                <li key={d.id}>{raiz(d).nome} · {textoAssinantes(d)}</li>
+              ))}
+            </ul>
+          </details>
+        )}
         <Botao onClick={abrir} disabled={ocupado || !escolhido}>{ocupado ? "Abrindo…" : "Abrir e posicionar a assinatura"}</Botao>
         <p className="text-xs text-slate-500">O documento original não é alterado: a versão assinada é uma nova versão anexada ao pagamento.</p>
       </div>

@@ -636,3 +636,36 @@ test('fundo fixo: aprovação do administrador, status pelo saldo, avisos e fech
   assert.equal(Number(fim.reposicao), 100)
   assert.equal(Number(fim.reembolso), 20)
 })
+
+// Assinatura em cadeia: cada anexo tem a sua própria versão mais recente.
+async function assinar(chave, pag, base) {
+  const conteudo = Buffer.from(`%PDF-1.4 assinado ${randomUUID()}`)
+  const path = `${pag.obra_id}/${pag.id}/${randomUUID()}.pdf`
+  const { error } = await u[chave].client.storage.from('documentos').upload(path, conteudo, { contentType: 'application/pdf' })
+  if (error) throw new Error('upload: ' + error.message)
+  return rpc(chave, 'registrar_assinatura', {
+    p_pagamento_id: pag.id, p_base_id: base, p_nome_arquivo: 'assinado.pdf', p_storage_path: path,
+    p_mime_type: 'application/pdf', p_tamanho: conteudo.length,
+    p_sha256: createHash('sha256').update(conteudo).digest('hex'),
+  })
+}
+
+test('assinatura em cadeia: cada anexo tem a própria versão mais recente', async () => {
+  const pag = await pagamento(await novoPagamento('fin', obraA.id))
+  const boleto = await anexar('fin', pag, 'boleto')
+  const nota = await anexar('fin', pag, 'nota_fiscal')
+  // engenheiro assina os dois anexos
+  const boletoEng = await assinar('eng', pag, boleto)
+  const notaEng = await assinar('eng', pag, nota)
+  // o engenheiro aprova a etapa dele; só então o administrador assina
+  await rpc('eng', 'decidir_aprovacao', { p_itens: [{ id: pag.id, versao: pag.versao }], p_decisao: 'aprovado' })
+  // administrador assina só o boleto, sobre a versão do engenheiro
+  await assinar('adm', pag, boletoEng)
+  // a versão já assinada pelo administrador não recebe nova assinatura, nem a versão antiga
+  await assert.rejects(() => assinar('adm', pag, boletoEng), /versão mais recente|já recebeu|row-level security/)
+  await assert.rejects(() => assinar('adm', pag, boleto), /versão mais recente|já recebeu|row-level security/)
+  // a nota continua independente: o administrador ainda pode assinar a versão do engenheiro dela
+  await assinar('adm', pag, notaEng)
+  // o engenheiro não assina de novo a mesma cadeia
+  await assert.rejects(() => assinar('eng', pag, notaEng), /versão mais recente|já recebeu|row-level security/)
+})

@@ -65,13 +65,16 @@ isOneToOne: false
                   ]
                 },"documentos": {
                   Row: {
+                    "base_assinatura_id": string | null,
                     "ativo": boolean,"created_at": string,"documento_original_id": string | null,"enviado_por": string,"id": string,"mime_type": string | null,"motivo_substituicao": string | null,"nome_arquivo": string,"obra_id": string,"pagamento_id": string,"pagamento_versao": number,"sha256": string,"storage_path": string,"substituido_em": string | null,"substituido_por": string | null,"tamanho": number | null,"tipo": Database["public"]['Enums']["tipo_documento"],"versao": number
                   }
                   ComputedFields: never
                   Insert: {
+                    "base_assinatura_id"?: string | null,
                     "ativo"?: boolean,"created_at"?: string,"documento_original_id"?: string | null,"enviado_por": string,"id"?: string,"mime_type"?: string | null,"motivo_substituicao"?: string | null,"nome_arquivo": string,"obra_id": string,"pagamento_id": string,"pagamento_versao": number,"sha256": string,"storage_path": string,"substituido_em"?: string | null,"substituido_por"?: string | null,"tamanho"?: number | null,"tipo": Database["public"]['Enums']["tipo_documento"],"versao"?: number
                   }
                   Update: {
+                    "base_assinatura_id"?: string | null,
                     "ativo"?: boolean,"created_at"?: string,"documento_original_id"?: string | null,"enviado_por"?: string,"id"?: string,"mime_type"?: string | null,"motivo_substituicao"?: string | null,"nome_arquivo"?: string,"obra_id"?: string,"pagamento_id"?: string,"pagamento_versao"?: number,"sha256"?: string,"storage_path"?: string,"substituido_em"?: string | null,"substituido_por"?: string | null,"tamanho"?: number | null,"tipo"?: Database["public"]['Enums']["tipo_documento"],"versao"?: number
                   }
                   Relationships: [
@@ -848,6 +851,9 @@ isOneToOne: false
                            },
 "excluir_gasto_fundo":
 { Args: { "p_gasto_id": string }; Returns: undefined
+                           }
+          "registrar_assinatura":
+{ Args: { "p_base_id": string,"p_mime_type": string,"p_nome_arquivo": string,"p_pagamento_id": string,"p_sha256": string,"p_storage_path": string,"p_tamanho": number }; Returns: string
                            }
           "registrar_anexo_op":
 { Args: { "p_assinado": boolean,"p_mime": string,"p_nome": string,"p_ordem_id": string,"p_sha256": string,"p_storage_path": string }; Returns: string

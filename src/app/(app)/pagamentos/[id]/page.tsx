@@ -535,11 +535,21 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                 // Só a versão assinada do conteúdo atual: versões assinadas de versões anteriores ficam de fora.
                 .filter((d) => d.tipo !== "documento_assinado" || d.pagamento_versao === p.versao)
                 .filter((d) => ["application/pdf", "image/png", "image/jpeg"].includes(d.mime_type ?? ""))
-                .map((d) => ({ id: d.id, nome: d.nome_arquivo, mime: d.mime_type ?? "application/pdf", tipo: d.tipo }))}
+                .map((d) => ({
+                  id: d.id,
+                  nome: d.nome_arquivo,
+                  mime: d.mime_type ?? "application/pdf",
+                  tipo: d.tipo,
+                  base: d.base_assinatura_id,
+                  versao: d.versao,
+                  enviadoPorId: d.enviado_por,
+                  enviadoPorNome: d.enviado?.nome ?? null,
+                }))}
               assinaturaUrl={assinaturaUrl}
               assinaturaMime={assinaturaMime}
               pagamentoId={p.id}
               obraId={p.obra_id}
+              usuarioId={u.id}
             />
           )}
           <Cartao titulo="Assinaturas">

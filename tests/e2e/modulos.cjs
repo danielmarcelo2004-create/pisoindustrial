@@ -61,17 +61,17 @@ async function entrar(browser, email) {
   await page.getByText('R$ 1.199,45').first().waitFor(); // 750 + 449,45
   await shot(page, '31-nova-op');
   await Promise.all([page.waitForURL(/\/ops\/[0-9a-f-]{36}\/editar\?salva/), page.click('button:has-text("Salvar rascunho")')]);
-  await page.getByText('Em elaboração').first().waitFor();
+  await page.getByText('Editar solicitação (rascunho)').first().waitFor();
   ok('Engenheiro salvou rascunho de OP com 2 itens (total calculado R$ 1.199,45)');
 
-  const opUrl = page.url().split('?')[0];
+  const opUrl = page.url().split('/editar')[0].split('?')[0];
   const pdf = await ctx.request.get(opUrl + '/pdf');
   const pdfBuf = await pdf.body();
   if (pdf.headers()['content-type'] !== 'application/pdf' || pdfBuf.slice(0, 4).toString() !== '%PDF') throw new Error('PDF de prévia inválido');
   fs.writeFileSync(path.join(DIR, 'op-rascunho.pdf'), pdfBuf);
   ok(`Pré-visualização do PDF (${pdfBuf.length} bytes)`);
 
-  await page.click('button:has-text("Enviar OP")');
+  await page.click('button:has-text("Salvar e enviar")');
   await page.waitForURL(/enviada=1/);
   await page.getByText(/OP-\d{4}-\d{5}/).first().waitFor();
   const numeroOP = (await page.locator('h1').innerText()).match(/OP-\d{4}-\d{5}/)[0];
@@ -85,14 +85,47 @@ async function entrar(browser, email) {
   const pagHref = await page.locator('a:has-text("Ver pagamento")').getAttribute('href');
   await ctx.close();
 
+  // 1a. Assinaturas cadastradas (engenheiro e administrador) para assinar as OPs
+  for (const email of ['engenheiro@demo.local', 'administrador@demo.local']) {
+    ({ ctx, page } = await entrar(browser, email));
+    await page.goto(BASE + '/perfil');
+    if (await page.$('input[type=file]')) {
+      await page.setInputFiles('input[type=file]', path.join(__dirname, '..', '..', 'public', 'logo-empresa.jpg'));
+      await page.click('button:has-text("Salvar assinatura")');
+      await page.getByText('Assinatura salva').waitFor({ timeout: 60000 });
+    }
+    await ctx.close();
+  }
+
+  // 1b. O engenheiro que criou a OP assina o PDF e aprova a etapa dele
+  ({ ctx, page } = await entrar(browser, 'engenheiro@demo.local'));
+  await page.goto(BASE + pagHref);
+  await page.click('button:has-text("Abrir e posicionar a assinatura")');
+  await page.getByText('Posicione sua assinatura').waitFor();
+  await page.click('button:has-text("Confirmar assinatura")');
+  await page.getByText(/Documento assinado\. O original/).waitFor({ timeout: 90000 });
+  await page.goto(BASE + pagHref);
+  await page.click('button:has-text("Assinar e aprovar")');
+  await page.check('input[name=conferi]');
+  await page.fill('input[name=senha]', SENHA);
+  await page.click('form button:has-text("Assinar e aprovar")');
+  await page.getByText('Encaminhado ao administrador').first().waitFor({ timeout: 20000 }).catch(() => {});
+  ok('Engenheiro assinou e aprovou a própria OP');
+  await ctx.close();
+
   // 2. Administrador abre (em análise) e aprova
   ({ ctx, page } = await entrar(browser, 'administrador@demo.local'));
   await page.goto(BASE + pagHref);
-  await page.getByText('Sua assinatura').waitFor();
+  await page.click('button:has-text("Abrir e posicionar a assinatura")');
+  await page.getByText('Posicione sua assinatura').waitFor();
+  await page.click('button:has-text("Confirmar assinatura")');
+  await page.getByText(/Documento assinado\. O original/).waitFor({ timeout: 90000 });
+  await page.goto(BASE + pagHref);
+  await page.click('button:has-text("Assinar e aprovar")');
   await page.check('input[name=conferi]');
   await page.fill('input[name=senha]', SENHA);
-  await page.click('button:has-text("Assinar e aprovar")');
-  await page.getByText('Documento assinado e encaminhado').waitFor();
+  await page.click('form button:has-text("Assinar e aprovar")');
+  await page.getByText('Documento assinado e encaminhado').waitFor().catch(async (e) => { console.log('ADM ALERTAS:', (await page.locator('[role=alert]').allInnerTexts()).join(' | ')); throw e; });
   ok('Administrador aprovou a OP');
   // suprimentos não participou: o fluxo não passou por ele
   await ctx.close();

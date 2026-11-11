@@ -453,72 +453,61 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
           {(parcelas?.length || podeParcelar) && (
             <Cartao titulo={`Parcelas${parcelas?.length ? ` (${parcelas.length})` : ""}`} semPadding={!!parcelas?.length}>
               {parcelas && parcelas.length > 0 && (
-                <div className="overflow-x-auto">
-                <table className="tabela">
-                  <thead>
-                    <tr>
-                      <th>Nº</th>
-                      <th>Vencimento</th>
-                      <th className="text-right">Valor</th>
-                      <th className="text-right">Multa/juros</th>
-                      <th className="text-right">Desconto</th>
-                      <th className="text-right">A pagar</th>
-                      <th>Situação</th>
-                      {baixa && <th />}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {parcelas.map((pc) => {
-                      const aPagar = Number(pc.valor_base) + Number(pc.multa) + Number(pc.juros) - Number(pc.desconto);
-                      return (
-                        <tr key={pc.id}>
-                          <td>{pc.numero}</td>
-                          <td className="whitespace-nowrap">{data(pc.vencimento)}</td>
-                          <td className="text-right tabular-nums">{moeda(pc.valor_base)}</td>
-                          <td className="text-right tabular-nums">{Number(pc.multa) + Number(pc.juros) > 0 ? moeda(Number(pc.multa) + Number(pc.juros)) : "—"}</td>
-                          <td className="text-right tabular-nums">{Number(pc.desconto) > 0 ? moeda(pc.desconto) : "—"}</td>
-                          <td className="text-right font-medium tabular-nums">{moeda(aPagar)}</td>
-                          <td>
+                <ul className="divide-y divide-slate-100">
+                  {parcelas.map((pc) => {
+                    const aPagar = Number(pc.valor_base) + Number(pc.multa) + Number(pc.juros) - Number(pc.desconto);
+                    const ajustes = Number(pc.multa) + Number(pc.juros) - Number(pc.desconto);
+                    const podePagar = baixa && pc.status !== "pago" && p.status === "aguardando_pagamento";
+                    return (
+                      <li key={pc.id} className="space-y-2 px-4 py-3 text-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-medium">Parcela {pc.numero} de {parcelas.length}</div>
+                            <div className="text-xs text-slate-500">Vencimento {data(pc.vencimento)}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-semibold tabular-nums">{moeda(aPagar)}</div>
                             {pc.status === "pago" ? (
                               <Selo cor="verde">Paga em {data(pc.pago_em)}</Selo>
                             ) : (
                               <Selo cor="amarelo">A pagar</Selo>
                             )}
-                          </td>
-                          {baixa && (
-                            <td>
-                              {pc.status !== "pago" && p.status === "aguardando_pagamento" && (
-                                <details>
-                                  <summary className="cursor-pointer text-xs text-marca-700">Pagar esta parcela</summary>
-                                  <div className="mt-2 w-72">
-                                    <FormAcao action={registrarBaixaParcela.bind(null, pc.id, p.id)} enviar="Confirmar pagamento" variante="sucesso" className="space-y-3">
-                                      <p className="text-xs text-slate-600">Valor da parcela: <strong>{moeda(pc.valor_base)}</strong>. Houve multa, juros ou desconto?</p>
-                                      <div className="grid grid-cols-3 gap-2">
-                                        <Campo rotulo="Multa (R$)"><input name="multa" inputMode="decimal" placeholder="0,00" className="campo tabular-nums" /></Campo>
-                                        <Campo rotulo="Juros (R$)"><input name="juros" inputMode="decimal" placeholder="0,00" className="campo tabular-nums" /></Campo>
-                                        <Campo rotulo="Desconto (R$)"><input name="desconto" inputMode="decimal" placeholder="0,00" className="campo tabular-nums" /></Campo>
-                                      </div>
-                                      <Campo rotulo="Motivo" ajuda="Obrigatório se houver multa, juros ou desconto.">
-                                        <input name="motivo" className="campo" />
-                                      </Campo>
-                                      <Campo rotulo="Data do pagamento">
-                                        <input type="date" name="pago_em" required defaultValue={hojeISO()} className="campo" />
-                                      </Campo>
-                                      <Campo rotulo="Observação (opcional)">
-                                        <input name="observacao" className="campo" />
-                                      </Campo>
-                                    </FormAcao>
-                                  </div>
-                                </details>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs text-slate-600">
+                          <div>Valor<div className="tabular-nums text-slate-800">{moeda(pc.valor_base)}</div></div>
+                          <div>Multa/juros<div className="tabular-nums text-slate-800">{Number(pc.multa) + Number(pc.juros) > 0 ? moeda(Number(pc.multa) + Number(pc.juros)) : "—"}</div></div>
+                          <div>Desconto<div className="tabular-nums text-slate-800">{Number(pc.desconto) > 0 ? moeda(pc.desconto) : "—"}</div></div>
+                        </div>
+                        {ajustes !== 0 && pc.status !== "pago" && <div className="text-xs text-slate-500">Ajustes previstos: {moeda(ajustes)}</div>}
+                        {podePagar && (
+                          <details>
+                            <summary className="cursor-pointer text-xs font-medium text-marca-700">Pagar esta parcela</summary>
+                            <div className="mt-2">
+                              <FormAcao action={registrarBaixaParcela.bind(null, pc.id, p.id)} enviar="Confirmar pagamento" variante="sucesso" className="space-y-3">
+                                <p className="text-xs text-slate-600">Houve multa, juros ou desconto nesta parcela?</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <Campo rotulo="Multa (R$)"><input name="multa" inputMode="decimal" placeholder="0,00" className="campo tabular-nums" /></Campo>
+                                  <Campo rotulo="Juros (R$)"><input name="juros" inputMode="decimal" placeholder="0,00" className="campo tabular-nums" /></Campo>
+                                  <Campo rotulo="Desconto (R$)"><input name="desconto" inputMode="decimal" placeholder="0,00" className="campo tabular-nums" /></Campo>
+                                </div>
+                                <Campo rotulo="Motivo" ajuda="Obrigatório se houver multa, juros ou desconto.">
+                                  <input name="motivo" className="campo" />
+                                </Campo>
+                                <Campo rotulo="Data do pagamento">
+                                  <input type="date" name="pago_em" required defaultValue={hojeISO()} className="campo" />
+                                </Campo>
+                                <Campo rotulo="Observação (opcional)">
+                                  <input name="observacao" className="campo" />
+                                </Campo>
+                              </FormAcao>
+                            </div>
+                          </details>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
               {podeParcelar && !(parcelas && parcelas.length > 0) && (
                 <div className={parcelas?.length ? "border-t border-slate-200 p-4" : ""}>

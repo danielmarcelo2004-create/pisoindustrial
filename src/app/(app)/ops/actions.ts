@@ -104,7 +104,8 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
   revalidatePath("/ops");
   const destino = `/ops/${data}`;
   if (fd.get("acao") === "enviar") return enviarOP(data as string, null, fd);
-  redirect(`${destino}?salva=1`);
+  // Rascunho salvo: segue para a edição, onde dá para anexar comprovantes, recibos e notas.
+  redirect(`/ops/${data}/editar?salva=1`);
 }
 
 export async function enviarOP(id: string, _: Estado, fd?: FormData): Promise<Estado> {

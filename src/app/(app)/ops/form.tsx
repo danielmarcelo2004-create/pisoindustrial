@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { BotaoEnviar, FormAcao } from "@/components/form-acao";
 import { Botao, Campo, Cartao } from "@/components/ui";
 import type { Estado } from "@/lib/erros";
@@ -67,12 +67,14 @@ export function FormOP({
   padrao = {},
   podeAssinar = false,
   assinarPadrao = false,
+  anexos,
 }: {
   action: (e: Estado, fd: FormData) => Promise<Estado>;
   obras: { id: string; nome: string; cidade: string; uf: string; temAdministrador: boolean }[];
   padrao?: Padrao;
   podeAssinar?: boolean;
   assinarPadrao?: boolean;
+  anexos?: ReactNode;
 }) {
   const [itens, setItens] = useState<Item[]>(
     padrao.itens?.length
@@ -268,6 +270,11 @@ export function FormOP({
       </Cartao>
 
       <input type="hidden" name="parcelas_json" value={parcelasJson} />
+      {anexos && (
+        <Cartao titulo="Comprovantes, recibos e notas">
+          {anexos}
+        </Cartao>
+      )}
       {parcelasAtivas && (
         <Cartao titulo={`Parcelas (${nParc})`} semPadding>
           <table className="w-full text-sm">

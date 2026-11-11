@@ -393,7 +393,7 @@ test('OP: envio cria pagamento direto ao administrador e acompanha o status até
     p_forma_pagamento: 'pix', p_dados_bancarios: null, p_observacoes: null, p_itens: itensOP,
   }, /já foi enviada/)
   let p = await pagamento(pagId)
-  assert.equal(p.status, 'aguardando_administrador') // obra é fluxo A, mas a OP vai direto ao administrador
+  assert.equal(p.status, 'aguardando_engenheiro') // o engenheiro que criou a OP assina antes do administrador
   assert.equal(Number(p.valor), 1502.5)
   assert.equal(p.created_by, u.eng.id)
   const op = async () => (await admin.from('ordens_pagamento').select('*').eq('id', id).single()).data
@@ -407,6 +407,10 @@ test('OP: envio cria pagamento direto ao administrador e acompanha o status até
   const outro = await pagamento(await novoPagamento('sup', obraA.id))
   await assert.rejects(() => anexar('eng', outro, 'outro'), /permissão|upload/)
 
+  // o engenheiro criador assina o PDF da OP e aprova a etapa dele
+  await anexar('eng', p, 'documento_assinado')
+  await rpc('eng', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'aprovado' })
+  assert.equal(((await pagamento(pagId))).status, 'aguardando_administrador')
   await rpc('adm', 'marcar_op_em_analise', { p_pagamento_id: pagId })
   assert.equal((await op()).status, 'em_analise')
   // o PDF da OP também é assinado por quem aprova: o administrador assina antes de aprovar
@@ -419,10 +423,10 @@ test('OP: envio cria pagamento direto ao administrador e acompanha o status até
   assert.equal((await op()).status, 'paga')
 })
 
-test('OP: rejeição pelo administrador', async () => {
+test('OP: rejeição pelo engenheiro criador', async () => {
   const id = await salvarOP('eng', obraA.id)
   const pagId = await rpc('eng', 'enviar_op', { p_id: id })
-  await rpc('adm', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'rejeitado', p_comentario: 'Sem medição' })
+  await rpc('eng', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'rejeitado', p_comentario: 'Sem medição' })
   const { data } = await admin.from('ordens_pagamento').select('status').eq('id', id).single()
   assert.equal(data.status, 'rejeitada')
 })

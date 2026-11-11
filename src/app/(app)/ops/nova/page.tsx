@@ -38,7 +38,18 @@ export default async function NovaOPPage({ searchParams }: PageProps<"/ops/nova"
       {obras.length === 0 ? (
         <Aviso tipo="alerta">Você não está vinculado a nenhum centro de custo ativo.</Aviso>
       ) : (
-        <FormOP action={salvarOP.bind(null, null)} obras={obras} padrao={padrao} podeAssinar={podeAssinar} assinarPadrao={t("assinar") === "1"} />
+        <FormOP
+          action={salvarOP.bind(null, null)}
+          obras={obras}
+          padrao={padrao}
+          podeAssinar={podeAssinar}
+          assinarPadrao={t("assinar") === "1"}
+          anexos={
+            <p className="text-sm text-slate-600">
+              Salve o rascunho para anexar comprovantes, recibos ou notas. Engenheiro e administrador assinam cada arquivo antes de anexar.
+            </p>
+          }
+        />
       )}
     </>
   );

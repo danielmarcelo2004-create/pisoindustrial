@@ -455,6 +455,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"ordem_anexos": {
+                  Row: {
+                    "assinado": boolean,"created_at": string,"enviado_por": string,"id": string,"mime_type": string | null,"nome_arquivo": string,"ordem_id": string,"sha256": string,"storage_path": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "assinado"?: boolean,"created_at"?: string,"enviado_por"?: string,"id"?: string,"mime_type"?: string | null,"nome_arquivo": string,"ordem_id": string,"sha256": string,"storage_path": string
+                  }
+                  Update: {
+                    "assinado"?: boolean,"created_at"?: string,"enviado_por"?: string,"id"?: string,"mime_type"?: string | null,"nome_arquivo"?: string,"ordem_id"?: string,"sha256"?: string,"storage_path"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "ordem_anexos_ordem_id_fkey"
+      columns: ["ordem_id"]
+isOneToOne: false
+      referencedRelation: "ordens_pagamento"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"ordem_parcelas": {
                   Row: {
                     "id": string,"numero": number,"ordem_id": string,"valor": number,"vencimento": string
@@ -828,6 +848,12 @@ isOneToOne: false
                            },
 "excluir_gasto_fundo":
 { Args: { "p_gasto_id": string }; Returns: undefined
+                           }
+          "registrar_anexo_op":
+{ Args: { "p_assinado": boolean,"p_mime": string,"p_nome": string,"p_ordem_id": string,"p_sha256": string,"p_storage_path": string }; Returns: string
+                           }
+          "remover_anexo_op":
+{ Args: { "p_anexo_id": string }; Returns: undefined
                            }
           "remover_anexo_gasto":
 { Args: { "p_anexo_id": string }; Returns: undefined

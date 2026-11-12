@@ -30,7 +30,12 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
       {obras.length === 0 ? (
         <Aviso tipo="alerta">Você ainda não tem permissão para cadastrar pagamentos em nenhuma obra ativa. Solicite acesso ao Financeiro.</Aviso>
       ) : (
-        <FormAcao action={criarPagamento} enviar="Cadastrar e encaminhar" pendente="Enviando…">
+        <FormAcao
+          action={criarPagamento}
+          enviar="Cadastrar e encaminhar"
+          pendente="Enviando…"
+          limparErroAoMudar={{ campos: ["boleto", "nota_fiscal"], trecho: "Anexe um boleto ou nota fiscal" }}
+        >
           <Cartao titulo="Centro de custo">
             <Campo rotulo="Centro de custo" obrigatorio ajuda="O pagamento seguirá o fluxo de aprovação configurado para a obra.">
               <select name="obra_id" required defaultValue={obraPadrao} className="campo">

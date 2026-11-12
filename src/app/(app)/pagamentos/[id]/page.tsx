@@ -528,6 +528,11 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                 </Aviso>
               </Cartao>
             )}
+          {["aguardando_engenheiro", "aguardando_administrador"].includes(p.status) && !ativos.some((d) => d.tipo !== "comprovante") && (
+            <Cartao titulo="Falta documento para aprovar">
+              <Aviso tipo="alerta">Anexe um boleto ou nota fiscal para o engenheiro assinar. Sem esse documento, a aprovação não pode acontecer.</Aviso>
+            </Cartao>
+          )}
           {assinaturaUrl && p.status !== "cancelado" && ["engenheiro", "administrador", "administrador_master"].includes(u.perfil) && (
             <AssinadorDocumentos
               documentos={ativos

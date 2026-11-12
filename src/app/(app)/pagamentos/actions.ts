@@ -6,7 +6,7 @@ import { getUsuario } from "@/lib/auth";
 import { arquivosDoForm, enviarDocumento, validarArquivo } from "@/lib/documentos";
 import { mensagemErro, type Estado } from "@/lib/erros";
 import { lerValor } from "@/lib/formato";
-import { FORMAS_PAGAMENTO, TIPOS_DOCUMENTO, type FormaPagamento, type TipoDocumento } from "@/lib/rotulos";
+import { FORMAS_PAGAMENTO, FORMAS_PAGAMENTO_ATUAIS, TIPOS_DOCUMENTO, type FormaPagamento, type TipoDocumento } from "@/lib/rotulos";
 import { createClient } from "@/lib/supabase/server";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,7 +28,7 @@ function lerDadosPagamento(fd: FormData) {
   if (!descricao) return { erro: "Informe a descrição." } as const;
   if (valor === null) return { erro: "Informe um valor válido (ex.: 1.250,00)." } as const;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento)) return { erro: "Informe a data de vencimento." } as const;
-  if (!(forma in FORMAS_PAGAMENTO)) return { erro: "Forma de pagamento inválida." } as const;
+  if (!FORMAS_PAGAMENTO_ATUAIS.includes(forma)) return { erro: "Escolha PIX ou transferência bancária." } as const;
 
   return {
     dados: {

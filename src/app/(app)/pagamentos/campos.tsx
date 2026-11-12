@@ -1,6 +1,6 @@
 import { Campo } from "@/components/ui";
 import { valorParaCampo } from "@/lib/formato";
-import { FORMAS_PAGAMENTO } from "@/lib/rotulos";
+import { FORMAS_PAGAMENTO, FORMAS_PAGAMENTO_ATUAIS } from "@/lib/rotulos";
 
 type Padrao = {
   fornecedor_id?: string | null;
@@ -54,10 +54,10 @@ export function CamposPagamento({
         <input name="vencimento" type="date" required defaultValue={padrao.vencimento ?? ""} className="campo" />
       </Campo>
       <Campo rotulo="Forma de pagamento" obrigatorio>
-        <select name="forma_pagamento" defaultValue={padrao.forma_pagamento ?? "boleto"} className="campo">
-          {Object.entries(FORMAS_PAGAMENTO).map(([v, r]) => (
+        <select name="forma_pagamento" defaultValue={padrao.forma_pagamento ?? "pix"} className="campo">
+          {FORMAS_PAGAMENTO_ATUAIS.map((v) => (
             <option key={v} value={v}>
-              {r}
+              {FORMAS_PAGAMENTO[v]}
             </option>
           ))}
         </select>

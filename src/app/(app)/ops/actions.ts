@@ -8,7 +8,7 @@ import { carregarOP, dadosPdf } from "@/lib/consultas/ops";
 import { mensagemErro, type Estado } from "@/lib/erros";
 import { gerarPdfOP } from "@/lib/pdf-op";
 import { sobreporAssinatura, type PosAssinatura } from "@/lib/assinatura-op";
-import { FORMAS_PAGAMENTO, type FormaPagamento } from "@/lib/rotulos";
+import { FORMAS_PAGAMENTO_ATUAIS, type FormaPagamento } from "@/lib/rotulos";
 import { createClient } from "@/lib/supabase/server";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -68,17 +68,36 @@ function lerParcelas(fd: FormData): { vencimento: string; valor: number }[] | st
 }
 
 /** Grava o rascunho (cabeçalho, itens e parcelas). Sem redirecionar: serve ao salvar e à anexação na criação. */
-async function gravarRascunho(id: string | null, fd: FormData): Promise<{ id?: string; erro?: string }> {
+async function gravarRascunho(id: string | null, fd: FormData, paraEnviar = false): Promise<{ id?: string; erro?: string }> {
   const obra = t(fd, "obra_id");
   const forma = t(fd, "forma_pagamento") as FormaPagamento;
   const venc = t(fd, "vencimento");
   if (!UUID.test(obra)) return { erro: "Selecione a obra." };
   if (!t(fd, "favorecido")) return { erro: "Informe o favorecido." };
   if (!t(fd, "descricao")) return { erro: "Informe a descrição." };
-  if (!(forma in FORMAS_PAGAMENTO)) return { erro: "Forma de pagamento inválida." };
+  if (!FORMAS_PAGAMENTO_ATUAIS.includes(forma)) return { erro: "Escolha PIX ou transferência bancária." };
   if (venc && !/^\d{4}-\d{2}-\d{2}$/.test(venc)) return { erro: "Vencimento inválido." };
   const itens = lerItens(fd);
   if (typeof itens === "string") return { erro: itens };
+
+  // Dados de pagamento: PIX usa a chave; transferência usa banco, agência e conta (obrigatórios para gerar a OP).
+  let dadosBancarios = t(fd, "dados_bancarios");
+  if (forma === "transferencia") {
+    const banco = t(fd, "banco");
+    const agencia = t(fd, "agencia");
+    const conta = t(fd, "conta");
+    if (paraEnviar && (!banco || !agencia || !conta)) return { erro: "Para transferência bancária, informe banco, agência e conta antes de gerar a OP." };
+    dadosBancarios = [banco && `BANCO: ${banco}`, agencia && `AGÊNCIA: ${agencia}`, conta && `CONTA: ${conta}`].filter(Boolean).join("\n");
+  } else if (paraEnviar && !dadosBancarios) {
+    return { erro: "Informe a chave PIX para pagamento antes de gerar a OP." };
+  }
+
+  // Desconto é opcional (padrão zero); não pode passar do total dos itens.
+  const descontoTxt = t(fd, "desconto");
+  const desconto = descontoTxt ? Number(descontoTxt.replace(/\./g, "").replace(",", ".")) : 0;
+  if (!Number.isFinite(desconto) || desconto < 0) return { erro: "Desconto inválido." };
+  const subtotal = itens.reduce((s, i) => s + Math.round(i.quantidade * i.valor_unitario * 100) / 100, 0);
+  if (desconto > subtotal) return { erro: "O desconto não pode ser maior que o total dos itens." };
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("salvar_op", {
@@ -89,9 +108,10 @@ async function gravarRascunho(id: string | null, fd: FormData): Promise<{ id?: s
     p_descricao: t(fd, "descricao"),
     p_vencimento: (venc || null) as string,
     p_forma_pagamento: forma,
-    p_dados_bancarios: t(fd, "dados_bancarios"),
+    p_dados_bancarios: dadosBancarios,
     p_observacoes: t(fd, "observacoes"),
     p_itens: itens,
+    p_desconto: desconto,
     p_numero_nf: t(fd, "numero_nf"),
   });
   if (error) return { erro: mensagemErro(error) };
@@ -116,7 +136,8 @@ export async function salvarRascunhoAjax(fd: FormData): Promise<{ id?: string; e
 export async function salvarOP(id: string | null, _: Estado, fd: FormData): Promise<Estado> {
   await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const idAtual = t(fd, "ordem_id");
-  const r = await gravarRascunho(id ?? (UUID.test(idAtual) ? idAtual : null), fd);
+  // Para gerar a OP (enviar), os dados de pagamento (chave PIX ou banco, agência e conta) são obrigatórios.
+  const r = await gravarRascunho(id ?? (UUID.test(idAtual) ? idAtual : null), fd, fd.get("acao") === "enviar");
   if (r.erro) return { erro: r.erro };
   revalidatePath("/ops");
   if (fd.get("acao") === "enviar") return enviarOP(r.id as string, null, fd);

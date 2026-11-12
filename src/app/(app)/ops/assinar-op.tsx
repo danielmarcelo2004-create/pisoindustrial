@@ -25,12 +25,14 @@ export function AssinarOP({
   posSalva,
   assinada,
   desatualizada,
+  onAssinada,
 }: {
   ordemId: string;
   assinaturaUrl: string | null;
   posSalva: Pos | null;
   assinada: boolean;
   desatualizada: boolean;
+  onAssinada?: (pos: Pos) => void;
 }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
@@ -91,6 +93,7 @@ export function AssinarOP({
       if (r.erro) throw new Error(r.erro);
       setAberto(false);
       setOk("Assinatura registrada. Ela será aplicada ao PDF da OP quando você enviar a solicitação.");
+      onAssinada?.(pos);
       router.refresh();
     } catch (e) {
       setErro(`Não foi possível assinar: ${mensagemDe(e)}`);

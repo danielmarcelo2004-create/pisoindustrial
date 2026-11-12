@@ -39,7 +39,12 @@ type Parcela = { vencimento: string; valor: string };
 function lerDadosTransferencia(texto: string | null | undefined) {
   const linhas = (texto ?? "").split(/\r?\n/);
   const pega = (re: RegExp) => linhas.map((l) => l.match(re)?.[1]?.trim()).find(Boolean) ?? "";
-  return { banco: pega(/^BANCO:\s*(.*)$/i), agencia: pega(/^AG[ÊE]NCIA:\s*(.*)$/i), conta: pega(/^CONTA:\s*(.*)$/i) };
+  return {
+    banco: pega(/^BANCO:\s*(.*)$/i),
+    agencia: pega(/^AG[ÊE]NCIA:\s*(.*)$/i),
+    conta: pega(/^CONTA:\s*(.*)$/i),
+    chave: pega(/^CHAVE PIX:\s*(.*)$/i) || (linhas.some((l) => /^(BANCO|AG[ÊE]NCIA|CONTA):/i.test(l)) ? "" : (texto ?? "").trim()),
+  };
 }
 
 /** Soma meses a uma data ISO, mantendo o último dia do mês quando o dia não existe (31/01 + 1 = 28/02). */
@@ -270,9 +275,14 @@ export function FormOP({
               </Campo>
             </>
           ) : (
-            <Campo rotulo="Banco e chave PIX" obrigatorio ajuda="Primeira linha: instituição bancária (aparece como BANCO no PDF). Demais linhas: chave PIX. Obrigatório para gerar a OP.">
-              <textarea name="dados_bancarios" rows={2} defaultValue={padrao.dados_bancarios ?? ""} className="campo" maxLength={300} />
-            </Campo>
+            <>
+              <Campo rotulo="Banco" obrigatorio ajuda="Instituição bancária. Aparece como BANCO no PDF. Obrigatório para gerar a OP.">
+                <input name="banco" defaultValue={bancoPadrao.banco} className="campo" maxLength={80} />
+              </Campo>
+              <Campo rotulo="Chave PIX" obrigatorio ajuda="CPF, CNPJ, e-mail, telefone ou chave aleatória. Obrigatória para gerar a OP.">
+                <input name="chave_pix" defaultValue={bancoPadrao.chave} className="campo" maxLength={120} />
+              </Campo>
+            </>
           )}
           <Campo rotulo="Observação" ajuda="Opcional. Aparece no PDF, abaixo do favorecido.">
             <textarea name="observacoes" rows={2} defaultValue={padrao.observacoes ?? ""} className="campo" maxLength={2000} />

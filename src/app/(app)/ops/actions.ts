@@ -88,8 +88,11 @@ async function gravarRascunho(id: string | null, fd: FormData, paraEnviar = fals
     const conta = t(fd, "conta");
     if (paraEnviar && (!banco || !agencia || !conta)) return { erro: "Para transferência bancária, informe banco, agência e conta antes de gerar a OP." };
     dadosBancarios = [banco && `BANCO: ${banco}`, agencia && `AGÊNCIA: ${agencia}`, conta && `CONTA: ${conta}`].filter(Boolean).join("\n");
-  } else if (paraEnviar && !dadosBancarios) {
-    return { erro: "Informe a chave PIX para pagamento antes de gerar a OP." };
+  } else {
+    const banco = t(fd, "banco");
+    const chave = t(fd, "chave_pix");
+    if (paraEnviar && (!banco || !chave)) return { erro: "Para PIX, informe o banco e a chave PIX antes de gerar a OP." };
+    dadosBancarios = [banco && `BANCO: ${banco}`, chave && `CHAVE PIX: ${chave}`].filter(Boolean).join("\n");
   }
 
   // Desconto é opcional (padrão zero); não pode passar do total dos itens.

@@ -60,7 +60,8 @@ async function entrar(browser, email) {
   await page.fill('input[name=cpf_cnpj]', '529.982.247-25');
   await page.fill('input[name=descricao]', 'Instalação elétrica provisória do canteiro');
   await page.fill('input[name=vencimento]', new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10));
-  await page.fill('[name=dados_bancarios]', 'PIX 529.982.247-25');
+  await page.fill('input[name=banco]', 'CAIXA ECONOMICA FEDERAL');
+  await page.fill('input[name=chave_pix]', '529.982.247-25');
   await page.fill('input[aria-label="Descrição do item 1"]', 'Mão de obra eletricista');
   await page.fill('input[aria-label="Unidade do item 1"]', 'dia');
   await page.fill('input[aria-label="Quantidade do item 1"]', '3');

@@ -35,7 +35,19 @@ async function entrar(browser, email) {
 
   const browser = await chromium.launch();
 
-  // 1. Engenheiro cria OP com itens, salva rascunho, pré-visualiza PDF e envia
+  // 0. Assinaturas cadastradas (engenheiro e administrador) para assinar as OPs
+  for (const email of ['engenheiro@demo.local', 'administrador@demo.local']) {
+    const sessao = await entrar(browser, email);
+    await sessao.page.goto(BASE + '/perfil');
+    if (await sessao.page.$('input[type=file]')) {
+      await sessao.page.setInputFiles('input[type=file]', path.join(__dirname, '..', '..', 'public', 'logo-empresa.jpg'));
+      await sessao.page.click('button:has-text("Salvar assinatura")');
+      await sessao.page.getByText('Assinatura salva').waitFor({ timeout: 60000 });
+    }
+    await sessao.ctx.close();
+  }
+
+  // 1. Engenheiro cria OP com itens, salva rascunho, assina na própria solicitação e envia
   let { ctx, page } = await entrar(browser, 'engenheiro@demo.local');
   await page.goto(BASE + '/ops');
   await shot(page, '30-minhas-ops');
@@ -48,7 +60,8 @@ async function entrar(browser, email) {
   await page.fill('input[name=cpf_cnpj]', '529.982.247-25');
   await page.fill('input[name=descricao]', 'Instalação elétrica provisória do canteiro');
   await page.fill('input[name=vencimento]', new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10));
-  await page.fill('[name=dados_bancarios]', 'PIX 529.982.247-25');
+  await page.fill('input[name=banco]', 'CAIXA ECONOMICA FEDERAL');
+  await page.fill('input[name=chave_pix]', '529.982.247-25');
   await page.fill('input[aria-label="Descrição do item 1"]', 'Mão de obra eletricista');
   await page.fill('input[aria-label="Unidade do item 1"]', 'dia');
   await page.fill('input[aria-label="Quantidade do item 1"]', '3');
@@ -60,9 +73,16 @@ async function entrar(browser, email) {
   await page.fill('input[aria-label="Valor unitário do item 2"]', '8,90');
   await page.getByText('R$ 1.199,45').first().waitFor(); // 750 + 449,45
   await shot(page, '31-nova-op');
-  await Promise.all([page.waitForURL(/\/ops\/[0-9a-f-]{36}\/editar\?salva/), page.click('button:has-text("Salvar rascunho")')]);
+  await Promise.all([page.waitForURL(/\/ops\/[0-9a-f-]{36}\/editar\?salva/), page.click('button:text-is("Salvar rascunho")')]);
   await page.getByText('Editar solicitação (rascunho)').first().waitFor();
   ok('Engenheiro salvou rascunho de OP com 2 itens (total calculado R$ 1.199,45)');
+
+  // Assinatura do engenheiro na própria solicitação (antes de enviar)
+  await page.click('button:has-text("Assinar OP")');
+  await page.getByText('Posicione sua assinatura na OP').waitFor();
+  await page.click('[role=dialog] button:has-text("Confirmar assinatura")');
+  await page.getByText('Assinatura registrada').waitFor({ timeout: 60000 });
+  ok('Engenheiro assinou a OP na própria solicitação');
 
   const opUrl = page.url().split('/editar')[0].split('?')[0];
   const pdf = await ctx.request.get(opUrl + '/pdf');
@@ -83,34 +103,6 @@ async function entrar(browser, email) {
   fs.writeFileSync(path.join(DIR, 'op-oficial.pdf'), pdfOfBuf);
   ok(`OP enviada como ${numeroOP} com PDF oficial anexado`);
   const pagHref = await page.locator('a:has-text("Ver pagamento")').getAttribute('href');
-  await ctx.close();
-
-  // 1a. Assinaturas cadastradas (engenheiro e administrador) para assinar as OPs
-  for (const email of ['engenheiro@demo.local', 'administrador@demo.local']) {
-    ({ ctx, page } = await entrar(browser, email));
-    await page.goto(BASE + '/perfil');
-    if (await page.$('input[type=file]')) {
-      await page.setInputFiles('input[type=file]', path.join(__dirname, '..', '..', 'public', 'logo-empresa.jpg'));
-      await page.click('button:has-text("Salvar assinatura")');
-      await page.getByText('Assinatura salva').waitFor({ timeout: 60000 });
-    }
-    await ctx.close();
-  }
-
-  // 1b. O engenheiro que criou a OP assina o PDF e aprova a etapa dele
-  ({ ctx, page } = await entrar(browser, 'engenheiro@demo.local'));
-  await page.goto(BASE + pagHref);
-  await page.click('button:has-text("Abrir e posicionar a assinatura")');
-  await page.getByText('Posicione sua assinatura').waitFor();
-  await page.click('button:has-text("Confirmar assinatura")');
-  await page.getByText(/Documento assinado\. O original/).waitFor({ timeout: 90000 });
-  await page.goto(BASE + pagHref);
-  await page.click('button:has-text("Assinar e aprovar")');
-  await page.check('input[name=conferi]');
-  await page.fill('input[name=senha]', SENHA);
-  await page.click('form button:has-text("Assinar e aprovar")');
-  await page.getByText('Encaminhado ao administrador').first().waitFor({ timeout: 20000 }).catch(() => {});
-  ok('Engenheiro assinou e aprovou a própria OP');
   await ctx.close();
 
   // 2. Administrador abre (em análise) e aprova

@@ -30,6 +30,39 @@ export async function contarPaginas(arquivo: File): Promise<number> {
   return doc.numPages;
 }
 
+/** Texto de cada página pela camada de texto do PDF (vazio quando a página é só imagem). */
+async function lerPaginasPdf(arquivo: File): Promise<string[]> {
+  const pdfjs = await carregarPdfjs();
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise;
+  const paginas: string[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const conteudo = await (await doc.getPage(i)).getTextContent();
+    paginas.push(conteudo.items.map((it) => ("str" in it ? it.str : "")).join(" "));
+  }
+  return paginas;
+}
+
+/**
+ * Texto de cada página de um boleto: usa a camada de texto do PDF e, quando ela não existe
+ * (PDF escaneado), lê as páginas com OCR (limitado a 12 páginas).
+ */
+export async function lerPaginasBoleto(arquivo: File): Promise<string[]> {
+  const paginas = await lerPaginasPdf(arquivo);
+  if (paginas.join("").trim().length >= 40) return paginas;
+  const total = Math.min(paginas.length, 12);
+  const worker = await criarOcr();
+  try {
+    const lidas: string[] = [];
+    for (let i = 1; i <= total; i++) {
+      const imagem = await renderizarPagina(arquivo, i, 2.5);
+      lidas.push(await lerTexto(worker, imagem));
+    }
+    return lidas;
+  } finally {
+    await worker.terminate();
+  }
+}
+
 /** Renderiza uma página do PDF como imagem. Para leitura (OCR) usa escala maior (~300 dpi). */
 export async function renderizarPagina(arquivo: File, numero: number, escala = 2.5): Promise<string> {
   const pdfjs = await carregarPdfjs();

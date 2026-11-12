@@ -387,13 +387,13 @@ test('OP: só o engenheiro vinculado cria; rascunho é privado', async () => {
 
 test('OP: envio cria pagamento direto ao administrador e acompanha o status até paga', async () => {
   const id = await salvarOP('eng', obraA.id)
-  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  const pagId = await enviarOPEng(id)
   await rpcFalha('eng', 'salvar_op', {
     p_id: id, p_obra_id: obraA.id, p_favorecido: 'X', p_cpf_cnpj: null, p_descricao: 'X', p_vencimento: null,
     p_forma_pagamento: 'pix', p_dados_bancarios: null, p_observacoes: null, p_itens: itensOP,
   }, /já foi enviada/)
   let p = await pagamento(pagId)
-  assert.equal(p.status, 'aguardando_engenheiro') // o engenheiro que criou a OP assina antes do administrador
+  assert.equal(p.status, 'aguardando_administrador') // o engenheiro criador assinou na solicitação; a etapa dele já está concluída
   assert.equal(Number(p.valor), 1502.5)
   assert.equal(p.created_by, u.eng.id)
   const op = async () => (await admin.from('ordens_pagamento').select('*').eq('id', id).single()).data
@@ -401,16 +401,10 @@ test('OP: envio cria pagamento direto ao administrador e acompanha o status até
   assert.equal(p.numero_documento, (await op()).numero)
   assert.equal((await op()).status, 'enviada')
 
-  // engenheiro anexa o PDF da OP
-  await anexar('eng', p, 'ordem_pagamento')
-  // mas não anexa em outros pagamentos da obra
+  // o PDF da OP já foi registrado no envio; o engenheiro não anexa em outros pagamentos da obra
   const outro = await pagamento(await novoPagamento('sup', obraA.id))
   await assert.rejects(() => anexar('eng', outro, 'outro'), /permissão|upload/)
 
-  // o engenheiro criador assina o PDF da OP e aprova a etapa dele
-  await anexar('eng', p, 'documento_assinado')
-  await rpc('eng', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'aprovado' })
-  assert.equal(((await pagamento(pagId))).status, 'aguardando_administrador')
   await rpc('adm', 'marcar_op_em_analise', { p_pagamento_id: pagId })
   assert.equal((await op()).status, 'em_analise')
   // o PDF da OP também é assinado por quem aprova: o administrador assina antes de aprovar
@@ -423,10 +417,11 @@ test('OP: envio cria pagamento direto ao administrador e acompanha o status até
   assert.equal((await op()).status, 'paga')
 })
 
-test('OP: rejeição pelo engenheiro criador', async () => {
+test('OP: administrador rejeita a OP enviada pelo engenheiro criador', async () => {
   const id = await salvarOP('eng', obraA.id)
-  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
-  await rpc('eng', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'rejeitado', p_comentario: 'Sem medição' })
+  const pagId = await enviarOPEng(id)
+  await rpc('adm', 'marcar_op_em_analise', { p_pagamento_id: pagId })
+  await rpc('adm', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'rejeitado', p_comentario: 'Sem medição' })
   const { data } = await admin.from('ordens_pagamento').select('status').eq('id', id).single()
   assert.equal(data.status, 'rejeitada')
 })
@@ -435,7 +430,7 @@ test('OP: obra sem administrador segue ao Financeiro', async () => {
   const { data: obra } = await u.fin.client.from('obras').insert({ nome: `Obra E ${sufixo}`, cidade: 'Lauro de Freitas', uf: 'BA', fluxo: 'C' }).select().single()
   await u.fin.client.from('obra_acessos').insert({ obra_id: obra.id, user_id: u.eng.id })
   const id = await salvarOP('eng', obra.id)
-  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  const pagId = await enviarOPEng(id)
   assert.equal((await pagamento(pagId)).status, 'aguardando_pagamento')
 })
 
@@ -490,7 +485,7 @@ test('OP: desconto reduz o valor do pagamento; campos do modelo são gravados', 
     p_vencimento: '2026-12-20', p_forma_pagamento: 'pix', p_dados_bancarios: 'PIX (71) 99999-0000', p_observacoes: null, p_itens: itens }
   await rpcFalha('eng', 'salvar_op', { ...base, p_desconto: 5000, p_referencia: 'OUTUBRO' }, /maior que o subtotal/)
   const id = await rpc('eng', 'salvar_op', { ...base, p_desconto: 10, p_referencia: 'OUTUBRO' })
-  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  const pagId = await enviarOPEng(id)
   const p = await pagamento(pagId)
   assert.equal(Number(p.valor), 1400.02)
   const { data: op } = await admin.from('ordens_pagamento').select('referencia, desconto').eq('id', id).single()
@@ -683,3 +678,28 @@ test('suprimentos anexa boleto e nota em qualquer obra; outros tipos continuam r
   await anexar('sup', pag, 'nota_fiscal')
   await assert.rejects(() => anexar('sup', pag, 'outro'), /permissão|row-level security/)
 })
+
+// Envio da OP pelo engenheiro criador: ele assina na solicitação, a OP é enviada e a assinatura é concluída (como no servidor).
+async function enviarOPEng(id) {
+  await rpc('eng', 'registrar_assinatura_criador', { p_ordem_id: id, p_pos: { fx: 0.68, fy: 0.78, fw: 0.24 } })
+  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  const pag = await pagamento(pagId)
+  // PDF oficial da OP (sem assinatura), registrado como a server action faz no envio
+  const oficial = Buffer.from(`%PDF-1.4 oficial ${randomUUID()}`)
+  const pathOficial = `${pag.obra_id}/${pag.id}/${randomUUID()}.pdf`
+  const up0 = await u.eng.client.storage.from('documentos').upload(pathOficial, oficial, { contentType: 'application/pdf' })
+  if (up0.error) throw new Error('upload oficial: ' + up0.error.message)
+  await rpc('eng', 'registrar_documento', {
+    p_pagamento_id: pagId, p_tipo: 'ordem_pagamento', p_nome_arquivo: 'OP.pdf', p_storage_path: pathOficial,
+    p_mime_type: 'application/pdf', p_tamanho: oficial.length, p_sha256: createHash('sha256').update(oficial).digest('hex'),
+  })
+  const conteudo = Buffer.from(`%PDF-1.4 assinado criador ${randomUUID()}`)
+  const path = `${pag.obra_id}/${pag.id}/${randomUUID()}.pdf`
+  const { error } = await u.eng.client.storage.from('documentos').upload(path, conteudo, { contentType: 'application/pdf' })
+  if (error) throw new Error('upload: ' + error.message)
+  await rpc('eng', 'concluir_criacao_assinada', {
+    p_pagamento_id: pagId, p_storage_path: path, p_nome: 'OP assinada.pdf', p_mime: 'application/pdf',
+    p_tamanho: conteudo.length, p_sha256: createHash('sha256').update(conteudo).digest('hex'),
+  })
+  return pagId
+}

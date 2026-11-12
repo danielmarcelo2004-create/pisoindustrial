@@ -19,6 +19,8 @@ export type DadosPdfOP = {
   vencimento: string | null;
   formaPagamento: FormaPagamento;
   dadosBancarios: string | null;
+  observacoes?: string | null;
+  desconto?: number;
   centroDeCusto: string;
   solicitante: string;
   emitidaEm: string;
@@ -101,6 +103,7 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
   }
 
   const subtotal = d.itens.reduce((s, i) => s + i.total, 0);
+  const totalPagar = subtotal - (d.desconto ?? 0);
 
   const novaPagina = (): PDFPage => pdf.addPage([PAGINA_L, PAGINA_A]);
   const yOf = (t: number) => PAGINA_A - t;
@@ -216,7 +219,7 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
     ["FORNECEDOR", d.favorecido.toUpperCase()],
     ["Nº da Nota Fiscal", d.numeroNf ?? "—"],
     ["Data de vencimento", d.vencimento ? data(d.vencimento) : "—"],
-    ["CONDIÇÃO DE PGTO (pix ou boleto)", FORMAS_PAGAMENTO[d.formaPagamento].toUpperCase()],
+    ["CONDIÇÃO DE PGTO (pix ou transferência)", FORMAS_PAGAMENTO[d.formaPagamento].toUpperCase()],
   ];
   campos.forEach(([rotulo, valor], i) => {
     const l = 2 + i;
@@ -246,35 +249,54 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
   const b = (linha: number) => topo(linha) + deslocamento;
   const fimModelo = b(18);
 
-  // Pagamento: caixas A8:B11 e textos
-  const linhasPag = [
-    ...(d.dadosBancarios ? d.dadosBancarios.split(/\r?\n/).flatMap((l) => quebrar(l, bold, 6.35, 200)) : []),
-    ...quebrar(`FAVORECIDO: ${d.favorecido}`, bold, 6.35, 200),
-    ...(d.cpfCnpj ? [`CPF/CNPJ: ${cpfCnpj(d.cpfCnpj)}`] : []),
-  ];
-  // Caixas do bloco (A8:B8 título; A9:B9, A10:B10 e A11:B11 linhas)
-  retangulo(pagina, X[0], X[2], b(8), b(9));
-  textoCelula(pagina, "PAGAMENTO", X[0], X[2], b(8), b(9), "c", { f: bold, s: 6.35 });
-  const linhasCaixa: [number, number][] = [
+  // Pagamento, como no modelo: BANCO (linha 9), dados bancários (linha 10), FAVORECIDO (linha 11) e observação (linha 12).
+  // No campo "Dados para pagamento", a primeira linha é a instituição bancária e as demais são os dados (chave PIX, agência, conta).
+  const linhasDados = (d.dadosBancarios ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const [instituicao, ...dadosBanco] = linhasDados;
+  // Observação: a caixa cresce conforme o texto, até um limite de linhas (o excedente é cortado).
+  // A caixa nunca passa do fim do bloco (fimModelo): o número de linhas cabe no espaço que sobra.
+  const LINHA_OBS = 8;
+  const MAX_LINHAS_OBS = 5;
+  const espacoObs = fimModelo - b(12) - 2;
+  const maxLinhasObs = Math.max(1, Math.min(MAX_LINHAS_OBS, Math.floor(espacoObs / LINHA_OBS)));
+  const linhasObs = d.observacoes?.trim() ? quebrar(d.observacoes.trim(), bold, 6.35, 200).slice(0, maxLinhasObs) : [];
+  const alturaObs = Math.min(Math.max(b(16) - b(12), linhasObs.length * LINHA_OBS + 4), espacoObs);
+  const caixas: [number, number][] = [
     [b(9), b(10)],
     [b(10), b(11)],
     [b(11), b(12)],
+    [b(12), b(12) + alturaObs],
   ];
-  linhasCaixa.forEach(([a, c]) => retangulo(pagina, X[0], X[2], a, c));
-  // Pagamento: uma linha por informação, alinhada à esquerda, como no modelo
-  const entradas = linhasPag.slice(0, 3);
-  entradas.forEach((l, j) => {
-    const [a, c] = linhasCaixa[Math.min(j, 2)];
-    textoCelula(pagina, l, X[0], X[2], a, c, "l", { f: bold, s: 6.35 });
-  });
+  caixas.forEach(([a, c]) => retangulo(pagina, X[0], X[2], a, c));
+  retangulo(pagina, X[0], X[2], b(8), b(9));
+  textoCelula(pagina, "PAGAMENTO", X[0], X[2], b(8), b(9), "c", { f: bold, s: 6.35 });
+  const escrever = (texto: string, [a, c]: [number, number]) =>
+    quebrar(texto, bold, 6.35, 200).slice(0, 1).forEach((l) => textoCelula(pagina, l, X[0], X[2], a, c, "l", { f: bold, s: 6.35 }));
+  if (instituicao) escrever(/^banco\b/i.test(instituicao) ? instituicao : `BANCO: ${instituicao}`, caixas[0]);
+  // Dados bancários: uma linha por informação, dividindo a caixa quando houver mais de uma.
+  if (dadosBanco.length) {
+    const [a, c] = caixas[1];
+    const altura = (c - a) / dadosBanco.length;
+    dadosBanco.forEach((l, j) => escrever(l, [a + j * altura, a + (j + 1) * altura]));
+  }
+  escrever(`FAVORECIDO: ${d.favorecido}`, caixas[2]);
+  const [aObs] = caixas[3];
+  linhasObs.forEach((l, j) =>
+    textoCelula(pagina, l, X[0], X[2], aObs + j * LINHA_OBS, aObs + (j + 1) * LINHA_OBS, "l", { f: bold, s: 6.35 }),
+  );
 
   // Total (G9 rótulo, H9 valor), como no modelo
   retangulo(pagina, X[5], X[6], b(8), b(9), AZUL_CLARO);
   retangulo(pagina, X[6], X[7], b(8), b(9), AZUL_CLARO);
+  // Desconto: linha extra acima do total, só quando a OP tem desconto
+  if ((d.desconto ?? 0) > 0) {
+    textoCelula(pagina, "Desconto", X[5], X[6], b(8), b(9), "c", { f: bold, s: 5.4 });
+    textoCelula(pagina, `- ${moeda(d.desconto ?? 0)}`, X[6], X[7], b(8), b(9), "c", { s: 5.4 });
+  }
   textoCelula(pagina, "Total", X[5], X[6], b(9), b(10), "c", { f: bold, s: 5.4 });
   retangulo(pagina, X[5], X[6], b(9), b(10));
   retangulo(pagina, X[6], X[7], b(9), b(10), AZUL_CLARO);
-  textoCelula(pagina, moeda(subtotal), X[6], X[7], b(9), b(10), "c", { s: 5.4 });
+  textoCelula(pagina, moeda(totalPagar), X[6], X[7], b(9), b(10), "c", { s: 5.4 });
 
   // Parcelas (E10:H17): só quando a OP tem duas ou mais parcelas; o bloco cresce se precisar
   const parcelas = d.parcelas && d.parcelas.length >= 2 ? d.parcelas : [];

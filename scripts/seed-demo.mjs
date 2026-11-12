@@ -251,7 +251,27 @@ const opEnviada = ok(
     p_itens: [{ descricao: "Frete caminhão munck", unidade: "viagem", quantidade: 2, valor_unitario: 950 }],
   }),
 );
-ok(await E.rpc("enviar_op", { p_id: opEnviada }));
+// O engenheiro assina a própria OP na solicitação e envia: o PDF oficial recebe a assinatura do criador.
+const posCriador = { fx: 0.68, fy: 0.78, fw: 0.24 };
+ok(await E.rpc("registrar_assinatura_criador", { p_ordem_id: opEnviada, p_pos: posCriador }));
+const pagOP = ok(await E.rpc("enviar_op", { p_id: opEnviada }));
+{
+  const { createHash } = await import("node:crypto");
+  const oficial = Buffer.from(`%PDF-1.4 OP oficial ${opEnviada}`);
+  const caminhoOficial = `${obraA.id}/${pagOP}/${crypto.randomUUID()}.pdf`;
+  ok(await E.storage.from("documentos").upload(caminhoOficial, oficial, { contentType: "application/pdf" }));
+  ok(await E.rpc("registrar_documento", {
+    p_pagamento_id: pagOP, p_tipo: "ordem_pagamento", p_nome_arquivo: "OP.pdf", p_storage_path: caminhoOficial,
+    p_mime_type: "application/pdf", p_tamanho: oficial.length, p_sha256: createHash("sha256").update(oficial).digest("hex"),
+  }));
+  const assinado = Buffer.from(`%PDF-1.4 OP assinada pelo criador ${opEnviada}`);
+  const caminhoAss = `${obraA.id}/${pagOP}/${crypto.randomUUID()}.pdf`;
+  ok(await E.storage.from("documentos").upload(caminhoAss, assinado, { contentType: "application/pdf" }));
+  ok(await E.rpc("concluir_criacao_assinada", {
+    p_pagamento_id: pagOP, p_storage_path: caminhoAss, p_nome: "OP-assinada.pdf", p_mime: "application/pdf",
+    p_tamanho: assinado.length, p_sha256: createHash("sha256").update(assinado).digest("hex"),
+  }));
+}
 ok(await u.engenheiro.client.from("ordens_pagamento").select("id").eq("id", opRascunho));
 
 console.log(`\nPronto. ${[p1, p2, p3, p4, p5, p6, p7, p8, p9].length} pagamentos criados.`);

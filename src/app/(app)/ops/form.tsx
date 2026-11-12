@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
 import { BotaoEnviar, FormAcao } from "@/components/form-acao";
-import { Botao, Campo, Cartao } from "@/components/ui";
+import { Aviso, Botao, Campo, Cartao } from "@/components/ui";
 import type { Estado } from "@/lib/erros";
+import { FORMAS_PAGAMENTO, FORMAS_PAGAMENTO_ATUAIS, type FormaPagamento } from "@/lib/rotulos";
+import { criarClienteNavegador } from "@/lib/supabase/navegador";
+import { salvarRascunhoAjax } from "./actions";
+import { AnexosOP, type AnexoOP } from "./anexos-op";
+import { AssinarOP } from "./assinar-op";
 
 type Item = { descricao: string; unidade: string; quantidade: string; valor_unitario: string };
 type ItemPadrao = {
@@ -22,12 +27,25 @@ type Padrao = {
   dados_bancarios?: string | null;
   observacoes?: string | null;
   numero_nf?: string | null;
+  desconto?: number | string | null;
   parcelas?: number;
   parcelasValores?: { vencimento: string; valor: number }[];
   itens?: ItemPadrao[];
 };
 
 type Parcela = { vencimento: string; valor: string };
+
+/** Lê banco, agência e conta de um texto gravado no formato "BANCO: x / AGÊNCIA: y / CONTA: z". */
+function lerDadosTransferencia(texto: string | null | undefined) {
+  const linhas = (texto ?? "").split(/\r?\n/);
+  const pega = (re: RegExp) => linhas.map((l) => l.match(re)?.[1]?.trim()).find(Boolean) ?? "";
+  return {
+    banco: pega(/^BANCO:\s*(.*)$/i),
+    agencia: pega(/^AG[ÊE]NCIA:\s*(.*)$/i),
+    conta: pega(/^CONTA:\s*(.*)$/i),
+    chave: pega(/^CHAVE PIX:\s*(.*)$/i) || (linhas.some((l) => /^(BANCO|AG[ÊE]NCIA|CONTA):/i.test(l)) ? "" : (texto ?? "").trim()),
+  };
+}
 
 /** Soma meses a uma data ISO, mantendo o último dia do mês quando o dia não existe (31/01 + 1 = 28/02). */
 function somarMeses(iso: string, meses: number): string {
@@ -67,15 +85,62 @@ export function FormOP({
   padrao = {},
   podeAssinar = false,
   assinarPadrao = false,
-  anexos,
+  ordemId: ordemIdInicial = null,
+  anexosIniciais = [],
+  assinaturaUrl = null,
+  ehEngenheiro = false,
+  assinaturaCriador = null,
 }: {
   action: (e: Estado, fd: FormData) => Promise<Estado>;
   obras: { id: string; nome: string; cidade: string; uf: string; temAdministrador: boolean }[];
   padrao?: Padrao;
   podeAssinar?: boolean;
   assinarPadrao?: boolean;
-  anexos?: ReactNode;
+  ordemId?: string | null;
+  anexosIniciais?: AnexoOP[];
+  assinaturaUrl?: string | null;
+  ehEngenheiro?: boolean;
+  assinaturaCriador?: { pos: { fx: number; fy: number; fw: number }; atual: boolean } | null;
 }) {
+  // Rascunho: na criação ele nasce ao clicar em "Salvar rascunho para anexar", sem sair da tela.
+  const [ordemId, setOrdemId] = useState<string | null>(ordemIdInicial);
+  const [obraSalva, setObraSalva] = useState(padrao.obra_id ?? "");
+  const [anexos, setAnexos] = useState<AnexoOP[]>(anexosIniciais);
+  const [erroRascunho, setErroRascunho] = useState("");
+  const [salvandoRascunho, setSalvandoRascunho] = useState(false);
+  const botaoRef = useRef<HTMLButtonElement>(null);
+  // Estado da assinatura do engenheiro: atualizado na hora ao assinar (sem esperar recarregar a página).
+  const [assinaturaLocal, setAssinaturaLocal] = useState(assinaturaCriador);
+
+  async function salvarParaAnexar() {
+    setErroRascunho("");
+    setSalvandoRascunho(true);
+    try {
+      const formulario = botaoRef.current?.closest("form") ?? undefined;
+      const r = await salvarRascunhoAjax(new FormData(formulario));
+      if (r.erro || !r.id) {
+        setErroRascunho(r.erro ?? "Não foi possível salvar o rascunho.");
+        return;
+      }
+      setOrdemId(r.id);
+      setObraSalva(obra);
+    } catch {
+      setErroRascunho("Não foi possível salvar o rascunho. Tente de novo.");
+    } finally {
+      setSalvandoRascunho(false);
+    }
+  }
+
+  async function recarregarAnexos() {
+    if (!ordemId) return;
+    const { data } = await criarClienteNavegador()
+      .from("ordem_anexos")
+      .select("id, storage_path, nome_arquivo, mime_type, assinado")
+      .eq("ordem_id", ordemId)
+      .order("created_at");
+    setAnexos((data ?? []) as AnexoOP[]);
+  }
+
   const [itens, setItens] = useState<Item[]>(
     padrao.itens?.length
       ? padrao.itens.map((i) => ({
@@ -87,6 +152,11 @@ export function FormOP({
       : [itemVazio()],
   );
   const [obra, setObra] = useState(padrao.obra_id ?? "");
+  const [forma, setForma] = useState<FormaPagamento>(
+    FORMAS_PAGAMENTO_ATUAIS.includes(padrao.forma_pagamento as FormaPagamento) ? (padrao.forma_pagamento as FormaPagamento) : "pix",
+  );
+  const bancoPadrao = lerDadosTransferencia(padrao.dados_bancarios);
+  const [desconto, setDesconto] = useState(padrao.desconto ? paraCampo(padrao.desconto, 2) : "");
   const [venc1, setVenc1] = useState(padrao.vencimento ?? "");
   const [qtdParc, setQtdParc] = useState(String(padrao.parcelas ?? 1));
   const [parcelas, setParcelas] = useState<Parcela[]>(() =>
@@ -97,7 +167,10 @@ export function FormOP({
 
   const totais = itens.map((i) => Math.round(num(i.quantidade) * num(i.valor_unitario) * 100) / 100);
   const subtotal = totais.reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0);
-  const total = subtotal;
+  // Desconto opcional: abate do subtotal. Não pode ser negativo nem maior que o subtotal.
+  const descontoNum = desconto.trim() ? num(desconto) : 0;
+  const descontoValido = Number.isFinite(descontoNum) && descontoNum >= 0 && descontoNum <= subtotal;
+  const total = subtotal - (descontoValido ? descontoNum : 0);
   const obraSel = obras.find((o) => o.id === obra);
 
   const nParc = Math.min(Math.max(Math.floor(Number(qtdParc) || 1), 1), 60);
@@ -177,19 +250,41 @@ export function FormOP({
           <Campo rotulo="Observação (motivo)" obrigatorio className="sm:col-span-2" ajuda="Aparece no campo OBSERVAÇÃO do PDF.">
             <input name="descricao" required defaultValue={padrao.descricao ?? ""} className="campo" maxLength={500} placeholder="Ex.: Adiantamento de salário" />
           </Campo>
-          <Campo rotulo="Condição de pagamento (pix ou boleto)">
-            <select name="forma_pagamento" defaultValue={padrao.forma_pagamento ?? "pix"} className="campo">
-              <option value="pix">PIX</option>
-              <option value="boleto">Boleto</option>
+          <Campo rotulo="Forma de pagamento">
+            <select name="forma_pagamento" value={forma} onChange={(e) => setForma(e.target.value as FormaPagamento)} className="campo">
+              {FORMAS_PAGAMENTO_ATUAIS.map((v) => (
+                <option key={v} value={v}>
+                  {FORMAS_PAGAMENTO[v]}
+                </option>
+              ))}
             </select>
           </Campo>
           <Campo rotulo="Nº da Nota Fiscal" ajuda="Opcional. Se vazio, o sistema usa o número da OP.">
             <input name="numero_nf" defaultValue={padrao.numero_nf ?? ""} className="campo" maxLength={60} />
           </Campo>
-          <Campo rotulo="Dados para pagamento" ajuda="Chave PIX, banco, agência e conta. Uma informação por linha no PDF.">
-            <textarea name="dados_bancarios" rows={2} defaultValue={padrao.dados_bancarios ?? ""} className="campo" maxLength={300} />
-          </Campo>
-          <Campo rotulo="Observações internas" ajuda="Não aparecem no PDF.">
+          {forma === "transferencia" ? (
+            <>
+              <Campo rotulo="Banco" obrigatorio ajuda="Obrigatório para gerar a OP.">
+                <input name="banco" defaultValue={bancoPadrao.banco} className="campo" maxLength={80} />
+              </Campo>
+              <Campo rotulo="Agência" obrigatorio ajuda="Obrigatório para gerar a OP.">
+                <input name="agencia" defaultValue={bancoPadrao.agencia} className="campo" maxLength={20} />
+              </Campo>
+              <Campo rotulo="Conta" obrigatorio ajuda="Número da conta com o dígito. Obrigatório para gerar a OP.">
+                <input name="conta" defaultValue={bancoPadrao.conta} className="campo" maxLength={30} />
+              </Campo>
+            </>
+          ) : (
+            <>
+              <Campo rotulo="Banco" obrigatorio ajuda="Instituição bancária. Aparece como BANCO no PDF. Obrigatório para gerar a OP.">
+                <input name="banco" defaultValue={bancoPadrao.banco} className="campo" maxLength={80} />
+              </Campo>
+              <Campo rotulo="Chave PIX" obrigatorio ajuda="CPF, CNPJ, e-mail, telefone ou chave aleatória. Obrigatória para gerar a OP.">
+                <input name="chave_pix" defaultValue={bancoPadrao.chave} className="campo" maxLength={120} />
+              </Campo>
+            </>
+          )}
+          <Campo rotulo="Observação" ajuda="Opcional. Aparece no PDF, abaixo do favorecido.">
             <textarea name="observacoes" rows={2} defaultValue={padrao.observacoes ?? ""} className="campo" maxLength={2000} />
           </Campo>
         </div>
@@ -258,6 +353,26 @@ export function FormOP({
                 <td />
               </tr>
               <tr>
+                <td colSpan={5} className="px-3 py-2 text-right text-sm text-slate-600">
+                  Desconto (R$) <span className="text-xs text-slate-400">opcional</span>
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <input
+                    name="desconto"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={desconto}
+                    onChange={(e) => setDesconto(e.target.value)}
+                    aria-label="Desconto"
+                    className="campo w-32 text-right tabular-nums"
+                  />
+                  {!descontoValido && (
+                    <div className="mt-1 text-xs text-red-600">O desconto deve estar entre zero e o total dos itens.</div>
+                  )}
+                </td>
+                <td />
+              </tr>
+              <tr>
                 <td colSpan={5} className="px-3 py-3 text-right font-semibold">
                   Total da OP
                 </td>
@@ -270,11 +385,45 @@ export function FormOP({
       </Cartao>
 
       <input type="hidden" name="parcelas_json" value={parcelasJson} />
-      {anexos && (
-        <Cartao titulo="Comprovantes, recibos e notas">
-          {anexos}
+      <input type="hidden" name="ordem_id" value={ordemId ?? ""} />
+      {ehEngenheiro && (
+        <Cartao titulo="Assinatura do engenheiro">
+          {ordemId ? (
+            <AssinarOP
+              ordemId={ordemId}
+              assinaturaUrl={assinaturaUrl}
+              posSalva={assinaturaLocal?.pos ?? null}
+              assinada={!!assinaturaLocal?.atual}
+              desatualizada={!!assinaturaLocal && !assinaturaLocal.atual}
+              onAssinada={(pos) => setAssinaturaLocal({ pos, atual: true })}
+            />
+          ) : (
+            <p className="text-sm text-slate-600">Salve o rascunho para assinar a OP. A assinatura entra no PDF quando a solicitação for enviada.</p>
+          )}
         </Cartao>
       )}
+      <Cartao titulo="Comprovantes, recibos e notas">
+        {ordemId ? (
+          <AnexosOP
+            ordemId={ordemId}
+            obraId={obraSalva}
+            anexos={anexos}
+            podeAssinar={ehEngenheiro}
+            assinaturaUrl={assinaturaUrl}
+            onMudou={recarregarAnexos}
+          />
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Salve o rascunho para anexar comprovantes, recibos ou notas aqui mesmo. Engenheiro e administrador assinam cada arquivo antes de anexar.
+            </p>
+            {erroRascunho && <Aviso tipo="erro">{erroRascunho}</Aviso>}
+            <Botao ref={botaoRef} type="button" variante="secundario" onClick={salvarParaAnexar} disabled={salvandoRascunho}>
+              {salvandoRascunho ? "Salvando rascunho…" : "Salvar rascunho para anexar"}
+            </Botao>
+          </div>
+        )}
+      </Cartao>
       {parcelasAtivas && (
         <Cartao titulo={`Parcelas (${nParc})`} semPadding>
           <table className="w-full text-sm">
@@ -316,7 +465,7 @@ export function FormOP({
               {!parcelasBatem && (
                 <tr>
                   <td colSpan={3} className="px-4 pb-3 text-xs text-red-600">
-                    A soma das parcelas precisa ser igual ao total da OP ({moeda(total)}). Ajuste os valores ou use "Dividir igualmente".
+                    A soma das parcelas precisa ser igual ao total da OP ({moeda(total)}). Ajuste os valores ou use &quot;Dividir igualmente&quot;.
                   </td>
                 </tr>
               )}

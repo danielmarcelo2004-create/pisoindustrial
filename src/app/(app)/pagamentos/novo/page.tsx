@@ -30,7 +30,12 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
       {obras.length === 0 ? (
         <Aviso tipo="alerta">Você ainda não tem permissão para cadastrar pagamentos em nenhuma obra ativa. Solicite acesso ao Financeiro.</Aviso>
       ) : (
-        <FormAcao action={criarPagamento} enviar="Cadastrar e encaminhar" pendente="Enviando…">
+        <FormAcao
+          action={criarPagamento}
+          enviar="Cadastrar e encaminhar"
+          pendente="Enviando…"
+          limparErroAoMudar={{ campos: ["boleto", "nota_fiscal"], trecho: "Anexe um boleto ou nota fiscal" }}
+        >
           <Cartao titulo="Centro de custo">
             <Campo rotulo="Centro de custo" obrigatorio ajuda="O pagamento seguirá o fluxo de aprovação configurado para a obra.">
               <select name="obra_id" required defaultValue={obraPadrao} className="campo">
@@ -44,20 +49,22 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
             </Campo>
           </Cartao>
           <Cartao titulo="Dados do pagamento">
-            <CamposPagamento fornecedores={fornecedores} padrao={padraoCampos} />
+            <CamposPagamento fornecedores={fornecedores} padrao={padraoCampos} parcelar />
           </Cartao>
           {podeAssinarCadastro && (
             <Cartao titulo="Assinatura do cadastro">
               <label className="flex items-start gap-2 text-sm text-slate-700">
                 <input type="checkbox" name="assinar" className="mt-0.5" />
                 <span>
-                  Assinar como quem cadastrou. É só uma marca no pagamento, não é etapa de aprovação. Para pagamentos que não são
-                  boleto, a assinatura passa para a Solicitação de OP.
+                  Assinar como quem cadastrou. É só uma marca no pagamento, não é etapa de aprovação.
                 </span>
               </label>
             </Cartao>
           )}
           <Cartao titulo="Documentos">
+            <p className="mb-3 text-sm text-slate-600">
+              Obrigatório: anexe o boleto ou a nota fiscal. É o documento que o engenheiro assina antes da aprovação.
+            </p>
             <div className="grid gap-4 sm:grid-cols-3">
               <Campo rotulo="Boleto">
                 <input type="file" name="boleto" accept={ACEITOS} className="campo" />

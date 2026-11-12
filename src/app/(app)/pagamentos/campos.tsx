@@ -1,6 +1,7 @@
 import { Campo } from "@/components/ui";
 import { valorParaCampo } from "@/lib/formato";
 import { FORMAS_PAGAMENTO } from "@/lib/rotulos";
+import { ParcelasPagamento } from "./parcelas-pagamento";
 
 type Padrao = {
   fornecedor_id?: string | null;
@@ -16,9 +17,11 @@ type Padrao = {
 export function CamposPagamento({
   fornecedores,
   padrao = {},
+  parcelar = false,
 }: {
   fornecedores: { id: string; nome: string; cpf_cnpj: string | null }[];
   padrao?: Padrao;
+  parcelar?: boolean;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -68,6 +71,7 @@ export function CamposPagamento({
       <Campo rotulo="Observações" className="sm:col-span-2" ajuda="Observações não fazem parte do conteúdo assinado.">
         <textarea name="observacoes" rows={2} defaultValue={padrao.observacoes ?? ""} className="campo" maxLength={2000} />
       </Campo>
+      {parcelar && <ParcelasPagamento />}
     </div>
   );
 }

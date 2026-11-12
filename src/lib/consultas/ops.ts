@@ -30,6 +30,8 @@ export function dadosPdf(op: OPCompleta): DadosPdfOP {
     vencimento: op.vencimento,
     formaPagamento: op.forma_pagamento,
     dadosBancarios: op.dados_bancarios,
+    observacoes: op.observacoes,
+    desconto: Number(op.desconto ?? 0),
     centroDeCusto: op.obra?.nome ?? "",
     solicitante: op.solicitante?.nome ?? "",
     emitidaEm: op.enviada_em ?? op.updated_at,

@@ -49,11 +49,14 @@ export const TIPOS_DOCUMENTO: Record<TipoDocumento, string> = {
 export const FORMAS_PAGAMENTO: Record<FormaPagamento, string> = {
   boleto: "Boleto",
   pix: "PIX",
-  transferencia: "Transferência",
+  transferencia: "Transferência bancária",
   dinheiro: "Dinheiro",
   cartao: "Cartão",
   outro: "Outro",
 };
+
+/** Formas aceitas em novos pagamentos e OPs. As demais continuam no histórico e nos relatórios. */
+export const FORMAS_PAGAMENTO_ATUAIS: FormaPagamento[] = ["pix", "transferencia"];
 
 export const STATUS_OBRA: Record<StatusObra, string> = {
   ativa: "Ativa",

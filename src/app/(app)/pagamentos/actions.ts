@@ -60,21 +60,22 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
   if ("erro" in lido) return { erro: lido.erro };
   const assinar = fd.get("assinar") === "on" && (usuario.perfil === "financeiro" || usuario.perfil === "suprimentos");
 
-  // Forma diferente de boleto: a solicitação de OP substitui o cadastro direto.
-  if (lido.dados.p_forma_pagamento !== "boleto" && (usuario.perfil === "financeiro" || usuario.perfil === "suprimentos")) {
-    const q = new URLSearchParams({
-      obra,
-      favorecido: lido.dados.p_favorecido ?? "",
-      descricao: lido.dados.p_descricao,
-      valor: String(lido.dados.p_valor),
-      vencimento: lido.dados.p_vencimento,
-      forma: lido.dados.p_forma_pagamento,
-      nf: lido.dados.p_numero_documento ?? "",
-      observacoes: lido.dados.p_observacoes ?? "",
-      assinar: assinar ? "1" : "",
-    });
-    if (lido.dados.p_fornecedor_id) q.set("fornecedor", lido.dados.p_fornecedor_id);
-    redirect(`/ops/nova?${q}`);
+  // Parcelas escolhidas no cadastro (uma parcela = pagamento único). A soma precisa ser igual ao valor.
+  let parcelas: { valor: number; vencimento: string }[] = [];
+  try {
+    const bruto = JSON.parse(texto(fd, "parcelas_json") || "[]");
+    if (Array.isArray(bruto)) parcelas = bruto as typeof parcelas;
+  } catch {
+    return { erro: "Parcelas inválidas." };
+  }
+  if (parcelas.length >= 2) {
+    if (parcelas.some((p) => !(Number(p.valor) > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(String(p.vencimento)))) {
+      return { erro: "Cada parcela precisa de valor maior que zero e vencimento." };
+    }
+    const soma = parcelas.reduce((s, p) => s + Number(p.valor), 0);
+    if (Math.abs(soma - Number(lido.dados.p_valor)) >= 0.005) {
+      return { erro: "A soma das parcelas precisa ser igual ao valor do pagamento." };
+    }
   }
 
   const anexos: { tipo: TipoDocumento; arquivo: File }[] = [
@@ -86,12 +87,26 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
     const e = validarArquivo(a.arquivo);
     if (e) return { erro: e };
   }
+  // O engenheiro assina boleto ou nota fiscal (comprovante não entra na assinatura): sem um deles não há o que aprovar.
+  if (!anexos.some((a) => a.tipo === "boleto" || a.tipo === "nota_fiscal")) {
+    return { erro: "Anexe um boleto ou nota fiscal para o engenheiro assinar." };
+  }
 
   const supabase = await createClient();
   const { data: id, error } = await supabase.rpc("criar_pagamento", { p_obra_id: obra, ...lido.dados });
   if (error || !id) return { erro: mensagemErro(error) };
 
   if (assinar) await supabase.rpc("marcar_assinatura_cadastro", { p_id: id as string, p_assinar: true });
+  if (parcelas.length >= 2) {
+    const { error: erroParcelas } = await supabase.rpc("definir_parcelas", {
+      p_pagamento_id: id as string,
+      p_parcelas: parcelas.map((p) => ({ valor: Number(p.valor), vencimento: p.vencimento, multa: 0, juros: 0, desconto: 0, motivo: null })) as never,
+    });
+    if (erroParcelas) {
+      revalidatePath("/", "layout");
+      redirect(`/pagamentos/${id}?aviso=${encodeURIComponent("Pagamento cadastrado, mas as parcelas não foram gravadas: " + mensagemErro(erroParcelas))}`);
+    }
+  }
 
   const falhas: string[] = [];
   for (const a of anexos) {

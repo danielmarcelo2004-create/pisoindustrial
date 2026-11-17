@@ -254,7 +254,7 @@ export default async function PagamentosPage({ searchParams }: PageProps<"/pagam
       )}
 
       <Cartao semPadding>
-        <TabelaPagamentos itens={itens} />
+        <TabelaPagamentos itens={itens} baixa={u.perfil === "financeiro" || u.perfil === "administrador_master"} />
         {itens.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm text-slate-600">
             <span>

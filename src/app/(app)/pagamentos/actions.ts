@@ -371,6 +371,11 @@ export async function registrarBaixaParcela(parcelaId: string, pagamentoId: stri
     houveAjuste ? `Multa R$ ${multa.toFixed(2)}, juros R$ ${juros.toFixed(2)}, desconto R$ ${desconto.toFixed(2)}. Motivo: ${motivo}` : "",
   ].filter(Boolean);
 
+  const [comprovante] = arquivosDoForm(fd, "comprovante");
+  if (comprovante) {
+    const e = validarArquivo(comprovante);
+    if (e) return { erro: e };
+  }
   const { error } = await supabase.rpc("registrar_baixa_parcela", {
     p_parcela_id: parcelaId,
     p_pago_em: pagoEm,
@@ -378,6 +383,15 @@ export async function registrarBaixaParcela(parcelaId: string, pagamentoId: stri
     p_observacao: partes.join(" · ") || undefined,
   });
   if (error) return { erro: mensagemErro(error) };
+  // Comprovante da parcela fica anexado ao pagamento
+  if (comprovante) {
+    const pag = await buscarPagamento(pagamentoId);
+    const r = pag ? await enviarDocumento(supabase, pag, "comprovante", comprovante) : { erro: "Pagamento não encontrado." };
+    if (r.erro) {
+      revalidatePath(`/pagamentos/${pagamentoId}`);
+      return { erro: `Parcela registrada como paga, mas o comprovante não foi anexado: ${r.erro}` };
+    }
+  }
   revalidatePath(`/pagamentos/${pagamentoId}`);
   revalidatePath("/", "layout");
   return { ok: "Parcela registrada como paga." };

@@ -122,6 +122,10 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
               <LinkBotao href="/aprovacoes" variante="secundario" tamanho="sm">
                 Assinar em lote
               </LinkBotao>
+            ) : u.perfil === "financeiro" || u.perfil === "administrador_master" ? (
+              <LinkBotao href="/pagamentos/baixa-lote" variante="secundario" tamanho="sm">
+                Baixa em lote
+              </LinkBotao>
             ) : undefined
           }
           semPadding
@@ -130,6 +134,7 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
             itens={assinante || u.perfil === "financeiro" || u.perfil === "administrador_master" ? pendencias : emAprovacao.slice(0, 10)}
             vazio="Nenhuma pendência no momento."
             compacto
+            baixa={u.perfil === "financeiro" || u.perfil === "administrador_master"}
           />
         </Cartao>
 
@@ -142,7 +147,7 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
           }
           semPadding
         >
-          <TabelaPagamentos itens={[...vencidos, ...deHoje, ...proximos].slice(0, 10)} vazio="Nada vencido nos próximos 7 dias." compacto />
+          <TabelaPagamentos itens={[...vencidos, ...deHoje, ...proximos].slice(0, 10)} vazio="Nada vencido nos próximos 7 dias." compacto baixa={u.perfil === "financeiro" || u.perfil === "administrador_master"} />
         </Cartao>
       </div>
     </>

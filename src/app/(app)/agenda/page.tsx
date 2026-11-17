@@ -4,6 +4,7 @@ import { TabelaPagamentos } from "@/components/pagamentos";
 import { Cabecalho, Cartao, cx } from "@/components/ui";
 import { pagamentosEmAberto, somar, type PagamentoLista } from "@/lib/consultas/pagamentos";
 import { createClient } from "@/lib/supabase/server";
+import { getUsuario } from "@/lib/auth";
 import { data, hojeISO, moeda, somarDias } from "@/lib/formato";
 
 export const metadata: Metadata = { title: "Agenda de pagamentos" };
@@ -29,7 +30,7 @@ function deslocarMes(mes: string, delta: number) {
   return d.toISOString().slice(0, 7);
 }
 
-function Lista({ id, titulo, itens, cor }: { id: string; titulo: string; itens: PagamentoLista[]; cor: string }) {
+function Lista({ id, titulo, itens, cor, baixa }: { id: string; titulo: string; itens: PagamentoLista[]; cor: string; baixa?: boolean }) {
   return (
     <div id={id} className="scroll-mt-20">
       <Cartao
@@ -44,7 +45,7 @@ function Lista({ id, titulo, itens, cor }: { id: string; titulo: string; itens: 
         }
         semPadding
       >
-        <TabelaPagamentos itens={itens} vazio="Nenhum pagamento." />
+        <TabelaPagamentos itens={itens} vazio="Nenhum pagamento." baixa={baixa} />
       </Cartao>
     </div>
   );
@@ -75,6 +76,8 @@ function ListaProvisoes({ id, titulo, itens }: { id: string; titulo: string; ite
 }
 
 export default async function AgendaPage({ searchParams }: PageProps<"/agenda">) {
+  const u = await getUsuario();
+  const podeBaixar = u.perfil === "financeiro" || u.perfil === "administrador_master";
   const sp = await searchParams;
   const hoje = hojeISO();
   const mes = mesValido(sp.mes, hoje.slice(0, 7));
@@ -204,7 +207,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
 
       {diaSel && (
         <div id="dia" className="mt-6 scroll-mt-20 space-y-6">
-          <Lista id="dia-lista" titulo={`Vencimento em ${data(diaSel)}`} itens={porDia.get(diaSel) ?? []} cor="bg-marca-500" />
+          <Lista id="dia-lista" titulo={`Vencimento em ${data(diaSel)}`} itens={porDia.get(diaSel) ?? []} cor="bg-marca-500" baixa={podeBaixar} />
           <ListaProvisoes id="dia-provisoes" titulo={`Provisões que vencem em ${data(diaSel)} · não entram nos totais`} itens={provPorDia.get(diaSel) ?? []} />
         </div>
       )}
@@ -232,10 +235,10 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
       </div>
 
       <div className="mt-6 space-y-6">
-        <Lista id="vencidos" titulo="Vencidos" itens={vencidos} cor="bg-red-500" />
-        <Lista id="hoje" titulo="Vencem hoje" itens={deHoje} cor="bg-amber-500" />
+        <Lista id="vencidos" titulo="Vencidos" itens={vencidos} cor="bg-red-500" baixa={podeBaixar} />
+        <Lista id="hoje" titulo="Vencem hoje" itens={deHoje} cor="bg-amber-500" baixa={podeBaixar} />
         <ListaProvisoes id="hoje-provisoes" titulo="Provisões que vencem hoje · não entram nos totais" itens={provisoesHoje} />
-        <Lista id="proximos" titulo="Próximos 15 dias" itens={proximos} cor="bg-sky-500" />
+        <Lista id="proximos" titulo="Próximos 15 dias" itens={proximos} cor="bg-sky-500" baixa={podeBaixar} />
       </div>
     </>
   );

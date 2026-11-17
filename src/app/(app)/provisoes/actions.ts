@@ -61,13 +61,83 @@ export async function criarProvisao(_: Estado, fd: FormData): Promise<Estado> {
 }
 
 export async function alterarProvisao(id: string, status: "convertida" | "cancelada", _: Estado): Promise<Estado> {
-  await exigirPerfil("financeiro");
+  await exigirPerfil("financeiro", "suprimentos");
   if (!UUID.test(id)) return { erro: "Provisão não encontrada." };
   const supabase = await createClient();
-  const { error } = await supabase.from("provisoes").update({ status }).eq("id", id);
+  // Suprimentos só altera as provisões que criou (regra do banco); nenhuma linha alterada = sem permissão
+  const { data, error } = await supabase.from("provisoes").update({ status }).eq("id", id).select("id");
   if (error) return { erro: mensagemErro(error) };
+  if (!data?.length) return { erro: "Você só pode alterar as provisões que cadastrou." };
   revalidatePath("/provisoes");
   revalidatePath("/agenda");
   // A linha sai da situação "provisionada": volta à lista com a confirmação visível.
+  // Se era a última parcela de uma série, a página pergunta se deseja adicionar mais.
+  const { data: pv } = await supabase.from("provisoes").select("descricao").eq("id", id).single();
+  const m = pv?.descricao.match(/ \((\d+)\/(\d+)\)$/);
+  if (status === "convertida" && m && m[1] === m[2]) redirect(`/provisoes?aviso=ultima&prov=${id}`);
   redirect(`/provisoes?aviso=${status}`);
+}
+
+/** Cancela esta provisão e as próximas da mesma série (repetição de um pagamento ou provisão de vários meses). */
+export async function cancelarProximasProvisoes(id: string, _: Estado): Promise<Estado> {
+  const u = await exigirPerfil("financeiro", "suprimentos");
+  if (!UUID.test(id)) return { erro: "Provisão não encontrada." };
+  const supabase = await createClient();
+  const { data: p } = await supabase
+    .from("provisoes")
+    .select("id, obra_id, descricao, vencimento, status, created_by, pagamento_origem_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (!p || p.status !== "provisionada") return { erro: "Provisão não encontrada ou já encerrada." };
+  if (u.perfil === "suprimentos" && p.created_by !== u.id && !p.pagamento_origem_id) return { erro: "Você só pode alterar as provisões que cadastrou." };
+
+  let qtd = 0;
+  if (p.pagamento_origem_id) {
+    // Repetição de pagamento: a partir do vencimento desta (inclusive)
+    const { data, error } = await supabase.rpc("cancelar_serie", {
+      p_pagamento_id: p.pagamento_origem_id,
+      p_a_partir: (p.vencimento ?? "1900-01-01") as string,
+    });
+    if (error) return { erro: mensagemErro(error) };
+    qtd = data ?? 0;
+  } else {
+    // Provisão de vários meses: mesma descrição-base "(k/N)", mesmo centro de custo e quem cadastrou
+    const m = p.descricao.match(/^(.*) \((\d+)\/(\d+)\)$/);
+    if (!m) return alterarProvisao(id, "cancelada", _);
+    const [, base, , total] = m;
+    const { data: irmas } = await supabase
+      .from("provisoes")
+      .select("id, descricao, vencimento")
+      .eq("obra_id", p.obra_id)
+      .eq("created_by", p.created_by)
+      .eq("status", "provisionada")
+      .like("descricao", `${base.replace(/[%_\\]/g, (c) => "\\" + c)} (%/${total})`);
+    const ids = (irmas ?? [])
+      .filter((x) => x.descricao.match(/ \((\d+)\/\d+\)$/) && (!p.vencimento || !x.vencimento || x.vencimento >= p.vencimento))
+      .map((x) => x.id);
+    if (!ids.includes(p.id)) ids.push(p.id);
+    const { data, error } = await supabase.from("provisoes").update({ status: "cancelada" }).in("id", ids).select("id");
+    if (error) return { erro: mensagemErro(error) };
+    if (!data?.length) return { erro: "Você só pode alterar as provisões que cadastrou." };
+    qtd = data.length;
+  }
+  revalidatePath("/provisoes");
+  revalidatePath("/agenda");
+  revalidatePath("/");
+  redirect(`/provisoes?aviso=serie&qtd=${qtd}`);
+}
+
+/** Última parcela da série: adiciona mais parcelas (mesmo intervalo, valor e categoria) e renumera a série. */
+export async function adicionarParcelasProvisao(id: string, _: Estado, fd: FormData): Promise<Estado> {
+  await exigirPerfil("financeiro", "suprimentos");
+  if (!UUID.test(id)) return { erro: "Provisão não encontrada." };
+  const qtd = Number(t(fd, "quantidade"));
+  if (!Number.isInteger(qtd) || qtd < 1 || qtd > 60) return { erro: "Informe de 1 a 60 parcelas." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("estender_serie_provisao", { p_provisao_id: id, p_quantidade: qtd });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/provisoes");
+  revalidatePath("/agenda");
+  revalidatePath("/");
+  redirect(`/provisoes?aviso=estendida&qtd=${qtd}`);
 }

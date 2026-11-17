@@ -30,6 +30,7 @@ async function criarPagamento(fin, rotulo) {
   await fin.p.fill('input[name=valor]', '500,00');
   await fin.p.fill('input[name=vencimento]', new Date(Date.now() + 9 * 864e5).toISOString().slice(0, 10));
   await fin.p.setInputFiles('input[name=boleto]', BOLETO);
+  await fin.p.click('button[aria-label="Categoria"]'); await fin.p.locator('[role=option]').first().click();
   await Promise.all([fin.p.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/, { timeout: 120000 }), fin.p.click('button:has-text("Cadastrar e encaminhar")')]);
   return fin.p.url().match(/[0-9a-f-]{36}/)[0];
 }

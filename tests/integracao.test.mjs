@@ -387,13 +387,13 @@ test('OP: só o engenheiro vinculado cria; rascunho é privado', async () => {
 
 test('OP: envio cria pagamento direto ao administrador e acompanha o status até paga', async () => {
   const id = await salvarOP('eng', obraA.id)
-  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  const pagId = await enviarOPEng(id)
   await rpcFalha('eng', 'salvar_op', {
     p_id: id, p_obra_id: obraA.id, p_favorecido: 'X', p_cpf_cnpj: null, p_descricao: 'X', p_vencimento: null,
     p_forma_pagamento: 'pix', p_dados_bancarios: null, p_observacoes: null, p_itens: itensOP,
   }, /já foi enviada/)
   let p = await pagamento(pagId)
-  assert.equal(p.status, 'aguardando_engenheiro') // o engenheiro que criou a OP assina antes do administrador
+  assert.equal(p.status, 'aguardando_administrador') // o engenheiro criador assinou na solicitação; a etapa dele já está concluída
   assert.equal(Number(p.valor), 1502.5)
   assert.equal(p.created_by, u.eng.id)
   const op = async () => (await admin.from('ordens_pagamento').select('*').eq('id', id).single()).data
@@ -401,16 +401,10 @@ test('OP: envio cria pagamento direto ao administrador e acompanha o status até
   assert.equal(p.numero_documento, (await op()).numero)
   assert.equal((await op()).status, 'enviada')
 
-  // engenheiro anexa o PDF da OP
-  await anexar('eng', p, 'ordem_pagamento')
-  // mas não anexa em outros pagamentos da obra
+  // o PDF da OP já foi registrado no envio; o engenheiro não anexa em outros pagamentos da obra
   const outro = await pagamento(await novoPagamento('sup', obraA.id))
   await assert.rejects(() => anexar('eng', outro, 'outro'), /permissão|upload/)
 
-  // o engenheiro criador assina o PDF da OP e aprova a etapa dele
-  await anexar('eng', p, 'documento_assinado')
-  await rpc('eng', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'aprovado' })
-  assert.equal(((await pagamento(pagId))).status, 'aguardando_administrador')
   await rpc('adm', 'marcar_op_em_analise', { p_pagamento_id: pagId })
   assert.equal((await op()).status, 'em_analise')
   // o PDF da OP também é assinado por quem aprova: o administrador assina antes de aprovar
@@ -423,10 +417,11 @@ test('OP: envio cria pagamento direto ao administrador e acompanha o status até
   assert.equal((await op()).status, 'paga')
 })
 
-test('OP: rejeição pelo engenheiro criador', async () => {
+test('OP: administrador rejeita a OP enviada pelo engenheiro criador', async () => {
   const id = await salvarOP('eng', obraA.id)
-  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
-  await rpc('eng', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'rejeitado', p_comentario: 'Sem medição' })
+  const pagId = await enviarOPEng(id)
+  await rpc('adm', 'marcar_op_em_analise', { p_pagamento_id: pagId })
+  await rpc('adm', 'decidir_aprovacao', { p_itens: [{ id: pagId, versao: 1 }], p_decisao: 'rejeitado', p_comentario: 'Sem medição' })
   const { data } = await admin.from('ordens_pagamento').select('status').eq('id', id).single()
   assert.equal(data.status, 'rejeitada')
 })
@@ -435,7 +430,7 @@ test('OP: obra sem administrador segue ao Financeiro', async () => {
   const { data: obra } = await u.fin.client.from('obras').insert({ nome: `Obra E ${sufixo}`, cidade: 'Lauro de Freitas', uf: 'BA', fluxo: 'C' }).select().single()
   await u.fin.client.from('obra_acessos').insert({ obra_id: obra.id, user_id: u.eng.id })
   const id = await salvarOP('eng', obra.id)
-  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  const pagId = await enviarOPEng(id)
   assert.equal((await pagamento(pagId)).status, 'aguardando_pagamento')
 })
 
@@ -490,7 +485,7 @@ test('OP: desconto reduz o valor do pagamento; campos do modelo são gravados', 
     p_vencimento: '2026-12-20', p_forma_pagamento: 'pix', p_dados_bancarios: 'PIX (71) 99999-0000', p_observacoes: null, p_itens: itens }
   await rpcFalha('eng', 'salvar_op', { ...base, p_desconto: 5000, p_referencia: 'OUTUBRO' }, /maior que o subtotal/)
   const id = await rpc('eng', 'salvar_op', { ...base, p_desconto: 10, p_referencia: 'OUTUBRO' })
-  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  const pagId = await enviarOPEng(id)
   const p = await pagamento(pagId)
   assert.equal(Number(p.valor), 1400.02)
   const { data: op } = await admin.from('ordens_pagamento').select('referencia, desconto').eq('id', id).single()
@@ -682,4 +677,228 @@ test('suprimentos anexa boleto e nota em qualquer obra; outros tipos continuam r
   await anexar('sup', pag, 'boleto')
   await anexar('sup', pag, 'nota_fiscal')
   await assert.rejects(() => anexar('sup', pag, 'outro'), /permissão|row-level security/)
+})
+
+// Envio da OP pelo engenheiro criador: ele assina na solicitação, a OP é enviada e a assinatura é concluída (como no servidor).
+async function enviarOPEng(id) {
+  await rpc('eng', 'registrar_assinatura_criador', { p_ordem_id: id, p_pos: { fx: 0.68, fy: 0.78, fw: 0.24 } })
+  const pagId = await rpc('eng', 'enviar_op', { p_id: id })
+  const pag = await pagamento(pagId)
+  // PDF oficial da OP (sem assinatura), registrado como a server action faz no envio
+  const oficial = Buffer.from(`%PDF-1.4 oficial ${randomUUID()}`)
+  const pathOficial = `${pag.obra_id}/${pag.id}/${randomUUID()}.pdf`
+  const up0 = await u.eng.client.storage.from('documentos').upload(pathOficial, oficial, { contentType: 'application/pdf' })
+  if (up0.error) throw new Error('upload oficial: ' + up0.error.message)
+  await rpc('eng', 'registrar_documento', {
+    p_pagamento_id: pagId, p_tipo: 'ordem_pagamento', p_nome_arquivo: 'OP.pdf', p_storage_path: pathOficial,
+    p_mime_type: 'application/pdf', p_tamanho: oficial.length, p_sha256: createHash('sha256').update(oficial).digest('hex'),
+  })
+  const conteudo = Buffer.from(`%PDF-1.4 assinado criador ${randomUUID()}`)
+  const path = `${pag.obra_id}/${pag.id}/${randomUUID()}.pdf`
+  const { error } = await u.eng.client.storage.from('documentos').upload(path, conteudo, { contentType: 'application/pdf' })
+  if (error) throw new Error('upload: ' + error.message)
+  await rpc('eng', 'concluir_criacao_assinada', {
+    p_pagamento_id: pagId, p_storage_path: path, p_nome: 'OP assinada.pdf', p_mime: 'application/pdf',
+    p_tamanho: conteudo.length, p_sha256: createHash('sha256').update(conteudo).digest('hex'),
+  })
+  return pagId
+}
+
+// ===== Rodada: categorias, competência, repetição, provisões de suprimentos, cheque =====
+const hojeSP = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+
+test('categorias: só o financeiro cria/altera; nome repetido devolve a mesma; sem nomes duplicados', async () => {
+  const nome = `Categoria ${sufixo}`
+  const id1 = await rpc('fin', 'criar_categoria', { p_nome: nome })
+  const id2 = await rpc('fin', 'criar_categoria', { p_nome: `  ${nome.toLowerCase()} ` })
+  assert.equal(id1, id2)
+  for (const chave of ['sup', 'eng', 'adm']) await rpcFalha(chave, 'criar_categoria', { p_nome: `Outra ${sufixo}` }, /Somente o Financeiro/)
+  const id3 = await rpc('fin', 'criar_categoria', { p_nome: `Segunda ${sufixo}` })
+  await rpcFalha('fin', 'atualizar_categoria', { p_id: id3, p_nome: nome, p_ativo: true }, /Já existe/)
+  await rpcFalha('sup', 'atualizar_categoria', { p_id: id3, p_nome: `X ${sufixo}`, p_ativo: true }, /Somente o Financeiro/)
+  const { error } = await u.fin.client.from('categorias').insert({ nome: `Direto ${sufixo}` })
+  assert.ok(error, 'insert direto na tabela deveria ser recusado')
+})
+
+test('categoria no pagamento: em aberto ok; desativada, quem não atua e pagamento finalizado são recusados', async () => {
+  const cat = await rpc('fin', 'criar_categoria', { p_nome: `Cat pag ${sufixo}` })
+  const inativa = await rpc('fin', 'criar_categoria', { p_nome: `Inativa ${sufixo}` })
+  await rpc('fin', 'atualizar_categoria', { p_id: inativa, p_nome: `Inativa ${sufixo}`, p_ativo: false })
+  const pagId = await novoPagamento('fin', obraA.id)
+  await rpc('fin', 'definir_categoria', { p_pagamento_id: pagId, p_categoria_id: cat })
+  assert.equal((await pagamento(pagId)).categoria_id, cat)
+  await rpcFalha('fin', 'definir_categoria', { p_pagamento_id: pagId, p_categoria_id: inativa }, /Categoria inválida/)
+  await rpcFalha('eng', 'definir_categoria', { p_pagamento_id: pagId, p_categoria_id: cat }, /Sem permissão|não encontrado/)
+  await rpc('fin', 'cancelar_pagamento', { p_id: pagId, p_motivo: 'teste' })
+  await rpcFalha('fin', 'definir_categoria', { p_pagamento_id: pagId, p_categoria_id: cat }, /finalizado/)
+})
+
+test('competência: padrão = data do cadastro; altera em aberto; OP passa competência e categoria ao pagamento', async () => {
+  const pagId = await novoPagamento('fin', obraA.id)
+  assert.equal((await pagamento(pagId)).data_competencia, hojeSP())
+  await rpc('fin', 'definir_competencia', { p_pagamento_id: pagId, p_data: '2026-09-01' })
+  assert.equal((await pagamento(pagId)).data_competencia, '2026-09-01')
+  await rpcFalha('eng', 'definir_competencia', { p_pagamento_id: pagId, p_data: '2026-10-01' }, /Sem permissão|não encontrado/)
+
+  const cat = await rpc('fin', 'criar_categoria', { p_nome: `Cat OP ${sufixo}` })
+  const opId = await salvarOP('eng', obraA.id)
+  await rpc('eng', 'definir_competencia_op', { p_ordem_id: opId, p_data: '2026-08-15' })
+  await rpc('eng', 'definir_categoria_op', { p_ordem_id: opId, p_categoria_id: cat })
+  await rpcFalha('fin', 'definir_competencia_op', { p_ordem_id: opId, p_data: '2026-08-01' }, /Solicitação não encontrada/)
+  const pagOP = await pagamento(await enviarOPEng(opId))
+  assert.equal(pagOP.data_competencia, '2026-08-15')
+  assert.equal(pagOP.categoria_id, cat)
+  await rpcFalha('eng', 'definir_competencia_op', { p_ordem_id: opId, p_data: '2026-08-20' }, /já foi enviada/)
+})
+
+test('repetição: só quem cadastrou; cria N-1 provisões com datas e categoria; não duplica; limites validados', async () => {
+  const cat = await rpc('fin', 'criar_categoria', { p_nome: `Cat rep ${sufixo}` })
+  const pagId = await novoPagamento('fin', obraA.id, 900)
+  await rpc('fin', 'definir_categoria', { p_pagamento_id: pagId, p_categoria_id: cat })
+  await rpcFalha('sup', 'criar_repeticoes', { p_pagamento_id: pagId, p_intervalo: 1, p_vezes: 3 }, /Pagamento não encontrado/)
+  await rpcFalha('fin', 'criar_repeticoes', { p_pagamento_id: pagId, p_intervalo: 0, p_vezes: 3 }, /inválida/)
+  await rpcFalha('fin', 'criar_repeticoes', { p_pagamento_id: pagId, p_intervalo: 1, p_vezes: 61 }, /inválida/)
+  assert.equal(await rpc('fin', 'criar_repeticoes', { p_pagamento_id: pagId, p_intervalo: 1, p_vezes: 3 }), 2)
+  assert.equal(await rpc('fin', 'criar_repeticoes', { p_pagamento_id: pagId, p_intervalo: 1, p_vezes: 3 }), 0)
+  const { data: prov } = await admin.from('provisoes').select('vencimento, valor_estimado, categoria_id, status').eq('pagamento_origem_id', pagId).order('vencimento')
+  assert.deepEqual(prov.map((p) => p.vencimento), ['2027-01-10', '2027-02-10'])
+  assert.ok(prov.every((p) => Number(p.valor_estimado) === 900 && p.categoria_id === cat && p.status === 'provisionada'))
+
+  const opId = await salvarOP('eng', obraA.id)
+  await rpcFalha('eng', 'definir_repeticao_op', { p_ordem_id: opId, p_intervalo: 1, p_vezes: null }, /Informe o intervalo/)
+  await rpc('eng', 'definir_repeticao_op', { p_ordem_id: opId, p_intervalo: 2, p_vezes: 4 })
+  const { data: op } = await admin.from('ordens_pagamento').select('repetir_intervalo, repetir_vezes').eq('id', opId).single()
+  assert.deepEqual([op.repetir_intervalo, op.repetir_vezes], [2, 4])
+})
+
+test('provisões: suprimentos cria em obra sem acesso; altera só as que criou; não exclui', async () => {
+  const { data: obra } = await u.fin.client.from('obras').insert({ nome: `Obra prov ${sufixo}`, cidade: 'Salvador', uf: 'BA', fluxo: 'C' }).select().single()
+  const { data: minha, error: e1 } = await u.sup.client.from('provisoes').insert({ obra_id: obra.id, descricao: 'Provisão do suprimentos', vencimento: '2027-03-10', valor_estimado: 300 }).select().single()
+  assert.ifError(e1)
+  const { data: dafin, error: e2 } = await u.fin.client.from('provisoes').insert({ obra_id: obra.id, descricao: 'Provisão do financeiro', vencimento: '2027-03-10', valor_estimado: 500 }).select().single()
+  assert.ifError(e2)
+  const { data: alteradaFin } = await u.sup.client.from('provisoes').update({ status: 'cancelada' }).eq('id', dafin.id).select('id')
+  assert.equal(alteradaFin.length, 0, 'suprimentos não altera provisão do financeiro')
+  const { data: alteradaMinha } = await u.sup.client.from('provisoes').update({ status: 'convertida' }).eq('id', minha.id).select('id')
+  assert.equal(alteradaMinha.length, 1)
+  const { data: excluida, error: eDel } = await u.sup.client.from('provisoes').delete().eq('id', minha.id).select('id')
+  assert.ok(eDel || excluida.length === 0, 'suprimentos não exclui provisão')
+  const { data: aindaExiste } = await admin.from('provisoes').select('id').eq('id', minha.id)
+  assert.equal(aindaExiste.length, 1)
+  const { error: e3 } = await u.eng.client.from('provisoes').insert({ obra_id: obra.id, descricao: 'Engenheiro', vencimento: '2027-03-10' })
+  assert.ok(e3, 'engenheiro não cria provisão direto')
+})
+
+test('forma de pagamento cheque é aceita', async () => {
+  const id = await rpc('fin', 'criar_pagamento', {
+    p_obra_id: obraA.id, p_fornecedor_id: null, p_favorecido: 'Cheque Teste', p_descricao: 'Pagamento em cheque',
+    p_valor: 120, p_vencimento: '2026-12-10', p_forma_pagamento: 'cheque',
+  })
+  assert.equal((await pagamento(id)).forma_pagamento, 'cheque')
+})
+
+test('engenheiro não cadastra pagamento direto (boleto); competência de pagamento pago não muda', async () => {
+  await rpcFalha('eng', 'criar_pagamento', {
+    p_obra_id: obraA.id, p_fornecedor_id: null, p_favorecido: 'Eng boleto', p_descricao: 'Tentativa',
+    p_valor: 50, p_vencimento: '2026-12-10', p_forma_pagamento: 'boleto',
+  })
+  const pagId = await novoPagamento('fin', obraC.id, 77)
+  const p = await pagamento(pagId)
+  assert.equal(p.status, 'aguardando_pagamento') // obra sem administrador: vai direto ao Financeiro
+  await rpc('fin', 'registrar_baixa', { p_id: pagId, p_pago_em: '2026-12-14' })
+  await rpcFalha('fin', 'definir_competencia', { p_pagamento_id: pagId, p_data: '2026-01-01' }, /finalizado/)
+})
+
+test('baixa a menor: "saldo" gera parcela paga + saldo em aberto; "desconto" quita', async () => {
+  const saldo = await novoPagamento('fin', obraC.id, 1000)
+  await rpc('fin', 'registrar_baixa', { p_id: saldo, p_pago_em: '2026-12-14', p_valor_pago: 400, p_diferenca: 'saldo' })
+  assert.equal((await pagamento(saldo)).status, 'aguardando_pagamento')
+  const { data: pcs } = await admin.from('pagamento_parcelas').select('numero, valor_base, status').eq('pagamento_id', saldo).order('numero')
+  assert.deepEqual(pcs.map((p) => [p.numero, Number(p.valor_base), p.status]), [[1, 400, 'pago'], [2, 600, 'a_pagar']])
+  const desc = await novoPagamento('fin', obraC.id, 1000)
+  await rpc('fin', 'registrar_baixa', { p_id: desc, p_pago_em: '2026-12-14', p_valor_pago: 900, p_diferenca: 'desconto' })
+  const p = await pagamento(desc)
+  assert.deepEqual([p.status, Number(p.valor_pago)], ['pago', 900])
+  await rpcFalha('fin', 'registrar_baixa', { p_id: await novoPagamento('fin', obraC.id), p_pago_em: '2026-12-14', p_valor_pago: 10, p_diferenca: 'outro' })
+})
+
+test('estorno: financeiro e master estornam com motivo; suprimentos e engenheiro não; parcela estornada reabre o pagamento', async () => {
+  const id = await novoPagamento('fin', obraC.id)
+  await rpcFalha('fin', 'estornar_baixa', { p_id: id, p_motivo: 'não pago ainda' }, /pago/)
+  await rpc('fin', 'registrar_baixa', { p_id: id, p_pago_em: '2026-12-14' })
+  await rpcFalha('sup', 'estornar_baixa', { p_id: id, p_motivo: 'tentativa' })
+  await rpcFalha('eng', 'estornar_baixa', { p_id: id, p_motivo: 'tentativa' })
+  await rpcFalha('fin', 'estornar_baixa', { p_id: id, p_motivo: ' ' }, /motivo/)
+  await rpc('master', 'estornar_baixa', { p_id: id, p_motivo: 'Devolvido pelo banco' })
+  const p = await pagamento(id)
+  assert.deepEqual([p.status, p.pago_em, p.valor_pago], ['aguardando_pagamento', null, null])
+  const { data: au } = await admin.from('auditoria').select('acao').eq('pagamento_id', id).eq('acao', 'estorno')
+  assert.equal(au.length, 1)
+  const parc = await novoPagamento('fin', obraC.id, 1000)
+  await rpc('fin', 'registrar_baixa', { p_id: parc, p_pago_em: '2026-12-14', p_valor_pago: 300 })
+  const { data: [pc1] } = await admin.from('pagamento_parcelas').select('id').eq('pagamento_id', parc).eq('numero', 1)
+  await rpc('fin', 'estornar_baixa_parcela', { p_parcela_id: pc1.id, p_motivo: 'Erro' })
+  const { data: st } = await admin.from('pagamento_parcelas').select('status').eq('pagamento_id', parc).order('numero')
+  assert.deepEqual(st.map((x) => x.status), ['a_pagar', 'a_pagar'])
+})
+
+test('série: cancelar tudo ou a partir de uma data; reajustar; só criador ou financeiro', async () => {
+  const id = await novoPagamento('sup', obraA.id, 500)
+  assert.equal(await rpc('sup', 'criar_repeticoes', { p_pagamento_id: id, p_intervalo: 1, p_vezes: 5 }), 4)
+  assert.equal(await rpc('sup', 'reajustar_serie', { p_pagamento_id: id, p_valor: 650 }), 4)
+  await rpcFalha('eng', 'reajustar_serie', { p_pagamento_id: id, p_valor: 1 })
+  await rpcFalha('eng', 'cancelar_serie', { p_pagamento_id: id })
+  const { data: provs } = await admin.from('provisoes').select('vencimento, valor_estimado').eq('pagamento_origem_id', id).order('vencimento')
+  assert.ok(provs.every((x) => Number(x.valor_estimado) === 650))
+  assert.equal(await rpc('fin', 'cancelar_serie', { p_pagamento_id: id, p_a_partir: provs[2].vencimento }), 2)
+  assert.equal(await rpc('sup', 'cancelar_serie', { p_pagamento_id: id }), 2)
+  const { data: fim } = await admin.from('provisoes').select('status').eq('pagamento_origem_id', id)
+  assert.ok(fim.every((x) => x.status === 'cancelada'))
+})
+
+test('duplicidade: acha pelo mesmo arquivo ou por favorecido+valor+vencimento, ignora cancelados e respeita a visibilidade', async () => {
+  const id = await rpc('fin', 'criar_pagamento', {
+    p_obra_id: obraC.id, p_fornecedor_id: null, p_favorecido: `Dup ${sufixo}`, p_descricao: 'Dup', p_valor: 321.45, p_vencimento: '2026-12-20', p_forma_pagamento: 'boleto',
+  })
+  const docId = await anexar('fin', await pagamento(id))
+  const { data: doc } = await admin.from('documentos').select('sha256').eq('id', docId).single()
+  const porArquivo = await rpc('fin', 'verificar_duplicidade', { p_hashes: [doc.sha256], p_favorecido: null, p_valor: null, p_vencimento: null })
+  assert.ok(porArquivo.some((r) => r.pagamento_id === id && /arquivo/.test(r.motivo)))
+  const porDados = await rpc('fin', 'verificar_duplicidade', { p_hashes: [], p_favorecido: `dup ${sufixo}`, p_valor: 321.45, p_vencimento: '2026-12-20' })
+  assert.ok(porDados.some((r) => r.pagamento_id === id))
+  const outroValor = await rpc('fin', 'verificar_duplicidade', { p_hashes: [], p_favorecido: `Dup ${sufixo}`, p_valor: 321.46, p_vencimento: '2026-12-20' })
+  assert.ok(!outroValor.some((r) => r.pagamento_id === id))
+  const semAcesso = await rpc('eng2', 'verificar_duplicidade', { p_hashes: [doc.sha256], p_favorecido: `Dup ${sufixo}`, p_valor: 321.45, p_vencimento: '2026-12-20' })
+  assert.equal(semAcesso.length, 0)
+  await rpc('fin', 'cancelar_pagamento', { p_id: id, p_motivo: 'teste' })
+  const cancelado = await rpc('fin', 'verificar_duplicidade', { p_hashes: [doc.sha256], p_favorecido: null, p_valor: null, p_vencimento: null })
+  assert.ok(!cancelado.some((r) => r.pagamento_id === id))
+})
+
+test('última parcela: estender série de provisões renumera, mantém intervalo/valor/categoria; só financeiro ou quem cadastrou', async () => {
+  // Série de repetição (pagamento a cada 2 meses, 3 vezes → 2 provisões)
+  const pag = await novoPagamento('sup', obraA.id, 800)
+  await rpc('sup', 'criar_repeticoes', { p_pagamento_id: pag, p_intervalo: 2, p_vezes: 3 })
+  const { data: antes } = await admin.from('provisoes').select('id, descricao, vencimento').eq('pagamento_origem_id', pag).order('vencimento')
+  const ultima = antes.at(-1)
+  assert.match(ultima.descricao, /\(3\/3\)$/)
+  await rpcFalha('eng', 'estender_serie_provisao', { p_provisao_id: ultima.id, p_quantidade: 2 })
+  await rpcFalha('sup', 'estender_serie_provisao', { p_provisao_id: ultima.id, p_quantidade: 0 })
+  assert.equal(await rpc('sup', 'estender_serie_provisao', { p_provisao_id: ultima.id, p_quantidade: 2 }), 2)
+  const { data: depois } = await admin.from('provisoes').select('descricao, vencimento, valor_estimado, created_by').eq('pagamento_origem_id', pag).order('vencimento')
+  assert.deepEqual(depois.map((p) => p.descricao.match(/\((\d+\/\d+)\)$/)[1]), ['2/5', '3/5', '4/5', '5/5'])
+  const mes = (d) => Number(d.slice(0, 4)) * 12 + Number(d.slice(5, 7))
+  assert.equal(mes(depois[2].vencimento) - mes(depois[1].vencimento), 2, 'mantém o intervalo de 2 meses')
+  assert.equal(mes(depois[3].vencimento) - mes(depois[2].vencimento), 2)
+  assert.ok(depois.every((p) => Number(p.valor_estimado) === 800 && p.created_by === u.sup.id))
+  // Série manual de 2 meses do financeiro: suprimentos não estende; financeiro estende mensalmente
+  const { data: obraP } = await u.fin.client.from('obras').insert({ nome: `Obra serie ${sufixo}`, cidade: 'Salvador', uf: 'BA', fluxo: 'C' }).select().single()
+  const { data: manual } = await u.fin.client.from('provisoes').insert([1, 2].map((k) => ({ obra_id: obraP.id, descricao: `Aluguel ${sufixo} (${k}/2)`, vencimento: `2027-0${k}-31`.replace('02-31', '02-28'), valor_estimado: 100 }))).select().order('vencimento')
+  await rpcFalha('sup', 'estender_serie_provisao', { p_provisao_id: manual[1].id, p_quantidade: 1 })
+  await rpc('fin', 'estender_serie_provisao', { p_provisao_id: manual[1].id, p_quantidade: 2 })
+  const { data: m2 } = await admin.from('provisoes').select('descricao, vencimento').like('descricao', `Aluguel ${sufixo} (%`).order('vencimento')
+  assert.deepEqual(m2.map((p) => [p.descricao.slice(-5), p.vencimento]), [['(1/4)', '2027-01-31'], ['(2/4)', '2027-02-28'], ['(3/4)', '2027-03-31'], ['(4/4)', '2027-04-30']])
+  // Provisão avulsa (sem série) não estende
+  const { data: avulsa } = await u.fin.client.from('provisoes').insert({ obra_id: obraP.id, descricao: 'Avulsa', vencimento: '2027-01-10' }).select().single()
+  await rpcFalha('fin', 'estender_serie_provisao', { p_provisao_id: avulsa.id, p_quantidade: 1 }, /série/)
 })

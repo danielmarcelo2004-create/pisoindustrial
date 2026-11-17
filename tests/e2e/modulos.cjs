@@ -35,20 +35,36 @@ async function entrar(browser, email) {
 
   const browser = await chromium.launch();
 
-  // 1. Engenheiro cria OP com itens, salva rascunho, pré-visualiza PDF e envia
+  // 0. Assinaturas cadastradas (engenheiro e administrador) para assinar as OPs
+  for (const email of ['engenheiro@demo.local', 'administrador@demo.local']) {
+    const sessao = await entrar(browser, email);
+    await sessao.page.goto(BASE + '/perfil');
+    if (await sessao.page.$('input[type=file]')) {
+      await sessao.page.setInputFiles('input[type=file]', path.join(__dirname, '..', '..', 'public', 'logo-empresa.jpg'));
+      await sessao.page.click('button:has-text("Salvar assinatura")');
+      await sessao.page.getByText('Assinatura salva').waitFor({ timeout: 60000 });
+    }
+    await sessao.ctx.close();
+  }
+
+  // 1. Engenheiro cria OP com itens, salva rascunho, assina na própria solicitação e envia
   let { ctx, page } = await entrar(browser, 'engenheiro@demo.local');
-  await page.goto(BASE + '/ops');
-  await shot(page, '30-minhas-ops');
-  await Promise.all([page.waitForURL(/ops\/nova/), page.click('text=+ Nova solicitação')]);
+  // A Ordem de Pagamento agora nasce em Pagamentos → Novo pagamento (engenheiro: só formas que não são boleto)
+  await page.goto(BASE + '/pagamentos');
+  await shot(page, '30-pagamentos-engenheiro');
+  await Promise.all([page.waitForURL(/pagamentos\/novo/), page.click('text=+ Novo pagamento')]);
+  await page.getByText('Dados da solicitação').waitFor();
   await page.waitForSelector('select[name=obra_id]');
   const obraV = await page.$eval('select[name=obra_id]', (s) => [...s.options].find((o) => o.text.includes('Galpão')).value);
   await page.selectOption('select[name=obra_id]', obraV);
   await page.getByText('seguirá direto para o administrador').waitFor();
+  await page.click('button[aria-label="Categoria"]'); await page.locator('[role=option]').first().click();
   await page.fill('input[name=favorecido]', 'Marcos Eletricista');
   await page.fill('input[name=cpf_cnpj]', '529.982.247-25');
   await page.fill('input[name=descricao]', 'Instalação elétrica provisória do canteiro');
   await page.fill('input[name=vencimento]', new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10));
-  await page.fill('[name=dados_bancarios]', 'PIX 529.982.247-25');
+  await page.fill('input[name=banco]', 'CAIXA ECONOMICA FEDERAL');
+  await page.fill('input[name=chave_pix]', '529.982.247-25');
   await page.fill('input[aria-label="Descrição do item 1"]', 'Mão de obra eletricista');
   await page.fill('input[aria-label="Unidade do item 1"]', 'dia');
   await page.fill('input[aria-label="Quantidade do item 1"]', '3');
@@ -60,9 +76,16 @@ async function entrar(browser, email) {
   await page.fill('input[aria-label="Valor unitário do item 2"]', '8,90');
   await page.getByText('R$ 1.199,45').first().waitFor(); // 750 + 449,45
   await shot(page, '31-nova-op');
-  await Promise.all([page.waitForURL(/\/ops\/[0-9a-f-]{36}\/editar\?salva/), page.click('button:has-text("Salvar rascunho")')]);
-  await page.getByText('Editar solicitação (rascunho)').first().waitFor();
+  await Promise.all([page.waitForURL(/\/ops\/[0-9a-f-]{36}\/editar\?salva/), page.click('button:text-is("Salvar rascunho")')]);
+  await page.getByText('Ordem de Pagamento (rascunho)').first().waitFor();
   ok('Engenheiro salvou rascunho de OP com 2 itens (total calculado R$ 1.199,45)');
+
+  // Assinatura do engenheiro na própria solicitação (antes de enviar)
+  await page.click('button:has-text("Assinar OP")');
+  await page.getByText('Posicione sua assinatura na OP').waitFor();
+  await page.click('[role=dialog] button:has-text("Confirmar assinatura")');
+  await page.getByText('Assinatura registrada').waitFor({ timeout: 60000 });
+  ok('Engenheiro assinou a OP na própria solicitação');
 
   const opUrl = page.url().split('/editar')[0].split('?')[0];
   const pdf = await ctx.request.get(opUrl + '/pdf');
@@ -72,7 +95,9 @@ async function entrar(browser, email) {
   ok(`Pré-visualização do PDF (${pdfBuf.length} bytes)`);
 
   await page.click('button:has-text("Salvar e enviar")');
-  await page.waitForURL(/enviada=1/);
+  // Depois do envio abre o pagamento criado; a OP continua acessível pelo link da solicitação
+  await page.waitForURL(/\/pagamentos\/[0-9a-f-]{36}\?criado=1/);
+  await page.goto(opUrl);
   await page.getByText(/OP-\d{4}-\d{5}/).first().waitFor();
   const numeroOP = (await page.locator('h1').innerText()).match(/OP-\d{4}-\d{5}/)[0];
   await shot(page, '32-op-enviada');
@@ -83,34 +108,6 @@ async function entrar(browser, email) {
   fs.writeFileSync(path.join(DIR, 'op-oficial.pdf'), pdfOfBuf);
   ok(`OP enviada como ${numeroOP} com PDF oficial anexado`);
   const pagHref = await page.locator('a:has-text("Ver pagamento")').getAttribute('href');
-  await ctx.close();
-
-  // 1a. Assinaturas cadastradas (engenheiro e administrador) para assinar as OPs
-  for (const email of ['engenheiro@demo.local', 'administrador@demo.local']) {
-    ({ ctx, page } = await entrar(browser, email));
-    await page.goto(BASE + '/perfil');
-    if (await page.$('input[type=file]')) {
-      await page.setInputFiles('input[type=file]', path.join(__dirname, '..', '..', 'public', 'logo-empresa.jpg'));
-      await page.click('button:has-text("Salvar assinatura")');
-      await page.getByText('Assinatura salva').waitFor({ timeout: 60000 });
-    }
-    await ctx.close();
-  }
-
-  // 1b. O engenheiro que criou a OP assina o PDF e aprova a etapa dele
-  ({ ctx, page } = await entrar(browser, 'engenheiro@demo.local'));
-  await page.goto(BASE + pagHref);
-  await page.click('button:has-text("Abrir e posicionar a assinatura")');
-  await page.getByText('Posicione sua assinatura').waitFor();
-  await page.click('button:has-text("Confirmar assinatura")');
-  await page.getByText(/Documento assinado\. O original/).waitFor({ timeout: 90000 });
-  await page.goto(BASE + pagHref);
-  await page.click('button:has-text("Assinar e aprovar")');
-  await page.check('input[name=conferi]');
-  await page.fill('input[name=senha]', SENHA);
-  await page.click('form button:has-text("Assinar e aprovar")');
-  await page.getByText('Encaminhado ao administrador').first().waitFor({ timeout: 20000 }).catch(() => {});
-  ok('Engenheiro assinou e aprovou a própria OP');
   await ctx.close();
 
   // 2. Administrador abre (em análise) e aprova
@@ -148,6 +145,7 @@ async function entrar(browser, email) {
   await page.fill('input[name=valor]', '20.463,40');
   await page.fill('input[name=vencimento]', new Date(Date.now() + 8 * 864e5).toISOString().slice(0, 10));
   await page.setInputFiles('input[name=nota_fiscal]', XML);
+  await page.click('button[aria-label="Categoria"]'); await page.locator('[role=option]').first().click();
   await Promise.all([page.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/), page.click('button:has-text("Cadastrar e encaminhar")')]);
   await page.getByText(/3 item\(ns\) na Inteligência de Compras \(\s*lidos do XML/).waitFor();
   await shot(page, '33-pagamento-com-xml');
@@ -162,6 +160,7 @@ async function entrar(browser, email) {
   await page.fill('input[name=valor]', '10,00');
   await page.fill('input[name=vencimento]', new Date(Date.now() + 8 * 864e5).toISOString().slice(0, 10));
   await page.setInputFiles('input[name=nota_fiscal]', XML);
+  await page.click('button[aria-label="Categoria"]'); await page.locator('[role=option]').first().click();
   await Promise.all([page.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/), page.click('button:has-text("Cadastrar e encaminhar")')]);
   await page.getByText(/já foi registrada em outro pagamento/).waitFor();
   ok('Mesma NF-e em outro pagamento é sinalizada (sem duplicar na análise)');
@@ -220,11 +219,14 @@ async function entrar(browser, email) {
   const xr = await ctx.request.get(`${BASE}/relatorios/exportar?base=pago_em&de=${seis}&ate=${hoje}`);
   const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(await xr.body());
   const pag = wb2.getWorksheet('Pagamentos');
-  if (wb2.worksheets.length !== 5 || pag.rowCount < 10) throw new Error('xlsx relatório inválido');
-  if (typeof pag.getRow(2).getCell(9).value !== 'number') throw new Error('valor não numérico no Excel');
-  ok(`Relatório por data de pagamento + Excel (${pag.rowCount - 1} pagamentos, 5 abas)`);
-  await page.goto(BASE + '/ops');
-  await shot(page, '38-ops-financeiro');
+  // Abas: Pagamentos, resumos (inclui "Por categoria"). A coluna Valor é localizada pelo cabeçalho.
+  if (wb2.worksheets.length !== 6 || pag.rowCount < 10) throw new Error('xlsx relatório inválido: ' + wb2.worksheets.map((w) => w.name).join(', '));
+  let colValor = 0;
+  pag.getRow(1).eachCell((c, i) => { if (String(c.value).trim() === 'Valor') colValor = i; });
+  if (!colValor || typeof pag.getRow(2).getCell(colValor).value !== 'number') throw new Error('valor não numérico no Excel');
+  ok(`Relatório por data de pagamento + Excel (${pag.rowCount - 1} pagamentos, 6 abas)`);
+  await page.goto(BASE + '/pagamentos');
+  await shot(page, '38-pagamentos-financeiro');
   await ctx.close();
 
   // 6. Engenheiro não vê Compras; administrador não vê OP de outra obra

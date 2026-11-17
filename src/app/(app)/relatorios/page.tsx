@@ -66,10 +66,11 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
   const sp = await searchParams;
   const f = lerFiltros((k) => (typeof sp[k] === "string" ? (sp[k] as string) : null));
   const supabase = await createClient();
-  const [r, { data: obras }, { data: fornecedores }] = await Promise.all([
+  const [r, { data: obras }, { data: fornecedores }, { data: categorias }] = await Promise.all([
     dadosRelatorio(f),
     supabase.from("obras").select("id, nome").order("nome"),
     supabase.from("fornecedores").select("id, nome").order("nome"),
+    supabase.from("categorias").select("id, nome").order("nome"),
   ]);
   const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v) as [string, string][]);
   const comFiltro = (k: string, v: string) => {
@@ -77,7 +78,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
     q.set(k, v);
     return `/relatorios?${q}`;
   };
-  const baseRotulo = { vencimento: "vencimento", pago_em: "data de pagamento", criacao: "data de cadastro" }[f.base];
+  const baseRotulo = { vencimento: "vencimento", pago_em: "data de pagamento", criacao: "data de cadastro", data_competencia: "competência" }[f.base];
 
   return (
     <>
@@ -96,6 +97,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
             <option value="vencimento">Por vencimento</option>
             <option value="pago_em">Por data de pagamento</option>
             <option value="criacao">Por data de cadastro</option>
+            <option value="data_competencia">Por competência</option>
           </select>
           <input type="date" name="de" defaultValue={f.de} className="campo" aria-label="De" />
           <input type="date" name="ate" defaultValue={f.ate} className="campo" aria-label="Até" />
@@ -110,6 +112,15 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
           <select name="fornecedor" defaultValue={f.fornecedor} className="campo" aria-label="Fornecedor">
             <option value="">Todos os fornecedores</option>
             {(fornecedores ?? []).map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nome}
+              </option>
+            ))}
+          </select>
+          <select name="categoria" defaultValue={f.categoria} className="campo" aria-label="Categoria">
+            <option value="">Todas as categorias</option>
+            <option value="sem">Sem categoria</option>
+            {(categorias ?? []).map((o) => (
               <option key={o.id} value={o.id}>
                 {o.nome}
               </option>
@@ -151,6 +162,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
           <TabelaResumo titulo="Por centro de custo" coluna="Centro de custo" linhas={r.porObra} link={(l) => (l.chave ? comFiltro("obra", l.chave) : null)} />
           <TabelaResumo titulo="Por situação" coluna="Situação" linhas={r.porStatus} link={(l) => comFiltro("status", l.chave)} />
         </div>
+        <TabelaResumo titulo="Por categoria" coluna="Categoria" linhas={r.porCategoria} link={(l) => comFiltro("categoria", l.chave)} />
         <TabelaResumo
           titulo="Por fornecedor / favorecido"
           coluna="Fornecedor"
@@ -167,6 +179,8 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
                   <tr>
                     <th>Nº</th>
                     <th>Vencimento</th>
+                    <th>Competência</th>
+                    <th>Categoria</th>
                     <th>Favorecido / descrição</th>
                     <th>Centro de custo</th>
                     <th className="text-right">Valor</th>
@@ -184,6 +198,8 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
                         </Link>
                       </td>
                       <td className="whitespace-nowrap tabular-nums">{data(p.vencimento)}</td>
+                      <td className="whitespace-nowrap tabular-nums">{data(p.data_competencia)}</td>
+                      <td>{p.categoria?.nome ?? "—"}</td>
                       <td className="min-w-48">
                         {p.favorecido}
                         <div className="line-clamp-1 text-xs text-slate-500">{p.descricao}</div>

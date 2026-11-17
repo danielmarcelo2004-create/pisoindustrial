@@ -33,6 +33,7 @@ const MEDICAO_PDF = path.join(EX, 'nfse-pdf-tabela-emitida-pela-empresa.pdf');
   await fin.fill('input[name=valor]', '5.000,00');
   await fin.fill('input[name=vencimento]', new Date(Date.now() + 6 * 864e5).toISOString().slice(0, 10));
   await fin.setInputFiles('input[name=nota_fiscal]', [PJ_XML, PF_PDF, MEI_PDF, MEI_OUTROS_PDF, DANFE_PDF, MEDICAO_PDF]);
+  await fin.click('button[aria-label="Categoria"]'); await fin.locator('[role=option]').first().click();
   await Promise.all([fin.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/), fin.click('button:has-text("Cadastrar e encaminhar")')]);
   console.log('✔ pagamento cadastrado com 5 arquivos de nota anexados');
 

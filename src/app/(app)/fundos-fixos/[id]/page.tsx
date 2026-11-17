@@ -44,7 +44,6 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
 
   const caminhoAss = meuPerfil?.assinatura_path && meuPerfil.assinatura_path.startsWith(`${u.id}/`) && !meuPerfil.assinatura_path.endsWith("/removida") ? meuPerfil.assinatura_path : null;
   const assinaturaUrl = caminhoAss && minhas ? (await supabase.storage.from("assinaturas").createSignedUrl(caminhoAss, 600)).data?.signedUrl ?? null : null;
-  const assinaturaMime = caminhoAss?.endsWith(".png") ? ("image/png" as const) : ("image/jpeg" as const);
 
   const aprovados = (gastos ?? []).filter((g) => g.status === "aprovado").map((g) => g.valor);
   const gastoAprovado = aprovados.reduce((s, v) => s + v, 0);
@@ -55,10 +54,11 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
 
   // Saldo corrente: cada gasto aprovado desconta na ordem em que aconteceu.
   let corrente = f.valor;
-  const linhas = (gastos ?? []).map((g) => {
+  const linhas: (NonNullable<typeof gastos>[number] & { saldoApos: number })[] = [];
+  for (const g of gastos ?? []) {
     if (g.status === "aprovado") corrente = Math.round((corrente - g.valor) * 100) / 100;
-    return { ...g, saldoApos: corrente };
-  });
+    linhas.push({ ...g, saldoApos: corrente });
+  }
 
   return (
     <>
@@ -117,7 +117,6 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
                         podeEnviar={minhas && !fechado}
                         podeRemover={minhas && !fechado && g.status === "pendente"}
                         assinaturaUrl={assinaturaUrl}
-                        assinaturaMime={assinaturaMime}
                       />
                       {fin && !fechado && (
                         <FormAcao action={excluirGasto.bind(null, f.id, g.id)} enviar="Excluir gasto" variante="fantasma" confirmar="Excluir este gasto? Os comprovantes deixam de estar anexados a ele." />

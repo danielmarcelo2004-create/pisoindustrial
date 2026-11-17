@@ -2,7 +2,7 @@
 // Só é considerada CONFIÁVEL quando todas as linhas de item fecham a conta
 // (quantidade × valor unitário = valor total) e a soma bate com o total de produtos.
 
-export const CNPJ_EMPRESA_NF = "04.602.232/0001-70";
+const CNPJ_EMPRESA_NF = "04.602.232/0001-70";
 
 export type ItemNf = {
   numero_item: number;

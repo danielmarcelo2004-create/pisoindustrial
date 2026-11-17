@@ -8,7 +8,7 @@ export async function carregarOP(id: string) {
   const { data } = await supabase
     .from("ordens_pagamento")
     .select(
-      "*, obra:obras(id, nome, codigo, cidade, uf), solicitante:profiles!ordens_pagamento_solicitante_id_fkey(nome), ordem_itens(*), ordem_parcelas(numero, valor, vencimento), pagamento:pagamentos(id, status, numero, rejeicao_motivo, cancelamento_motivo, pago_em)",
+      "*, categoria:categorias(nome), obra:obras(id, nome, codigo, cidade, uf), solicitante:profiles!ordens_pagamento_solicitante_id_fkey(nome), ordem_itens(*), ordem_parcelas(numero, valor, vencimento), pagamento:pagamentos(id, status, numero, rejeicao_motivo, cancelamento_motivo, pago_em)",
     )
     .eq("id", id)
     .order("posicao", { referencedTable: "ordem_itens" })
@@ -30,6 +30,8 @@ export function dadosPdf(op: OPCompleta): DadosPdfOP {
     vencimento: op.vencimento,
     formaPagamento: op.forma_pagamento,
     dadosBancarios: op.dados_bancarios,
+    observacoes: op.observacoes,
+    desconto: Number(op.desconto ?? 0),
     centroDeCusto: op.obra?.nome ?? "",
     solicitante: op.solicitante?.nome ?? "",
     emitidaEm: op.enviada_em ?? op.updated_at,

@@ -55,14 +55,12 @@ function cadeias(documentos: Doc[]) {
 export function AssinadorDocumentos({
   documentos,
   assinaturaUrl,
-  assinaturaMime,
   pagamentoId,
   obraId,
   usuarioId,
 }: {
   documentos: Doc[];
   assinaturaUrl: string;
-  assinaturaMime: "image/png" | "image/jpeg";
   pagamentoId: string;
   obraId: string;
   usuarioId: string;

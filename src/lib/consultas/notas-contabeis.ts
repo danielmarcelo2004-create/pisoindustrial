@@ -26,11 +26,6 @@ export async function listarNotasContabeis(situacao: SituacaoNota): Promise<Nota
     .filter((n) => situacao === "todas" || (situacao === "enviadas" ? !!n.enviada_em : !n.enviada_em));
 }
 
-/** Notas de medição emitidas pela empresa (aba Notas de medição). */
-export async function listarNotasMedicao(): Promise<NotaContabil[]> {
-  return (await listarNotas()).filter((n) => n.categoria === "medicao_emitida");
-}
-
 async function listarNotas(): Promise<NotaContabil[]> {
   const supabase = await createClient();
   const { data } = await supabase

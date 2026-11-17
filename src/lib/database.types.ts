@@ -110,6 +110,18 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"categorias": {
+                  Row: {
+                    "ativo": boolean,"created_at": string,"created_by": string | null,"id": string,"nome": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "ativo"?: boolean,"created_at"?: string,"created_by"?: string | null,"id"?: string,"nome": string
+                  }
+                  Update: {
+                    "ativo"?: boolean,"created_at"?: string,"created_by"?: string | null,"id"?: string,"nome"?: string
+                  }
+                  Relationships: []
                 },"fornecedores": {
                   Row: {
                     "agencia": string | null,"ativo": boolean,"banco": string | null,"chave_pix": string | null,"cidade": string | null,"conta": string | null,"cpf_cnpj": string | null,"created_at": string,"created_by": string | null,"email": string | null,"id": string,"nome": string,"observacoes": string | null,"telefone": string | null,"uf": string | null,"updated_at": string
@@ -500,16 +512,23 @@ isOneToOne: false
                   ]
                 },"ordens_pagamento": {
                   Row: {
-                    "analisada_em": string | null,"cpf_cnpj": string | null,"created_at": string,"dados_bancarios": string | null,"desconto": number,"descricao": string,"enviada_em": string | null,"favorecido": string,"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": string | null,"numero_nf": string | null,"obra_id": string,"observacoes": string | null,"referencia": string | null,"solicitante_id": string,"status": Database["public"]['Enums']["status_op"],"updated_at": string,"vencimento": string | null
+                    "analisada_em": string | null,"repetir_intervalo": number | null,"repetir_vezes": number | null,"categoria_id": string | null,"data_competencia": string,"assinatura_criador_em": string | null,"assinatura_criador_hash": string | null,"assinatura_criador_pos": Json | null,"cpf_cnpj": string | null,"created_at": string,"dados_bancarios": string | null,"desconto": number,"descricao": string,"enviada_em": string | null,"favorecido": string,"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": string | null,"numero_nf": string | null,"obra_id": string,"observacoes": string | null,"referencia": string | null,"solicitante_id": string,"status": Database["public"]['Enums']["status_op"],"updated_at": string,"vencimento": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "analisada_em"?: string | null,"cpf_cnpj"?: string | null,"created_at"?: string,"dados_bancarios"?: string | null,"desconto"?: number,"descricao": string,"enviada_em"?: string | null,"favorecido": string,"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: string | null,"numero_nf"?: string | null,"obra_id": string,"observacoes"?: string | null,"referencia"?: string | null,"solicitante_id"?: string,"status"?: Database["public"]['Enums']["status_op"],"updated_at"?: string,"vencimento"?: string | null
+                    "analisada_em"?: string | null,"repetir_intervalo"?: number | null,"repetir_vezes"?: number | null,"categoria_id"?: string | null,"data_competencia"?: string,"assinatura_criador_em"?: string | null,"assinatura_criador_hash"?: string | null,"assinatura_criador_pos"?: Json | null,"cpf_cnpj"?: string | null,"created_at"?: string,"dados_bancarios"?: string | null,"desconto"?: number,"descricao": string,"enviada_em"?: string | null,"favorecido": string,"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: string | null,"numero_nf"?: string | null,"obra_id": string,"observacoes"?: string | null,"referencia"?: string | null,"solicitante_id"?: string,"status"?: Database["public"]['Enums']["status_op"],"updated_at"?: string,"vencimento"?: string | null
                   }
                   Update: {
-                    "analisada_em"?: string | null,"cpf_cnpj"?: string | null,"created_at"?: string,"dados_bancarios"?: string | null,"desconto"?: number,"descricao"?: string,"enviada_em"?: string | null,"favorecido"?: string,"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: string | null,"numero_nf"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"referencia"?: string | null,"solicitante_id"?: string,"status"?: Database["public"]['Enums']["status_op"],"updated_at"?: string,"vencimento"?: string | null
+                    "analisada_em"?: string | null,"repetir_intervalo"?: number | null,"repetir_vezes"?: number | null,"categoria_id"?: string | null,"data_competencia"?: string,"assinatura_criador_em"?: string | null,"assinatura_criador_hash"?: string | null,"assinatura_criador_pos"?: Json | null,"cpf_cnpj"?: string | null,"created_at"?: string,"dados_bancarios"?: string | null,"desconto"?: number,"descricao"?: string,"enviada_em"?: string | null,"favorecido"?: string,"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: string | null,"numero_nf"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"referencia"?: string | null,"solicitante_id"?: string,"status"?: Database["public"]['Enums']["status_op"],"updated_at"?: string,"vencimento"?: string | null
                   }
                   Relationships: [
+                    {
+      foreignKeyName: "ordens_pagamento_categoria_id_fkey"
+      columns: ["categoria_id"]
+      isOneToOne: false
+      referencedRelation: "categorias"
+      referencedColumns: ["id"]
+    },
                     {
       foreignKeyName: "ordens_pagamento_fornecedor_id_fkey"
       columns: ["fornecedor_id"]
@@ -558,16 +577,23 @@ isOneToOne: false
                   ]
                 },"pagamentos": {
                   Row: {
-                    "assinado_no_cadastro": boolean,"cancelamento_motivo": string | null,"created_at": string,"created_by": string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": number,"numero_documento": string | null,"obra_id": string,"observacoes": string | null,"ordem_id": string | null,"pago_em": string | null,"pago_por": string | null,"rejeicao_motivo": string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at": string,"valor": number,"valor_pago": number | null,"vencimento": string,"versao": number
+                    "assinado_no_cadastro": boolean,"categoria_id": string | null,"cancelamento_motivo": string | null,"created_at": string,"created_by": string,"data_competencia": string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": number,"numero_documento": string | null,"obra_id": string,"observacoes": string | null,"ordem_id": string | null,"pago_em": string | null,"pago_por": string | null,"rejeicao_motivo": string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at": string,"valor": number,"valor_pago": number | null,"vencimento": string,"versao": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "assinado_no_cadastro"?: boolean,"cancelamento_motivo"?: string | null,"created_at"?: string,"created_by": string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: never,"numero_documento"?: string | null,"obra_id": string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor": number,"valor_pago"?: number | null,"vencimento": string,"versao"?: number
+                    "assinado_no_cadastro"?: boolean,"categoria_id"?: string | null,"cancelamento_motivo"?: string | null,"created_at"?: string,"created_by": string,"data_competencia"?: string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: never,"numero_documento"?: string | null,"obra_id": string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor": number,"valor_pago"?: number | null,"vencimento": string,"versao"?: number
                   }
                   Update: {
-                    "assinado_no_cadastro"?: boolean,"cancelamento_motivo"?: string | null,"created_at"?: string,"created_by"?: string,"descricao"?: string,"favorecido"?: string,"fluxo"?: Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: never,"numero_documento"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status"?: Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor"?: number,"valor_pago"?: number | null,"vencimento"?: string,"versao"?: number
+                    "assinado_no_cadastro"?: boolean,"categoria_id"?: string | null,"cancelamento_motivo"?: string | null,"created_at"?: string,"created_by"?: string,"data_competencia"?: string,"descricao"?: string,"favorecido"?: string,"fluxo"?: Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: never,"numero_documento"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status"?: Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor"?: number,"valor_pago"?: number | null,"vencimento"?: string,"versao"?: number
                   }
                   Relationships: [
+                    {
+      foreignKeyName: "pagamentos_categoria_id_fkey"
+      columns: ["categoria_id"]
+      isOneToOne: false
+      referencedRelation: "categorias"
+      referencedColumns: ["id"]
+    },
                     {
       foreignKeyName: "pagamentos_created_by_fkey"
       columns: ["created_by"]
@@ -616,14 +642,14 @@ isOneToOne: false
                   ]
                 },"provisoes": {
                   Row: {
-                    "created_at": string,"created_by": string,"descricao": string,"id": string,"mes_referencia": string | null,"obra_id": string,"observacoes": string | null,"status": string,"updated_at": string,"valor_estimado": number | null,"vencimento": string | null
+                    "categoria_id": string | null,"pagamento_origem_id": string | null,"created_at": string,"created_by": string,"descricao": string,"id": string,"mes_referencia": string | null,"obra_id": string,"observacoes": string | null,"status": string,"updated_at": string,"valor_estimado": number | null,"vencimento": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"created_by"?: string,"descricao": string,"id"?: string,"mes_referencia"?: string | null,"obra_id": string,"observacoes"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
+                    "categoria_id"?: string | null,"pagamento_origem_id"?: string | null,"created_at"?: string,"created_by"?: string,"descricao": string,"id"?: string,"mes_referencia"?: string | null,"obra_id": string,"observacoes"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
                   }
                   Update: {
-                    "created_at"?: string,"created_by"?: string,"descricao"?: string,"id"?: string,"mes_referencia"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
+                    "categoria_id"?: string | null,"pagamento_origem_id"?: string | null,"created_at"?: string,"created_by"?: string,"descricao"?: string,"id"?: string,"mes_referencia"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
                   }
                   Relationships: [
                     {
@@ -829,7 +855,7 @@ isOneToOne: false
 { Args: { "p_assinado": boolean,"p_gasto_id": string,"p_mime": string,"p_nome": string,"p_sha256": string,"p_storage_path": string }; Returns: string
                            },
 "registrar_baixa":
-{ Args: { "p_id": string,"p_observacao"?: string,"p_pago_em": string,"p_valor_pago"?: number }; Returns: undefined
+{ Args: { "p_diferenca"?: string,"p_id": string,"p_observacao"?: string,"p_pago_em": string,"p_valor_pago"?: number }; Returns: undefined
                            },
 "registrar_baixa_parcela":
 { Args: { "p_observacao"?: string,"p_pago_em": string,"p_parcela_id": string,"p_valor_pago"?: number }; Returns: undefined
@@ -867,12 +893,63 @@ isOneToOne: false
           "definir_parcelas_op":
 { Args: { "p_id": string,"p_parcelas": Json }; Returns: undefined
                            }
+          "registrar_assinatura_criador":
+{ Args: { "p_ordem_id": string,"p_pos": Json }; Returns: undefined
+                           }
+          "concluir_criacao_assinada":
+{ Args: { "p_mime": string,"p_nome": string,"p_pagamento_id": string,"p_sha256": string,"p_storage_path": string,"p_tamanho": number }; Returns: string
+                           }
+          "conteudo_op_hash":
+{ Args: { "p_ordem_id": string }; Returns: string
+                           }
+          "definir_competencia":
+{ Args: { "p_data": string,"p_pagamento_id": string }; Returns: undefined
+                           }
+          "definir_competencia_op":
+{ Args: { "p_data": string,"p_ordem_id": string }; Returns: undefined
+                           }
+          "criar_categoria":
+{ Args: { "p_nome": string }; Returns: string
+                           }
+          "atualizar_categoria":
+{ Args: { "p_ativo": boolean,"p_id": string,"p_nome": string }; Returns: undefined
+                           }
+          "definir_categoria":
+{ Args: { "p_categoria_id": string,"p_pagamento_id": string }; Returns: undefined
+                           }
+          "definir_categoria_op":
+{ Args: { "p_categoria_id": string,"p_ordem_id": string }; Returns: undefined
+                           }
+          "estender_serie_provisao":
+{ Args: { "p_provisao_id": string,"p_quantidade": number }; Returns: number
+                           }
+          "definir_repeticao_op":
+{ Args: { "p_intervalo": number | null,"p_ordem_id": string,"p_vezes": number | null }; Returns: undefined
+                           }
+          "criar_repeticoes":
+{ Args: { "p_intervalo": number,"p_pagamento_id": string,"p_vezes": number }; Returns: number
+                           }
+          "estornar_baixa":
+{ Args: { "p_id": string,"p_motivo": string }; Returns: undefined
+                           }
+          "estornar_baixa_parcela":
+{ Args: { "p_motivo": string,"p_parcela_id": string }; Returns: undefined
+                           }
+          "cancelar_serie":
+{ Args: { "p_a_partir"?: string,"p_pagamento_id": string }; Returns: number
+                           }
+          "reajustar_serie":
+{ Args: { "p_pagamento_id": string,"p_valor": number }; Returns: number
+                           }
+          "verificar_duplicidade":
+{ Args: { "p_favorecido": string,"p_hashes": string[],"p_valor": number,"p_vencimento": string }; Returns: { "motivo": string,"numero": number,"obra": string,"pagamento_id": string,"status": Database["public"]['Enums']["status_pagamento"],"valor": number,"vencimento": string }[]
+                           }
           "salvar_op":
 { Args: { "p_cpf_cnpj": string,"p_dados_bancarios": string,"p_desconto"?: number,"p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_id": string,"p_itens": Json,"p_numero_nf"?: string,"p_obra_id": string,"p_observacoes": string,"p_referencia"?: string,"p_vencimento": string }; Returns: string
                            }
           }
           Enums: {
-            "categoria_nota_contabil": "tomado_pj_retencao"|"tomado_pf"|"mei_servicos_especificos"|"medicao_emitida","decisao_aprovacao": "aprovado"|"rejeitado","etapa_aprovacao": "engenheiro"|"administrador","fluxo_aprovacao": "A"|"B"|"C","forma_pagamento": "boleto"|"pix"|"transferencia"|"dinheiro"|"cartao"|"outro","perfil_usuario": "financeiro"|"suprimentos"|"engenheiro"|"administrador"|"administrador_master","status_fundo": "em_andamento"|"acabando"|"esgotado"|"fechado","status_gasto_fundo": "pendente"|"aprovado"|"recusado","status_obra": "ativa"|"suspensa"|"concluida","status_op": "em_elaboracao"|"enviada"|"em_analise"|"aprovada"|"rejeitada"|"paga"|"cancelada","status_pagamento": "aguardando_engenheiro"|"aguardando_administrador"|"aguardando_pagamento"|"pago"|"rejeitado"|"cancelado","tipo_documento": "boleto"|"nota_fiscal"|"ordem_pagamento"|"comprovante"|"outro"|"documento_assinado"
+            "categoria_nota_contabil": "tomado_pj_retencao"|"tomado_pf"|"mei_servicos_especificos"|"medicao_emitida","decisao_aprovacao": "aprovado"|"rejeitado","etapa_aprovacao": "engenheiro"|"administrador","fluxo_aprovacao": "A"|"B"|"C","forma_pagamento": "boleto"|"pix"|"transferencia"|"dinheiro"|"cartao"|"outro"|"cheque","perfil_usuario": "financeiro"|"suprimentos"|"engenheiro"|"administrador"|"administrador_master","status_fundo": "em_andamento"|"acabando"|"esgotado"|"fechado","status_gasto_fundo": "pendente"|"aprovado"|"recusado","status_obra": "ativa"|"suspensa"|"concluida","status_op": "em_elaboracao"|"enviada"|"em_analise"|"aprovada"|"rejeitada"|"paga"|"cancelada","status_pagamento": "aguardando_engenheiro"|"aguardando_administrador"|"aguardando_pagamento"|"pago"|"rejeitado"|"cancelado","tipo_documento": "boleto"|"nota_fiscal"|"ordem_pagamento"|"comprovante"|"outro"|"documento_assinado"
           }
           CompositeTypes: {
             [_ in never]: never

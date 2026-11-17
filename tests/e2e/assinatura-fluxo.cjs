@@ -34,6 +34,7 @@ async function entrar(browser, email) {
   await fin.p.fill('input[name=valor]', '1.234,56');
   await fin.p.fill('input[name=vencimento]', new Date(Date.now() + 9 * 864e5).toISOString().slice(0, 10));
   await fin.p.setInputFiles('input[name=boleto]', BOLETO);
+  await fin.p.click('button[aria-label="Categoria"]'); await fin.p.locator('[role=option]').first().click();
   await Promise.all([fin.p.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/, { timeout: 120000 }), fin.p.click('button:has-text("Cadastrar e encaminhar")')]);
   const urlPagamento = fin.p.url();
   const texto0 = await fin.p.textContent('main');

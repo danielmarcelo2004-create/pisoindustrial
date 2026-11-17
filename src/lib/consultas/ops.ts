@@ -30,7 +30,8 @@ export function dadosPdf(op: OPCompleta): DadosPdfOP {
     vencimento: op.vencimento,
     formaPagamento: op.forma_pagamento,
     dadosBancarios: op.dados_bancarios,
-    observacoes: op.observacoes,
+    // Campo OBSERVAÇÃO do PDF: a descrição da OP (e a observação antiga, em OPs que ainda tenham uma).
+    observacoes: [op.descricao, op.observacoes].map((x) => x?.trim()).filter(Boolean).join("\n"),
     desconto: Number(op.desconto ?? 0),
     centroDeCusto: op.obra?.nome ?? "",
     solicitante: op.solicitante?.nome ?? "",

@@ -106,6 +106,8 @@ async function gravarRascunho(id: string | null, fd: FormData, paraEnviar = fals
   if (desconto > subtotal) return { erro: "O desconto não pode ser maior que o total dos itens." };
 
   const supabase = await createClient();
+  // A OP tem um campo só (Descrição), que também vai para o PDF. A observação antiga de rascunhos já existentes é mantida.
+  const observacaoAtual = id ? (await supabase.from("ordens_pagamento").select("observacoes").eq("id", id).maybeSingle()).data?.observacoes ?? "" : "";
   const { data, error } = await supabase.rpc("salvar_op", {
     p_id: (id ?? null) as string,
     p_obra_id: obra,
@@ -115,7 +117,7 @@ async function gravarRascunho(id: string | null, fd: FormData, paraEnviar = fals
     p_vencimento: (venc || null) as string,
     p_forma_pagamento: forma,
     p_dados_bancarios: dadosBancarios,
-    p_observacoes: t(fd, "observacoes"),
+    p_observacoes: observacaoAtual,
     p_itens: itens,
     p_desconto: desconto,
     p_numero_nf: t(fd, "numero_nf"),

@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 
 const PRESETS = [
-  { valor: "1x2", intervalo: 1, vezes: 2, rotulo: "Mensal: a cada 1 mês, 2 vez(es)" },
-  { valor: "1x12", intervalo: 1, vezes: 12, rotulo: "Mensal: a cada 1 mês, 12 vez(es)" },
+  { valor: "1x2", intervalo: 1, vezes: 2, rotulo: "Mensal, 2 vezes (este + 1 provisão)" },
+  { valor: "1x12", intervalo: 1, vezes: 12, rotulo: "Mensal, 12 vezes (este + 11 provisões)" },
 ];
 
 function somarMeses(iso: string, meses: number): string {
@@ -70,17 +70,22 @@ export function RepeticaoDespesa({ intervaloInicial = null, vezesInicial = null 
           </label>
           {opcao === "personalizar" && (
             <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
-              Mensal: a cada
-              <input type="number" min={1} max={12} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} className="campo w-20 tabular-nums" aria-label="A cada quantos meses" />
+              A cada
+              <input type="number" min={1} max={12} value={intervalo} onChange={(e) => setIntervalo(e.target.value)} className="campo tabular-nums" style={{ width: "5rem" }} aria-label="A cada quantos meses" />
               mês(es),
-              <input type="number" min={2} max={60} value={vezes} onChange={(e) => setVezes(e.target.value)} className="campo w-20 tabular-nums" aria-label="Quantas vezes" />
-              vez(es)
+              <input type="number" min={2} max={60} value={vezes} onChange={(e) => setVezes(e.target.value)} className="campo tabular-nums" style={{ width: "5rem" }} aria-label="Quantas vezes" />
+              vez(es) no total
             </div>
           )}
           <p className="text-xs text-slate-600">
-            Este lançamento é o 1º de {v}. Os outros {v - 1} serão criados como <strong>provisões</strong> (aparecem na Agenda e em Provisões) para virar pagamento
-            quando o boleto ou documento chegar.
-            {datas.length > 0 && <> Vencimentos: {datas.map(br).join(", ")}.</>}
+            Este lançamento é o 1º de {v}.{" "}
+            {v - 1 === 1 ? (
+              <>O outro será criado como <strong>provisão</strong> (aparece na Agenda e em Provisões)</>
+            ) : (
+              <>Os outros {v - 1} serão criados como <strong>provisões</strong> (aparecem na Agenda e em Provisões)</>
+            )}{" "}
+            para virar pagamento quando o boleto ou documento chegar.
+            {datas.length > 0 && <> {datas.length === 1 ? "Vencimento" : "Vencimentos"}: {datas.map(br).join(", ")}.</>}
           </p>
         </div>
       )}

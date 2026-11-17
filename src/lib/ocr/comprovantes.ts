@@ -1,21 +1,7 @@
 "use client";
 
-// Leitura de comprovantes de pagamento em lote, rodando no navegador.
-// Cada página do PDF vira imagem, passa pelo OCR (português) e é separada em
-// um PDF próprio. O casamento com o pagamento é feito pelo valor e pelo CNPJ.
-
-const CNPJ_EMPRESA = "04.602.232/0001-70";
-
-export type CampoComprovante = { valor: number | null; cnpj: string | null; texto: string };
-
-/** Extrai valor cobrado e CNPJ do beneficiário do texto lido de uma página. */
-export function extrairCampos(texto: string): CampoComprovante {
-  const limpo = texto.replace(/\s+/g, " ");
-  const v = limpo.match(/VALOR\s+COBRADO\D{0,6}([\d.]+,\d{2})/i) ?? limpo.match(/VALOR\s+DO\s+DOCUMENTO\D{0,6}([\d.]+,\d{2})/i);
-  const valor = v ? Number(v[1].replace(/\./g, "").replace(",", ".")) : null;
-  const cnpjs = [...limpo.matchAll(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g)].map((m) => m[0]).filter((c) => c !== CNPJ_EMPRESA);
-  return { valor, cnpj: cnpjs[0] ?? null, texto };
-}
+// Leitura de PDFs no navegador: camada de texto do PDF ou OCR (português) quando a página é imagem.
+// A interpretação dos comprovantes e o casamento com os pagamentos ficam em @/lib/comprovantes-banco.
 
 async function carregarPdfjs() {
   const pdfjs = await import("pdfjs-dist");
@@ -37,7 +23,19 @@ async function lerPaginasPdf(arquivo: File): Promise<string[]> {
   const paginas: string[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const conteudo = await (await doc.getPage(i)).getTextContent();
-    paginas.push(conteudo.items.map((it) => ("str" in it ? it.str : "")).join(" "));
+    // Mantém as quebras de linha (mudança de altura do texto ou fim de linha marcado pelo PDF).
+    let texto = "";
+    let ultimoY: number | null = null;
+    for (const it of conteudo.items) {
+      if (!("str" in it)) continue;
+      const y = it.transform[5];
+      if (ultimoY !== null && Math.abs(y - ultimoY) > 2) texto += "\n";
+      else if (texto && !texto.endsWith("\n")) texto += " ";
+      texto += it.str;
+      if (it.hasEOL) texto += "\n";
+      ultimoY = y;
+    }
+    paginas.push(texto);
   }
   return paginas;
 }
@@ -61,6 +59,26 @@ export async function lerPaginasBoleto(arquivo: File): Promise<string[]> {
   } finally {
     await worker.terminate();
   }
+}
+
+type Ocr = { recognize: (img: string) => Promise<{ data: { text: string } }> };
+
+/**
+ * Texto de cada página: camada de texto do PDF quando existe; senão, OCR da página.
+ * O OCR só é criado se alguma página precisar (obterOcr recebe a página atual e o total, para mostrar o progresso).
+ */
+export async function lerTextoPaginas(arquivo: File, obterOcr: (pagina: number, total: number) => Promise<Ocr>): Promise<string[]> {
+  const paginas = await lerPaginasPdf(arquivo);
+  const textos: string[] = [];
+  for (let i = 0; i < paginas.length; i++) {
+    if (paginas[i].replace(/\s/g, "").length >= 40) {
+      textos.push(paginas[i]);
+      continue;
+    }
+    const ocr = await obterOcr(i + 1, paginas.length);
+    textos.push(await lerTexto(ocr, await renderizarPagina(arquivo, i + 1)));
+  }
+  return textos;
 }
 
 /** Renderiza uma página do PDF como imagem. Para leitura (OCR) usa escala maior (~300 dpi). */

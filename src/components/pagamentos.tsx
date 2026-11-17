@@ -28,8 +28,11 @@ export function TabelaPagamentos({
   vazio = "Nenhum pagamento encontrado.",
   semObra,
   compacto,
+  baixa,
 }: {
   itens: PagamentoLista[];
+  /** Mostra "Dar baixa" nos liberados para pagamento (Financeiro e master). */
+  baixa?: boolean;
   vazio?: string;
   semObra?: boolean;
   /** Mostra a obra abaixo da descrição (para cartões estreitos). */
@@ -49,6 +52,7 @@ export function TabelaPagamentos({
             <th className="text-right">Valor</th>
             {!compacto && <th>Forma</th>}
             <th>Situação</th>
+            {baixa && <th />}
           </tr>
         </thead>
         <tbody>
@@ -75,6 +79,15 @@ export function TabelaPagamentos({
               <td>
                 <SeloStatus status={p.status} />
               </td>
+              {baixa && (
+                <td className="whitespace-nowrap">
+                  {p.status === "aguardando_pagamento" && (
+                    <Link href={`/pagamentos/${p.id}#baixa`} className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100">
+                      Dar baixa
+                    </Link>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

@@ -5,6 +5,7 @@ import { removerNF } from "@/app/(app)/compras/actions";
 import { FormDecisao } from "@/components/assinatura";
 import { AssinadorDocumentos } from "./assinador";
 import { CampoArquivos } from "@/components/campo-arquivos";
+import { LeitorComprovante } from "@/components/leitor-comprovante";
 import { estornarBaixa, estornarParcela, registrarBaixaParcela } from "../actions";
 import { FormAcao } from "@/components/form-acao";
 import { LinhaDoTempo } from "@/components/linha-do-tempo";
@@ -168,6 +169,11 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             {p.ordem_id && (
               <LinkBotao href={`/ops/${p.ordem_id}`} variante="secundario">
                 Ver solicitação {p.numero_documento}
+              </LinkBotao>
+            )}
+            {baixa && p.status === "aguardando_pagamento" && (
+              <LinkBotao href={parcelas && parcelas.length > 0 ? "#parcelas" : "#baixa"} variante="sucesso">
+                {parcelas && parcelas.length > 0 ? "Pagar parcelas" : "Registrar pagamento"}
               </LinkBotao>
             )}
             {(atua || (Boolean(podeAtuar) && p.status !== "cancelado" && (u.perfil === "financeiro" || u.perfil === "suprimentos"))) && (
@@ -440,8 +446,13 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
           )}
 
           {baixa && p.status === "aguardando_pagamento" && !(parcelas && parcelas.length > 0) && (
+            <div id="baixa" className="scroll-mt-4">
             <Cartao titulo="Registrar pagamento" className="border-sky-300">
               <FormAcao action={registrarBaixa.bind(null, id)} enviar="Confirmar pagamento" variante="sucesso">
+                <Campo rotulo="Comprovante" ajuda="Anexe o PDF do banco: a data e o valor são lidos e preenchidos abaixo.">
+                  <input type="file" name="comprovante" accept={ACEITOS} className="campo" />
+                </Campo>
+                <LeitorComprovante valor={Number(p.valor)} favorecido={p.favorecido} />
                 <Campo rotulo="Data do pagamento" obrigatorio>
                   <input type="date" name="pago_em" required defaultValue={hojeISO()} className="campo" />
                 </Campo>
@@ -459,14 +470,12 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                     <span>Desconto <span className="text-slate-500">— o pagamento fica quitado</span></span>
                   </label>
                 </fieldset>
-                <Campo rotulo="Comprovante">
-                  <input type="file" name="comprovante" accept={ACEITOS} className="campo" />
-                </Campo>
                 <Campo rotulo="Observação">
                   <input name="observacao" className="campo" />
                 </Campo>
               </FormAcao>
             </Cartao>
+            </div>
           )}
 
           {baixa && p.status === "pago" && !(parcelas && parcelas.length > 0) && (
@@ -503,6 +512,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
 
           {/* Parcelas: definidas no lançamento (ou o saldo de uma baixa parcial). Não se redividem aqui. */}
           {!!parcelas?.length && (
+            <div id="parcelas" className="scroll-mt-4">
             <Cartao titulo={`Parcelas (${parcelas.length})`} semPadding>
               {(
                 <ul className="divide-y divide-slate-100">
@@ -554,6 +564,10 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                             <summary className="cursor-pointer text-xs font-medium text-marca-700">Pagar esta parcela</summary>
                             <div className="mt-2">
                               <FormAcao action={registrarBaixaParcela.bind(null, pc.id, p.id)} enviar="Confirmar pagamento" variante="sucesso" className="space-y-3">
+                                <Campo rotulo="Comprovante" ajuda="PDF do banco: data e diferença de valor são preenchidas.">
+                                  <input type="file" name="comprovante" accept={ACEITOS} className="campo" />
+                                </Campo>
+                                <LeitorComprovante valor={Number(pc.valor_base)} favorecido={p.favorecido} campoValor="parcela" />
                                 <p className="text-xs text-slate-600">Houve multa, juros ou desconto nesta parcela?</p>
                                 <div className="grid grid-cols-3 gap-2">
                                   <Campo rotulo="Multa (R$)"><input name="multa" inputMode="decimal" placeholder="0,00" className="campo tabular-nums" /></Campo>
@@ -579,6 +593,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                 </ul>
               )}
             </Cartao>
+            </div>
           )}
           {!assinaturaUrl &&
             ((p.status === "aguardando_engenheiro" && u.perfil === "engenheiro") ||

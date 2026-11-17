@@ -274,7 +274,7 @@ export function FormOP({
           <Campo rotulo="CPF / CNPJ do favorecido">
             <input name="cpf_cnpj" defaultValue={padrao.cpf_cnpj ?? ""} inputMode="numeric" className="campo" maxLength={18} />
           </Campo>
-          <Campo rotulo="Observação (motivo)" obrigatorio className="sm:col-span-2" ajuda="Aparece no campo OBSERVAÇÃO do PDF.">
+          <Campo rotulo="Descrição" obrigatorio className="sm:col-span-2" ajuda="Fica salva no pagamento (listas, relatórios e aprovações) e sai no campo OBSERVAÇÃO do PDF.">
             <input name="descricao" required defaultValue={padrao.descricao ?? ""} className="campo" maxLength={500} placeholder="Ex.: Adiantamento de salário" />
           </Campo>
           {formaFixa ? (
@@ -319,9 +319,6 @@ export function FormOP({
               Pagamento em {FORMAS_PAGAMENTO[formaAtual].toLowerCase()}: não precisa de dados bancários.
             </p>
           )}
-          <Campo rotulo="Observação" ajuda="Opcional. Aparece no PDF, abaixo do favorecido.">
-            <textarea name="observacoes" rows={2} defaultValue={padrao.observacoes ?? ""} className="campo" maxLength={2000} />
-          </Campo>
           <AvisosLancamento valor={total > 0 ? total : undefined} camposArquivo="" />
         </div>
       </Cartao>

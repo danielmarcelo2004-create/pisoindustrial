@@ -40,28 +40,29 @@ const PDF = path.join(__dirname, 'comprovantes-exemplo.pdf');
   await page.fill('input[name=senha]', SENHA);
   await Promise.all([page.waitForURL((u) => !u.pathname.startsWith('/login')), page.click('button:has-text("Entrar")')]);
   await page.goto('http://127.0.0.1:3000/pagamentos/baixa-lote');
-  for (const c of criados) {
-    await page.check(`input[aria-label="Selecionar nº ${c.numero}"]`);
-  }
-  await page.setInputFiles('input[type=file]', PDF);
+  // Não precisa marcar antes: o sistema lê o PDF e reconhece o pagamento de cada comprovante
+  await page.setInputFiles('input[aria-label="PDFs dos comprovantes"]', PDF);
   await page.click('button:has-text("Ler comprovantes")');
   await page.getByText(/página\(s\) lidas/).waitFor({ timeout: 300000 });
   await page.screenshot({ path: path.join(__dirname, '.saida', 'baixa-lote-revisao.png'), fullPage: true });
   const selects = await page.$$eval('table select', (s) => s.map((x) => x.options[x.selectedIndex].text));
   console.log('Ligações sugeridas:', selects.join(' | '));
-  if (selects.some((t) => t.startsWith('Não anexar'))) throw new Error('alguma página ficou sem ligação: ' + selects.join(' | '));
-  await page.click('button:has-text("anexar comprovantes")');
+  if (selects.some((t) => t.startsWith('Não dar baixa'))) throw new Error('alguma página ficou sem ligação: ' + selects.join(' | '));
+  for (const c of criados) if (!selects.some((t) => t.startsWith(`nº ${c.numero} `))) throw new Error(`nº ${c.numero} não foi reconhecido`);
+  await page.click('button:has-text("Registrar 3 baixa(s)")');
   await page.getByText(/pagamento\(s\) registrados/).waitFor({ timeout: 120000 });
   console.log('✔ Confirmação exibida');
 
   // 3. Confere no banco
-  const { data: depois } = await sb.from('pagamentos').select('id, numero, status').in('id', ids);
+  const { data: depois } = await sb.from('pagamentos').select('id, numero, status, pago_em').in('id', ids);
   const { data: docs } = await sb.from('documentos').select('pagamento_id, tipo').in('pagamento_id', ids).eq('tipo', 'comprovante');
   const todosPagos = depois.every((p) => p.status === 'pago');
   const comprovantes = new Set(docs.map((d) => d.pagamento_id)).size;
   console.log(`Status: ${depois.map((p) => p.status).join(', ')}`);
   console.log(`Comprovantes anexados: ${comprovantes} de 3`);
   if (!todosPagos || comprovantes !== 3) throw new Error('resultado inesperado');
+  if (!depois.every((p) => p.pago_em === '2026-11-04')) throw new Error('a data da baixa deve ser a do comprovante: ' + depois.map((p) => p.pago_em).join(', '));
+  console.log('✔ Data da baixa = data de cada comprovante (04/11/2026)');
   console.log('✔ Baixa em lote com comprovantes separados conferida');
   await browser.close();
 })().catch((e) => { console.error('✘ FALHOU:', e.message); process.exit(1); });

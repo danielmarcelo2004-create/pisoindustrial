@@ -7,7 +7,8 @@ export type ParcelasBoleto = { vencimentos: string[]; valores: number[] };
 const numBR = (s: string) => Number(s.replace(/\./g, "").replace(",", "."));
 const dataISO = (s: string) => s.split("/").reverse().join("-");
 
-export function extrairParcelasPorPagina(paginas: string[]): ParcelasBoleto | null {
+/** Todos os boletos identificados nas páginas (um por página). */
+export function extrairBoletos(paginas: string[]): ParcelasBoleto {
   const vencimentos: string[] = [];
   const valores: number[] = [];
   for (const pagina of paginas) {
@@ -22,9 +23,11 @@ export function extrairParcelasPorPagina(paginas: string[]): ParcelasBoleto | nu
     const cont = new Map<number, number>();
     dinheiro.forEach((v) => cont.set(v, (cont.get(v) ?? 0) + 1));
     const valor = [...cont.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
-    vencimentos.push(dataISO(datas[0]));
+    const venc = dataISO(datas[0]);
+    // A mesma ficha repetida (ex.: via do sacado e via do banco em páginas separadas) conta uma vez só.
+    if (vencimentos.some((v, i) => v === venc && valores[i] === valor)) continue;
+    vencimentos.push(venc);
     valores.push(valor);
   }
-  if (vencimentos.length < 2) return null;
   return { vencimentos, valores };
 }

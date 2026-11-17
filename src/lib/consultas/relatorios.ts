@@ -4,11 +4,12 @@ import { STATUS_EM_ABERTO, STATUS_PAGAMENTO, type StatusPagamento } from "@/lib/
 import { hojeISO } from "@/lib/formato";
 
 export type FiltrosRelatorio = {
-  base: "vencimento" | "pago_em" | "criacao";
+  base: "vencimento" | "pago_em" | "criacao" | "data_competencia";
   de: string;
   ate: string;
   obra?: string;
   fornecedor?: string;
+  categoria?: string;
   status?: string;
 };
 
@@ -18,11 +19,12 @@ export function lerFiltros(get: (k: string) => string | null): FiltrosRelatorio 
   const hoje = hojeISO();
   const base = get("base");
   return {
-    base: base === "pago_em" || base === "criacao" ? base : "vencimento",
+    base: base === "pago_em" || base === "criacao" || base === "data_competencia" ? base : "vencimento",
     de: dataOk(get("de")) ?? hoje.slice(0, 8) + "01",
     ate: dataOk(get("ate")) ?? hoje,
     obra: get("obra") ?? "",
     fornecedor: get("fornecedor") ?? "",
+    categoria: get("categoria") ?? "",
     status: get("status") ?? "",
   };
 }
@@ -32,7 +34,7 @@ export async function dadosRelatorio(f: FiltrosRelatorio) {
   let q = supabase
     .from("pagamentos")
     .select(
-      "id, numero, favorecido, descricao, valor, valor_pago, vencimento, pago_em, status, forma_pagamento, numero_documento, created_at, obra:obras(id, nome, cidade, uf), fornecedor:fornecedores(id, nome, cpf_cnpj), documentos(id, tipo, ativo)",
+      "id, numero, favorecido, descricao, valor, valor_pago, vencimento, data_competencia, pago_em, status, forma_pagamento, numero_documento, created_at, categoria:categorias(id, nome), obra:obras(id, nome, cidade, uf), fornecedor:fornecedores(id, nome, cpf_cnpj), documentos(id, tipo, ativo)",
     )
     .limit(20000);
   if (f.base === "criacao") {
@@ -42,6 +44,8 @@ export async function dadosRelatorio(f: FiltrosRelatorio) {
   }
   if (f.obra && /^[0-9a-f-]{36}$/i.test(f.obra)) q = q.eq("obra_id", f.obra);
   if (f.fornecedor && /^[0-9a-f-]{36}$/i.test(f.fornecedor)) q = q.eq("fornecedor_id", f.fornecedor);
+  if (f.categoria === "sem") q = q.is("categoria_id", null);
+  else if (f.categoria && /^[0-9a-f-]{36}$/i.test(f.categoria)) q = q.eq("categoria_id", f.categoria);
   if (f.status === "abertos") q = q.in("status", STATUS_EM_ABERTO);
   else if (f.status && f.status in STATUS_PAGAMENTO) q = q.eq("status", f.status as StatusPagamento);
   q = q.order(f.base === "criacao" ? "created_at" : f.base, { ascending: true }).order("numero");
@@ -73,11 +77,12 @@ export async function dadosRelatorio(f: FiltrosRelatorio) {
   };
 
   const dataBase = (i: (typeof itens)[number]) =>
-    (f.base === "pago_em" ? i.pago_em : f.base === "criacao" ? i.created_at : i.vencimento)?.slice(0, 7) ?? "";
+    (f.base === "pago_em" ? i.pago_em : f.base === "criacao" ? i.created_at : f.base === "data_competencia" ? i.data_competencia : i.vencimento)?.slice(0, 7) ?? "";
 
   return {
     itens,
     porObra: agrupar((i) => i.obra?.id ?? "", (i) => i.obra?.nome ?? "—").sort((a, b) => b.total - a.total),
+    porCategoria: agrupar((i) => i.categoria?.id ?? "sem", (i) => i.categoria?.nome ?? "Sem categoria").sort((a, b) => b.total - a.total),
     porFornecedor: agrupar((i) => i.fornecedor?.id ?? `fav:${i.favorecido}`, (i) => i.fornecedor?.nome ?? i.favorecido).sort((a, b) => b.total - a.total),
     porMes: agrupar(dataBase, dataBase).sort((a, b) => a.chave.localeCompare(b.chave)),
     porStatus: agrupar((i) => i.status, (i) => STATUS_PAGAMENTO[i.status].rotulo),

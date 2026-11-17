@@ -8,7 +8,7 @@ export async function carregarOP(id: string) {
   const { data } = await supabase
     .from("ordens_pagamento")
     .select(
-      "*, obra:obras(id, nome, codigo, cidade, uf), solicitante:profiles!ordens_pagamento_solicitante_id_fkey(nome), ordem_itens(*), ordem_parcelas(numero, valor, vencimento), pagamento:pagamentos(id, status, numero, rejeicao_motivo, cancelamento_motivo, pago_em)",
+      "*, categoria:categorias(nome), obra:obras(id, nome, codigo, cidade, uf), solicitante:profiles!ordens_pagamento_solicitante_id_fkey(nome), ordem_itens(*), ordem_parcelas(numero, valor, vencimento), pagamento:pagamentos(id, status, numero, rejeicao_motivo, cancelamento_motivo, pago_em)",
     )
     .eq("id", id)
     .order("posicao", { referencedTable: "ordem_itens" })

@@ -15,6 +15,7 @@ export type EventoAuditoria = {
 };
 
 const ACOES: Record<string, { rotulo: string; cor: string }> = {
+  estorno: { rotulo: "Estornou", cor: "bg-amber-500" },
   criou: { rotulo: "Criou", cor: "bg-marca-500" },
   alterou: { rotulo: "Alterou", cor: "bg-amber-500" },
   anexou_documento: { rotulo: "Anexou documento", cor: "bg-sky-500" },
@@ -29,7 +30,7 @@ const ACOES: Record<string, { rotulo: string; cor: string }> = {
   removeu: { rotulo: "Removeu", cor: "bg-red-500" },
 };
 
-export const ROTULOS_CAMPOS: Record<string, string> = {
+const ROTULOS_CAMPOS: Record<string, string> = {
   valor: "Valor",
   valor_pago: "Valor pago",
   vencimento: "Vencimento",

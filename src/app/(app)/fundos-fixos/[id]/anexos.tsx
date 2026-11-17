@@ -46,7 +46,6 @@ export function AnexosGasto({
   podeEnviar,
   podeRemover,
   assinaturaUrl,
-  assinaturaMime,
 }: {
   gastoId: string;
   fundoId: string;
@@ -54,7 +53,6 @@ export function AnexosGasto({
   podeEnviar: boolean;
   podeRemover: boolean;
   assinaturaUrl: string | null;
-  assinaturaMime: "image/png" | "image/jpeg";
 }) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);

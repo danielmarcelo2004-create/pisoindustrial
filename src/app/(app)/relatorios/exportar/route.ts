@@ -25,6 +25,8 @@ export async function GET(request: NextRequest) {
       colunas: [
         { titulo: "Nº", chave: "numero", formato: "numero", largura: 8 },
         { titulo: "Vencimento", chave: "vencimento", formato: "data", largura: 12 },
+        { titulo: "Competência", chave: "competencia", formato: "data", largura: 12 },
+        { titulo: "Categoria", chave: "categoria", largura: 24 },
         { titulo: "Favorecido", chave: "favorecido", largura: 32 },
         { titulo: "Fornecedor", chave: "fornecedor", largura: 32 },
         { titulo: "CPF/CNPJ", chave: "doc", largura: 18 },
@@ -43,6 +45,8 @@ export async function GET(request: NextRequest) {
       linhas: r.itens.map((p) => ({
         numero: p.numero,
         vencimento: p.vencimento,
+        competencia: p.data_competencia,
+        categoria: p.categoria?.nome ?? "",
         favorecido: p.favorecido,
         fornecedor: p.fornecedor?.nome ?? "",
         doc: p.fornecedor?.cpf_cnpj ?? "",
@@ -60,6 +64,7 @@ export async function GET(request: NextRequest) {
       })),
     },
     { nome: "Por centro de custo", colunas: resumo("Centro de custo"), linhas: r.porObra },
+    { nome: "Por categoria", colunas: resumo("Categoria"), linhas: r.porCategoria },
     { nome: "Por fornecedor", colunas: resumo("Fornecedor / favorecido"), linhas: r.porFornecedor },
     { nome: "Por mês", colunas: resumo("Mês (AAAA-MM)"), linhas: r.porMes },
     { nome: "Por situação", colunas: resumo("Situação"), linhas: r.porStatus },

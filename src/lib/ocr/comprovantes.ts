@@ -4,7 +4,7 @@
 // Cada página do PDF vira imagem, passa pelo OCR (português) e é separada em
 // um PDF próprio. O casamento com o pagamento é feito pelo valor e pelo CNPJ.
 
-export const CNPJ_EMPRESA = "04.602.232/0001-70";
+const CNPJ_EMPRESA = "04.602.232/0001-70";
 
 export type CampoComprovante = { valor: number | null; cnpj: string | null; texto: string };
 

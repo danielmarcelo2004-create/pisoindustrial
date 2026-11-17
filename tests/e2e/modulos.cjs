@@ -49,13 +49,16 @@ async function entrar(browser, email) {
 
   // 1. Engenheiro cria OP com itens, salva rascunho, assina na própria solicitação e envia
   let { ctx, page } = await entrar(browser, 'engenheiro@demo.local');
-  await page.goto(BASE + '/ops');
-  await shot(page, '30-minhas-ops');
-  await Promise.all([page.waitForURL(/ops\/nova/), page.click('text=+ Nova solicitação')]);
+  // A Ordem de Pagamento agora nasce em Pagamentos → Novo pagamento (engenheiro: só formas que não são boleto)
+  await page.goto(BASE + '/pagamentos');
+  await shot(page, '30-pagamentos-engenheiro');
+  await Promise.all([page.waitForURL(/pagamentos\/novo/), page.click('text=+ Novo pagamento')]);
+  await page.getByText('Dados da solicitação').waitFor();
   await page.waitForSelector('select[name=obra_id]');
   const obraV = await page.$eval('select[name=obra_id]', (s) => [...s.options].find((o) => o.text.includes('Galpão')).value);
   await page.selectOption('select[name=obra_id]', obraV);
   await page.getByText('seguirá direto para o administrador').waitFor();
+  await page.click('button[aria-label="Categoria"]'); await page.locator('[role=option]').first().click();
   await page.fill('input[name=favorecido]', 'Marcos Eletricista');
   await page.fill('input[name=cpf_cnpj]', '529.982.247-25');
   await page.fill('input[name=descricao]', 'Instalação elétrica provisória do canteiro');
@@ -74,7 +77,7 @@ async function entrar(browser, email) {
   await page.getByText('R$ 1.199,45').first().waitFor(); // 750 + 449,45
   await shot(page, '31-nova-op');
   await Promise.all([page.waitForURL(/\/ops\/[0-9a-f-]{36}\/editar\?salva/), page.click('button:text-is("Salvar rascunho")')]);
-  await page.getByText('Editar solicitação (rascunho)').first().waitFor();
+  await page.getByText('Ordem de Pagamento (rascunho)').first().waitFor();
   ok('Engenheiro salvou rascunho de OP com 2 itens (total calculado R$ 1.199,45)');
 
   // Assinatura do engenheiro na própria solicitação (antes de enviar)
@@ -92,7 +95,9 @@ async function entrar(browser, email) {
   ok(`Pré-visualização do PDF (${pdfBuf.length} bytes)`);
 
   await page.click('button:has-text("Salvar e enviar")');
-  await page.waitForURL(/enviada=1/);
+  // Depois do envio abre o pagamento criado; a OP continua acessível pelo link da solicitação
+  await page.waitForURL(/\/pagamentos\/[0-9a-f-]{36}\?criado=1/);
+  await page.goto(opUrl);
   await page.getByText(/OP-\d{4}-\d{5}/).first().waitFor();
   const numeroOP = (await page.locator('h1').innerText()).match(/OP-\d{4}-\d{5}/)[0];
   await shot(page, '32-op-enviada');
@@ -140,6 +145,7 @@ async function entrar(browser, email) {
   await page.fill('input[name=valor]', '20.463,40');
   await page.fill('input[name=vencimento]', new Date(Date.now() + 8 * 864e5).toISOString().slice(0, 10));
   await page.setInputFiles('input[name=nota_fiscal]', XML);
+  await page.click('button[aria-label="Categoria"]'); await page.locator('[role=option]').first().click();
   await Promise.all([page.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/), page.click('button:has-text("Cadastrar e encaminhar")')]);
   await page.getByText(/3 item\(ns\) na Inteligência de Compras \(\s*lidos do XML/).waitFor();
   await shot(page, '33-pagamento-com-xml');
@@ -154,6 +160,7 @@ async function entrar(browser, email) {
   await page.fill('input[name=valor]', '10,00');
   await page.fill('input[name=vencimento]', new Date(Date.now() + 8 * 864e5).toISOString().slice(0, 10));
   await page.setInputFiles('input[name=nota_fiscal]', XML);
+  await page.click('button[aria-label="Categoria"]'); await page.locator('[role=option]').first().click();
   await Promise.all([page.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/), page.click('button:has-text("Cadastrar e encaminhar")')]);
   await page.getByText(/já foi registrada em outro pagamento/).waitFor();
   ok('Mesma NF-e em outro pagamento é sinalizada (sem duplicar na análise)');
@@ -212,11 +219,14 @@ async function entrar(browser, email) {
   const xr = await ctx.request.get(`${BASE}/relatorios/exportar?base=pago_em&de=${seis}&ate=${hoje}`);
   const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(await xr.body());
   const pag = wb2.getWorksheet('Pagamentos');
-  if (wb2.worksheets.length !== 5 || pag.rowCount < 10) throw new Error('xlsx relatório inválido');
-  if (typeof pag.getRow(2).getCell(9).value !== 'number') throw new Error('valor não numérico no Excel');
-  ok(`Relatório por data de pagamento + Excel (${pag.rowCount - 1} pagamentos, 5 abas)`);
-  await page.goto(BASE + '/ops');
-  await shot(page, '38-ops-financeiro');
+  // Abas: Pagamentos, resumos (inclui "Por categoria"). A coluna Valor é localizada pelo cabeçalho.
+  if (wb2.worksheets.length !== 6 || pag.rowCount < 10) throw new Error('xlsx relatório inválido: ' + wb2.worksheets.map((w) => w.name).join(', '));
+  let colValor = 0;
+  pag.getRow(1).eachCell((c, i) => { if (String(c.value).trim() === 'Valor') colValor = i; });
+  if (!colValor || typeof pag.getRow(2).getCell(colValor).value !== 'number') throw new Error('valor não numérico no Excel');
+  ok(`Relatório por data de pagamento + Excel (${pag.rowCount - 1} pagamentos, 6 abas)`);
+  await page.goto(BASE + '/pagamentos');
+  await shot(page, '38-pagamentos-financeiro');
   await ctx.close();
 
   // 6. Engenheiro não vê Compras; administrador não vê OP de outra obra

@@ -4,8 +4,8 @@ import { notFound } from "next/navigation";
 import { removerNF } from "@/app/(app)/compras/actions";
 import { FormDecisao } from "@/components/assinatura";
 import { AssinadorDocumentos } from "./assinador";
-import { FormParcelas } from "./parcelas";
-import { definirParcelas, registrarBaixaParcela } from "../actions";
+import { CampoArquivos } from "@/components/campo-arquivos";
+import { estornarBaixa, estornarParcela, registrarBaixaParcela } from "../actions";
 import { FormAcao } from "@/components/form-acao";
 import { LinhaDoTempo } from "@/components/linha-do-tempo";
 import { SeloStatus, Vencimento } from "@/components/pagamentos";
@@ -77,7 +77,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
   const { data: p } = await supabase
     .from("pagamentos")
     .select(
-      `*, obra:obras(id, nome, cidade, uf, fluxo, engenheiro_id, administrador_id,
+      `*, categoria:categorias(nome), obra:obras(id, nome, cidade, uf, fluxo, engenheiro_id, administrador_id,
         engenheiro:profiles!obras_engenheiro_id_fkey(nome), administrador:profiles!obras_administrador_id_fkey(nome)),
        fornecedor:fornecedores(id, nome, cpf_cnpj, chave_pix, banco, agencia, conta),
        criador:profiles!pagamentos_created_by_fkey(nome),
@@ -106,14 +106,15 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
 
   const ativos = (docs ?? []).filter((d) => d.ativo);
   const analista = u.perfil === "financeiro" || u.perfil === "suprimentos";
-  const { data: parcelas } = await supabase.from("pagamento_parcelas").select("*").eq("pagamento_id", id).order("numero");
-  const podeParcelar = p.created_by === u.id && (u.perfil === "financeiro" || u.perfil === "suprimentos") && !["pago", "cancelado", "rejeitado"].includes(p.status);
+  const [{ data: parcelas }, { count: repeticoesAbertas }] = await Promise.all([
+    supabase.from("pagamento_parcelas").select("*").eq("pagamento_id", id).order("numero"),
+    supabase.from("provisoes").select("id", { count: "exact", head: true }).eq("pagamento_origem_id", id).eq("status", "provisionada"),
+  ]);
 
   // Assinatura guardada do usuário (para assinar os documentos deste pagamento)
   const { data: meuPerfil } = await supabase.from("profiles").select("assinatura_path").eq("id", u.id).single();
   const caminhoAss = meuPerfil?.assinatura_path && meuPerfil.assinatura_path.startsWith(`${u.id}/`) && !meuPerfil.assinatura_path.endsWith("/removida") ? meuPerfil.assinatura_path : null;
   const assinaturaUrl = caminhoAss ? (await supabase.storage.from("assinaturas").createSignedUrl(caminhoAss, 600)).data?.signedUrl ?? null : null;
-  const assinaturaMime = caminhoAss?.endsWith(".png") ? ("image/png" as const) : ("image/jpeg" as const);
   const idsNF = ativos.filter((d) => d.tipo === "nota_fiscal").map((d) => d.id);
   const { data: notasNF } =
     analista && idsNF.length
@@ -128,6 +129,17 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
   // Baixa e comprovante: Financeiro e Administrador master (todas as obras).
   const baixa = u.perfil === "financeiro" || u.perfil === "administrador_master";
   const atua = Boolean(podeAtuar) && !finalizado;
+
+  // Boleto desatualizado: o valor do pagamento mudou depois que o boleto ativo foi anexado.
+  const ultimaMudancaValor = [...(eventos ?? [])]
+    .reverse()
+    .find((e) => e.acao === "alterou" && e.dados_depois && typeof e.dados_depois === "object" && !Array.isArray(e.dados_depois) && "valor" in e.dados_depois);
+  const boletosAtivos = ativos.filter((d) => d.tipo === "boleto");
+  const boletoDesatualizado =
+    !!ultimaMudancaValor && p.status !== "cancelado" && boletosAtivos.length > 0 && boletosAtivos.every((d) => d.created_at < ultimaMudancaValor.created_at);
+  const valorAntigo = ultimaMudancaValor?.dados_antes && typeof ultimaMudancaValor.dados_antes === "object" && !Array.isArray(ultimaMudancaValor.dados_antes)
+    ? (ultimaMudancaValor.dados_antes as Record<string, unknown>).valor
+    : null;
 
   return (
     <>
@@ -174,6 +186,13 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
         {sp.nf === "lancada" && <Aviso tipo="sucesso">Itens da nota registrados na Inteligência de Compras.</Aviso>}
         {sp.salvo && <Aviso tipo="sucesso">Alterações salvas e registradas no histórico.</Aviso>}
         {typeof sp.aviso === "string" && <Aviso tipo="alerta">Pagamento criado, mas houve problema com anexos: {sp.aviso}</Aviso>}
+        {boletoDesatualizado && (
+          <Aviso tipo="alerta">
+            <strong>Boleto desatualizado.</strong> O valor do pagamento foi alterado
+            {valorAntigo != null ? ` de ${moeda(valorAntigo as number)}` : ""} para {moeda(p.valor)} depois que o boleto foi anexado.
+            {atua ? " Anexe o boleto novo em “Substituir por nova versão”, no documento do boleto: o anterior fica no histórico como substituído." : " Peça a quem cadastrou para anexar o boleto novo."}
+          </Aviso>
+        )}
         {p.status === "rejeitado" && (
           <Aviso tipo="erro">
             <strong>Rejeitado.</strong> Motivo: {p.rejeicao_motivo}
@@ -201,6 +220,8 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
               <Dado rotulo="Vencimento">
                 <Vencimento iso={p.vencimento} status={p.status} />
               </Dado>
+              <Dado rotulo="Competência">{data(p.data_competencia)}</Dado>
+              <Dado rotulo="Categoria">{p.categoria?.nome ?? "—"}</Dado>
               <Dado rotulo="Forma de pagamento">{FORMAS_PAGAMENTO[p.forma_pagamento]}</Dado>
               <Dado rotulo="Favorecido">{p.favorecido}</Dado>
               <Dado rotulo="Fornecedor">
@@ -368,7 +389,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                           </select>
                         </Campo>
                         <Campo rotulo="Arquivo(s)" obrigatorio>
-                          <input type="file" name="arquivo" accept={ACEITOS} multiple required className="campo" />
+                          <CampoArquivos nome="arquivo" accept={ACEITOS} />
                         </Campo>
                       </div>
                     </FormAcao>
@@ -427,6 +448,17 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                 <Campo rotulo="Valor pago (R$)" ajuda="Deixe em branco se igual ao valor do pagamento.">
                   <input name="valor_pago" inputMode="decimal" placeholder={valorParaCampo(p.valor)} className="campo" />
                 </Campo>
+                <fieldset className="space-y-1 text-sm">
+                  <legend className="mb-1 text-xs font-medium text-slate-600">Se o valor pago for menor, a diferença é:</legend>
+                  <label className="flex items-start gap-2">
+                    <input type="radio" name="diferenca" value="saldo" defaultChecked className="mt-0.5" />
+                    <span>Saldo a pagar <span className="text-slate-500">— o restante fica em aberto como uma nova parcela</span></span>
+                  </label>
+                  <label className="flex items-start gap-2">
+                    <input type="radio" name="diferenca" value="desconto" className="mt-0.5" />
+                    <span>Desconto <span className="text-slate-500">— o pagamento fica quitado</span></span>
+                  </label>
+                </fieldset>
                 <Campo rotulo="Comprovante">
                   <input type="file" name="comprovante" accept={ACEITOS} className="campo" />
                 </Campo>
@@ -434,6 +466,25 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                   <input name="observacao" className="campo" />
                 </Campo>
               </FormAcao>
+            </Cartao>
+          )}
+
+          {baixa && p.status === "pago" && !(parcelas && parcelas.length > 0) && (
+            <Cartao titulo="Estornar pagamento">
+              <details>
+                <summary className="cursor-pointer text-sm text-amber-700">Estornar a baixa…</summary>
+                <p className="mt-2 text-xs text-slate-600">
+                  Use quando o pagamento foi registrado por engano ou devolvido pelo banco. Ele volta para “aguardando pagamento”; o
+                  comprovante e o histórico ficam preservados.
+                </p>
+                <div className="mt-3">
+                  <FormAcao action={estornarBaixa.bind(null, id)} enviar="Estornar" variante="perigo" confirmar="Confirma o estorno da baixa deste pagamento?">
+                    <Campo rotulo="Motivo do estorno" obrigatorio>
+                      <input name="motivo" required minLength={3} className="campo" />
+                    </Campo>
+                  </FormAcao>
+                </div>
+              </details>
             </Cartao>
           )}
 
@@ -450,9 +501,10 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             </Cartao>
           )}
 
-          {(parcelas?.length || podeParcelar) && (
-            <Cartao titulo={`Parcelas${parcelas?.length ? ` (${parcelas.length})` : ""}`} semPadding={!!parcelas?.length}>
-              {parcelas && parcelas.length > 0 && (
+          {/* Parcelas: definidas no lançamento (ou o saldo de uma baixa parcial). Não se redividem aqui. */}
+          {!!parcelas?.length && (
+            <Cartao titulo={`Parcelas (${parcelas.length})`} semPadding>
+              {(
                 <ul className="divide-y divide-slate-100">
                   {parcelas.map((pc) => {
                     const aPagar = Number(pc.valor_base) + Number(pc.multa) + Number(pc.juros) - Number(pc.desconto);
@@ -480,6 +532,23 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                           <div>Desconto<div className="tabular-nums text-slate-800">{Number(pc.desconto) > 0 ? moeda(pc.desconto) : "—"}</div></div>
                         </div>
                         {ajustes !== 0 && pc.status !== "pago" && <div className="text-xs text-slate-500">Ajustes previstos: {moeda(ajustes)}</div>}
+                        {baixa && pc.status === "pago" && (
+                          <details>
+                            <summary className="cursor-pointer text-xs text-amber-700">Estornar esta parcela</summary>
+                            <div className="mt-2">
+                              <FormAcao
+                                action={estornarParcela.bind(null, pc.id, p.id)}
+                                enviar="Estornar parcela"
+                                variante="perigo"
+                                confirmar={`Confirma o estorno da parcela ${pc.numero}?`}
+                              >
+                                <Campo rotulo="Motivo do estorno" obrigatorio>
+                                  <input name="motivo" required minLength={3} className="campo" />
+                                </Campo>
+                              </FormAcao>
+                            </div>
+                          </details>
+                        )}
                         {podePagar && (
                           <details>
                             <summary className="cursor-pointer text-xs font-medium text-marca-700">Pagar esta parcela</summary>
@@ -508,12 +577,6 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                     );
                   })}
                 </ul>
-              )}
-              {podeParcelar && !(parcelas && parcelas.length > 0) && (
-                <div className={parcelas?.length ? "border-t border-slate-200 p-4" : ""}>
-                  {parcelas?.length ? <p className="mb-3 text-xs text-slate-500">Para refazer a divisão, informe as parcelas de novo.</p> : null}
-                  <FormParcelas pagamentoId={p.id} valorTotal={Number(p.valor)} action={definirParcelas} />
-                </div>
               )}
             </Cartao>
           )}
@@ -551,7 +614,6 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                   enviadoPorNome: d.enviado?.nome ?? null,
                 }))}
               assinaturaUrl={assinaturaUrl}
-              assinaturaMime={assinaturaMime}
               pagamentoId={p.id}
               obraId={p.obra_id}
               usuarioId={u.id}
@@ -603,6 +665,14 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                     <Campo rotulo="Motivo" obrigatorio>
                       <input name="motivo" required className="campo" />
                     </Campo>
+                    {!!repeticoesAbertas && (
+                      <label className="flex items-start gap-2 text-sm text-slate-700">
+                        <input type="checkbox" name="cancelar_serie" defaultChecked className="mt-0.5" />
+                        <span>
+                          Cancelar também as {repeticoesAbertas} repetição(ões) futura(s) deste lançamento (provisões em aberto)
+                        </span>
+                      </label>
+                    )}
                   </FormAcao>
                 </div>
               </details>

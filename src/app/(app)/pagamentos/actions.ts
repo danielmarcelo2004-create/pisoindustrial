@@ -60,6 +60,14 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
   if ("erro" in lido) return { erro: lido.erro };
   const assinar = fd.get("assinar") === "on" && (usuario.perfil === "financeiro" || usuario.perfil === "suprimentos");
 
+  const categoria = texto(fd, "categoria_id");
+  if (!UUID.test(categoria)) return { erro: "Escolha a categoria." };
+  const repIntervalo = Number(texto(fd, "repetir_intervalo") || 0);
+  const repVezes = Number(texto(fd, "repetir_vezes") || 0);
+  if (repIntervalo && (repIntervalo < 1 || repIntervalo > 12 || repVezes < 2 || repVezes > 60)) {
+    return { erro: "Repetição inválida: de 1 a 12 meses e de 2 a 60 vezes." };
+  }
+
   // Parcelas escolhidas no cadastro (uma parcela = pagamento único). A soma precisa ser igual ao valor.
   let parcelas: { valor: number; vencimento: string }[] = [];
   try {
@@ -97,6 +105,11 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
   if (error || !id) return { erro: mensagemErro(error) };
 
   if (assinar) await supabase.rpc("marcar_assinatura_cadastro", { p_id: id as string, p_assinar: true });
+  const competencia = texto(fd, "data_competencia");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(competencia)) {
+    await supabase.rpc("definir_competencia", { p_pagamento_id: id as string, p_data: competencia });
+  }
+  await supabase.rpc("definir_categoria", { p_pagamento_id: id as string, p_categoria_id: categoria });
   if (parcelas.length >= 2) {
     const { error: erroParcelas } = await supabase.rpc("definir_parcelas", {
       p_pagamento_id: id as string,
@@ -109,6 +122,10 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
   }
 
   const falhas: string[] = [];
+  if (repIntervalo) {
+    const { error: erroRep } = await supabase.rpc("criar_repeticoes", { p_pagamento_id: id as string, p_intervalo: repIntervalo, p_vezes: repVezes });
+    if (erroRep) falhas.push("As repetições não foram criadas: " + mensagemErro(erroRep));
+  }
   for (const a of anexos) {
     const r = await enviarDocumento(supabase, { id, obra_id: obra }, a.tipo, a.arquivo);
     if (r.erro) falhas.push(r.erro);
@@ -126,7 +143,13 @@ export async function atualizarPagamento(id: string, _: Estado, fd: FormData): P
   const lido = lerDadosPagamento(fd);
   if ("erro" in lido) return { erro: lido.erro };
 
+  const [novoBoleto] = arquivosDoForm(fd, "novo_boleto");
+  if (novoBoleto) {
+    const e = validarArquivo(novoBoleto);
+    if (e) return { erro: e };
+  }
   const supabase = await createClient();
+  const { data: antes } = await supabase.from("pagamentos").select("valor, obra_id").eq("id", id).single();
   const { error } = await supabase.rpc("atualizar_pagamento", {
     p_id: id,
     ...lido.dados,
@@ -134,6 +157,43 @@ export async function atualizarPagamento(id: string, _: Estado, fd: FormData): P
     p_obra_id: texto(fd, "obra_id") || undefined,
   });
   if (error) return { erro: mensagemErro(error) };
+  const competencia = texto(fd, "data_competencia");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(competencia)) {
+    const { error: erroComp } = await supabase.rpc("definir_competencia", { p_pagamento_id: id, p_data: competencia });
+    if (erroComp) return { erro: mensagemErro(erroComp) };
+  }
+  const categoria = texto(fd, "categoria_id");
+  if (UUID.test(categoria)) {
+    const { error: erroCat } = await supabase.rpc("definir_categoria", { p_pagamento_id: id, p_categoria_id: categoria });
+    if (erroCat) return { erro: mensagemErro(erroCat) };
+  }
+  // "Aplicar o novo valor às próximas": provisões em aberto da repetição
+  if (fd.get("reajustar_serie") === "on") {
+    const { error: erroSerie } = await supabase.rpc("reajustar_serie", { p_pagamento_id: id, p_valor: lido.dados.p_valor });
+    if (erroSerie) return { erro: mensagemErro(erroSerie) };
+  }
+  // Boleto novo junto com a edição: substitui o boleto ativo (o anterior fica no histórico).
+  if (novoBoleto) {
+    const { data: boletoAtivo } = await supabase
+      .from("documentos")
+      .select("id")
+      .eq("pagamento_id", id)
+      .eq("tipo", "boleto")
+      .eq("ativo", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const mudouValor = antes && Number(antes.valor) !== lido.dados.p_valor;
+    const motivo = mudouValor
+      ? `Valor alterado de R$ ${Number(antes.valor).toFixed(2).replace(".", ",")} para R$ ${lido.dados.p_valor.toFixed(2).replace(".", ",")}`
+      : "Boleto atualizado na edição do pagamento";
+    const { data: atual } = await supabase.from("pagamentos").select("id, obra_id").eq("id", id).single();
+    const r = await enviarDocumento(supabase, atual ?? p, "boleto", novoBoleto, boletoAtivo ? { id: boletoAtivo.id, motivo } : undefined);
+    if (r.erro) {
+      revalidatePath("/", "layout");
+      return { erro: `Dados salvos, mas o boleto novo não foi anexado: ${r.erro}` };
+    }
+  }
   revalidatePath("/", "layout");
   redirect(`/pagamentos/${id}?salvo=1`);
 }
@@ -186,8 +246,51 @@ export async function cancelarPagamento(id: string, _: Estado, fd: FormData): Pr
   const supabase = await createClient();
   const { error } = await supabase.rpc("cancelar_pagamento", { p_id: id, p_motivo: texto(fd, "motivo") });
   if (error) return { erro: mensagemErro(error) };
+  // "Cancelar também as próximas": provisões em aberto da repetição deste pagamento
+  let extra = "";
+  if (fd.get("cancelar_serie") === "on") {
+    const { data: qtd, error: erroSerie } = await supabase.rpc("cancelar_serie", { p_pagamento_id: id });
+    if (erroSerie) return { erro: "Pagamento cancelado, mas as repetições não foram canceladas: " + mensagemErro(erroSerie) };
+    if (qtd) extra = ` ${qtd} repetição(ões) futura(s) também cancelada(s).`;
+  }
   revalidatePath("/", "layout");
-  return { ok: "Pagamento cancelado." };
+  return { ok: "Pagamento cancelado." + extra };
+}
+
+/** Estorno de baixa do pagamento (sem parcelas): volta para "a pagar". */
+export async function estornarBaixa(id: string, _: Estado, fd: FormData): Promise<Estado> {
+  await getUsuario();
+  if (!UUID.test(id)) return { erro: "Pagamento não encontrado." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("estornar_baixa", { p_id: id, p_motivo: texto(fd, "motivo") });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/", "layout");
+  return { ok: "Baixa estornada: o pagamento voltou para \"aguardando pagamento\"." };
+}
+
+/** Estorno de uma parcela paga. */
+export async function estornarParcela(parcelaId: string, pagamentoId: string, _: Estado, fd: FormData): Promise<Estado> {
+  await getUsuario();
+  if (!UUID.test(parcelaId)) return { erro: "Parcela não encontrada." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("estornar_baixa_parcela", { p_parcela_id: parcelaId, p_motivo: texto(fd, "motivo") });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath(`/pagamentos/${pagamentoId}`);
+  revalidatePath("/", "layout");
+  return { ok: "Parcela estornada." };
+}
+
+/** Aviso de possível duplicidade (não bloqueia o cadastro). */
+export async function verificarDuplicidade(dados: { hashes: string[]; favorecido: string; valor: number | null; vencimento: string }) {
+  await getUsuario();
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("verificar_duplicidade", {
+    p_hashes: dados.hashes.filter((h) => /^[0-9a-f]{64}$/.test(h)),
+    p_favorecido: dados.favorecido.trim() || (null as unknown as string),
+    p_valor: (dados.valor ?? null) as number,
+    p_vencimento: (/^\d{4}-\d{2}-\d{2}$/.test(dados.vencimento) ? dados.vencimento : null) as string,
+  });
+  return data ?? [];
 }
 
 export async function reenviarPagamento(id: string, _: Estado, fd: FormData): Promise<Estado> {
@@ -220,6 +323,8 @@ export async function registrarBaixa(id: string, _: Estado, fd: FormData): Promi
     p_pago_em: pagoEm,
     p_valor_pago: valor ?? undefined,
     p_observacao: texto(fd, "observacao"),
+    // Valor menor que o devido: a diferença é saldo em aberto (padrão) ou desconto
+    p_diferenca: texto(fd, "diferenca") === "desconto" ? "desconto" : "saldo",
   });
   if (error) return { erro: mensagemErro(error) };
 
@@ -232,23 +337,6 @@ export async function registrarBaixa(id: string, _: Estado, fd: FormData): Promi
   }
   revalidatePath("/", "layout");
   return { ok: "Pagamento registrado como pago." };
-}
-
-/** Divide o pagamento em parcelas, cada uma com vencimento próprio. A aprovação continua única. */
-export async function definirParcelas(id: string, _: Estado, fd: FormData): Promise<Estado> {
-  await getUsuario();
-  if (!UUID.test(id)) return { erro: "Pagamento não encontrado." };
-  let parcelas: unknown;
-  try {
-    parcelas = JSON.parse(String(fd.get("parcelas") ?? "[]"));
-  } catch {
-    return { erro: "Parcelas inválidas." };
-  }
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("definir_parcelas", { p_pagamento_id: id, p_parcelas: parcelas as never });
-  if (error) return { erro: mensagemErro(error) };
-  revalidatePath(`/pagamentos/${id}`);
-  return { ok: "Parcelas definidas. A aprovação continua valendo para o pagamento inteiro." };
 }
 
 /** Baixa de uma parcela (pagamento parcelado). O pagamento fica pago só quando todas as parcelas estiverem pagas. */

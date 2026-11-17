@@ -43,6 +43,7 @@ const shot = (page, nome) => page.screenshot({ path: path.join(DIR, nome + '.png
   await page.fill('input[name=vencimento]', new Date(Date.now() + 6 * 864e5).toISOString().slice(0, 10));
   await page.setInputFiles('input[name=boleto]', pdfPath);
   await shot(page, '02-novo-pagamento');
+  await page.click('button[aria-label="Categoria"]'); await page.locator('[role=option]').first().click();
   await Promise.all([page.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/), page.click('button:has-text("Cadastrar e encaminhar")')]);
   await page.getByText('Aguardando engenheiro').first().waitFor();
   await page.getByText('boleto-teste.pdf').first().waitFor();

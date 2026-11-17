@@ -9,7 +9,7 @@ import { classificarNota, lerNfseTexto, lerNfseXml, type DadosNota } from "@/lib
 import { extrairTextoPdf } from "@/lib/pdf-texto";
 import { SISTEMA } from "@/lib/sistema";
 
-export const TAMANHO_MAXIMO = 25 * 1024 * 1024;
+const TAMANHO_MAXIMO = 25 * 1024 * 1024;
 
 const MIME_POR_EXTENSAO: Record<string, string> = {
   pdf: "application/pdf",

@@ -75,7 +75,7 @@ async function gravarRascunho(id: string | null, fd: FormData, paraEnviar = fals
   if (!UUID.test(obra)) return { erro: "Selecione a obra." };
   if (!t(fd, "favorecido")) return { erro: "Informe o favorecido." };
   if (!t(fd, "descricao")) return { erro: "Informe a descrição." };
-  if (!FORMAS_PAGAMENTO_ATUAIS.includes(forma)) return { erro: "Escolha PIX ou transferência bancária." };
+  if (!FORMAS_PAGAMENTO_ATUAIS.includes(forma)) return { erro: "Forma de pagamento inválida." };
   if (venc && !/^\d{4}-\d{2}-\d{2}$/.test(venc)) return { erro: "Vencimento inválido." };
   const itens = lerItens(fd);
   if (typeof itens === "string") return { erro: itens };
@@ -88,12 +88,15 @@ async function gravarRascunho(id: string | null, fd: FormData, paraEnviar = fals
     const conta = t(fd, "conta");
     if (paraEnviar && (!banco || !agencia || !conta)) return { erro: "Para transferência bancária, informe banco, agência e conta antes de gerar a OP." };
     dadosBancarios = [banco && `BANCO: ${banco}`, agencia && `AGÊNCIA: ${agencia}`, conta && `CONTA: ${conta}`].filter(Boolean).join("\n");
-  } else {
+  } else if (forma === "pix") {
     const banco = t(fd, "banco");
     const chave = t(fd, "chave_pix");
     if (paraEnviar && (!banco || !chave)) return { erro: "Para PIX, informe o banco e a chave PIX antes de gerar a OP." };
     dadosBancarios = [banco && `BANCO: ${banco}`, chave && `CHAVE PIX: ${chave}`].filter(Boolean).join("\n");
   }
+
+  const categoria = t(fd, "categoria_id");
+  if (paraEnviar && !UUID.test(categoria)) return { erro: "Escolha a categoria antes de gerar a OP." };
 
   // Desconto é opcional (padrão zero); não pode passar do total dos itens.
   const descontoTxt = t(fd, "desconto");
@@ -124,6 +127,23 @@ async function gravarRascunho(id: string | null, fd: FormData, paraEnviar = fals
   if (typeof parcelas === "string") return { erro: parcelas };
   const { error: erroParcelas } = await supabase.rpc("definir_parcelas_op", { p_id: data as string, p_parcelas: parcelas });
   if (erroParcelas) return { erro: mensagemErro(erroParcelas) };
+
+  // Data de competência (vem com a data do lançamento; pode ser alterada)
+  const competencia = t(fd, "data_competencia");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(competencia)) {
+    const { error: erroComp } = await supabase.rpc("definir_competencia_op", { p_ordem_id: data as string, p_data: competencia });
+    if (erroComp) return { erro: mensagemErro(erroComp) };
+  }
+  if (UUID.test(categoria)) {
+    const { error: erroCat } = await supabase.rpc("definir_categoria_op", { p_ordem_id: data as string, p_categoria_id: categoria });
+    if (erroCat) return { erro: mensagemErro(erroCat) };
+  }
+
+  // Repetição: guardada no rascunho; as provisões nascem no envio
+  const repIntervalo = Number(t(fd, "repetir_intervalo") || 0) || null;
+  const repVezes = Number(t(fd, "repetir_vezes") || 0) || null;
+  const { error: erroRep } = await supabase.rpc("definir_repeticao_op", { p_ordem_id: data as string, p_intervalo: repIntervalo, p_vezes: repVezes });
+  if (erroRep) return { erro: mensagemErro(erroRep) };
   return { id: data as string };
 }
 
@@ -214,8 +234,14 @@ export async function enviarOP(id: string, _: Estado, fd?: FormData): Promise<Es
       aviso = `&aviso=${encodeURIComponent("A OP foi enviada, mas o PDF não foi anexado: " + mensagemErro(e as { message?: string }))}`;
     }
   }
+  // Repetição configurada na OP: as próximas ocorrências viram provisões
+  if (op?.repetir_intervalo && op.repetir_vezes) {
+    const { error: erroRep } = await supabase.rpc("criar_repeticoes", { p_pagamento_id: pagId as string, p_intervalo: op.repetir_intervalo, p_vezes: op.repetir_vezes });
+    if (erroRep) aviso += `&aviso=${encodeURIComponent("As repetições não foram criadas: " + mensagemErro(erroRep))}`;
+  }
   revalidatePath("/", "layout");
-  redirect(`/ops/${id}?enviada=1${aviso}`);
+  // A Ordem de Pagamento agora vive em Pagamentos: depois do envio, abre o pagamento criado.
+  redirect(`/pagamentos/${pagId}?criado=1${aviso}`);
 }
 
 export async function excluirOP(id: string, _: Estado): Promise<Estado> {
@@ -224,7 +250,7 @@ export async function excluirOP(id: string, _: Estado): Promise<Estado> {
   const { error } = await supabase.rpc("excluir_op", { p_id: id });
   if (error) return { erro: mensagemErro(error) };
   revalidatePath("/ops");
-  redirect("/ops?excluida=1");
+  redirect("/pagamentos?excluida=1");
 }
 
 /** Cria um novo rascunho a partir de uma OP (ex.: rejeitada, para corrigir e reenviar). */
@@ -242,7 +268,8 @@ export async function duplicarOP(id: string, _: Estado): Promise<Estado> {
     p_vencimento: op.vencimento as string,
     p_forma_pagamento: op.forma_pagamento,
     p_dados_bancarios: op.dados_bancarios ?? "",
-    p_observacoes: [op.observacoes, op.numero ? `Corrige a ${op.numero}.` : null].filter(Boolean).join(" "),
+    // A observação vai para o PDF: a cópia mantém a observação original (sem "Corrige a OP-…").
+    p_observacoes: op.observacoes ?? "",
     p_itens: op.ordem_itens.map((i) => ({
       descricao: i.descricao,
       unidade: i.unidade ?? "",
@@ -250,7 +277,21 @@ export async function duplicarOP(id: string, _: Estado): Promise<Estado> {
       valor_unitario: Number(i.valor_unitario),
     })),
     p_numero_nf: op.numero_nf ?? "",
+    p_desconto: Number(op.desconto ?? 0),
   });
   if (error) return { erro: mensagemErro(error) };
-  redirect(`/ops/${data}/editar`);
+  // A cópia leva também categoria, competência e repetição da OP original.
+  const novaId = data as string;
+  if ((op.ordem_parcelas?.length ?? 0) >= 2) {
+    await supabase.rpc("definir_parcelas_op", {
+      p_id: novaId,
+      p_parcelas: op.ordem_parcelas.map((pc) => ({ vencimento: pc.vencimento, valor: Number(pc.valor) })),
+    });
+  }
+  if (op.categoria_id) await supabase.rpc("definir_categoria_op", { p_ordem_id: novaId, p_categoria_id: op.categoria_id });
+  if (op.data_competencia) await supabase.rpc("definir_competencia_op", { p_ordem_id: novaId, p_data: op.data_competencia });
+  if (op.repetir_intervalo && op.repetir_vezes) {
+    await supabase.rpc("definir_repeticao_op", { p_ordem_id: novaId, p_intervalo: op.repetir_intervalo, p_vezes: op.repetir_vezes });
+  }
+  redirect(`/ops/${novaId}/editar`);
 }

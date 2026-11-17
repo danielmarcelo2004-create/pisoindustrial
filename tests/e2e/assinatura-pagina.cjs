@@ -55,6 +55,7 @@ async function paginasComImagem(bytes) {
   await fin.fill('input[name=valor]', '900,00');
   await fin.fill('input[name=vencimento]', new Date(Date.now() + 9 * 864e5).toISOString().slice(0, 10));
   await fin.setInputFiles('input[name=boleto]', CONTRATO);
+  await fin.click('button[aria-label="Categoria"]'); await fin.locator('[role=option]').first().click();
   await Promise.all([fin.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/, { timeout: 120000 }), fin.click('button:has-text("Cadastrar e encaminhar")')]);
   const idPag = fin.url().match(/[0-9a-f-]{36}/)[0];
   ok('contrato de 3 páginas cadastrado');
@@ -96,6 +97,7 @@ async function paginasComImagem(bytes) {
   await fin.fill('input[name=valor]', '450,00');
   await fin.fill('input[name=vencimento]', new Date(Date.now() + 9 * 864e5).toISOString().slice(0, 10));
   await fin.setInputFiles('input[name=boleto]', CONTRATO);
+  await fin.click('button[aria-label="Categoria"]'); await fin.locator('[role=option]').first().click();
   await Promise.all([fin.waitForURL(/\/pagamentos\/[0-9a-f-]{36}/, { timeout: 120000 }), fin.click('button:has-text("Cadastrar e encaminhar")')]);
   const idAdm = fin.url().match(/[0-9a-f-]{36}/)[0];
   await carimbarPendentes('engenheiro@demo.local', SENHA, 'aguardando_engenheiro');

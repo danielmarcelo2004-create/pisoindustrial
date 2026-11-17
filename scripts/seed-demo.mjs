@@ -108,6 +108,10 @@ await usuario("engenheiro", "engenheiro", "Eduardo Nunes", "(71) 99999-0003");
 await usuario("administrador", "administrador", "Ana Ribeiro", "(71) 99999-0004");
 await usuario("administrador2", "administrador", "Carlos Mendes");
 
+console.log("Criando categorias…");
+for (const nome of ["Materiais de construção", "Mão de obra", "Aluguel de equipamentos", "Frete", "Serviços de terceiros"]) {
+  ok(await u.financeiro.client.rpc("criar_categoria", { p_nome: nome }));
+}
 console.log("Criando obras e fornecedores…");
 const F = u.financeiro.client;
 const obraA = ok(await F.from("obras").insert({ codigo: "OB-001", nome: "Galpão Logístico Camaçari", cliente: "LogBA S.A.", cidade: "Camaçari", uf: "BA", fluxo: "A", engenheiro_id: u.engenheiro.id, administrador_id: u.administrador.id }).select().single());

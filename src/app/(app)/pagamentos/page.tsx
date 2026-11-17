@@ -29,6 +29,13 @@ export default async function PagamentosPage({ searchParams }: PageProps<"/pagam
   const pagina = Math.max(1, Number(str(sp.pagina)) || 1);
 
   const supabase = await createClient();
+  // Rascunhos de Ordem de Pagamento do próprio usuário (a OP agora nasce em Pagamentos)
+  const { data: rascunhos } = await supabase
+    .from("ordens_pagamento")
+    .select("id, favorecido, descricao")
+    .eq("solicitante_id", u.id)
+    .eq("status", "em_elaboracao")
+    .order("created_at", { ascending: false });
   const [{ itens, total }, { data: obras }] = await Promise.all([
     listarPagamentos(filtros, pagina),
     supabase.from("obras").select("id, nome").order("nome"),
@@ -106,12 +113,33 @@ export default async function PagamentosPage({ searchParams }: PageProps<"/pagam
                 Baixa em lote
               </LinkBotao>
             )}
-            {(u.perfil === "financeiro" || u.perfil === "suprimentos") && (
+            {(u.perfil === "financeiro" || u.perfil === "suprimentos" || u.perfil === "engenheiro") && (
               <LinkBotao href="/pagamentos/novo">+ Novo pagamento</LinkBotao>
             )}
           </>
         }
       />
+
+      {sp.excluida && (
+        <div className="mb-4 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">Rascunho excluído.</div>
+      )}
+      {(rascunhos ?? []).length > 0 && (
+        <Cartao titulo="Seus rascunhos de Ordem de Pagamento" className="mb-4">
+          <ul className="divide-y divide-slate-100 text-sm">
+            {(rascunhos ?? []).map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span>
+                  <span className="font-medium">{r.favorecido}</span>
+                  <span className="text-slate-500"> · {r.descricao}</span>
+                </span>
+                <a href={`/ops/${r.id}/editar`} className="text-marca-700 hover:underline">
+                  Continuar preenchimento →
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Cartao>
+      )}
 
       <Cartao className="mb-4">
         <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6" method="get">

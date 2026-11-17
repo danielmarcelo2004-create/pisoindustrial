@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Aviso, Botao, Cartao, Selo, Vazio } from "@/components/ui";
-import { contarPaginas, criarOcr, lerPaginaNota, lerTexto, renderizarPagina } from "@/lib/ocr/comprovantes";
+import { contarPaginas, criarOcr, lerPaginaNota, renderizarPagina } from "@/lib/ocr/comprovantes";
 import { lerNotaTexto, type NotaLidaOcr } from "@/lib/ocr/nota-fiscal";
 import { registrarNotaLida } from "./actions";
 

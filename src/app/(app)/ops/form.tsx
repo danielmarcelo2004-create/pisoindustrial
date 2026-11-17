@@ -9,6 +9,9 @@ import { criarClienteNavegador } from "@/lib/supabase/navegador";
 import { salvarRascunhoAjax } from "./actions";
 import { AnexosOP, type AnexoOP } from "./anexos-op";
 import { AssinarOP } from "./assinar-op";
+import { SeletorCategoria } from "@/components/seletor-categoria";
+import { RepeticaoDespesa } from "@/components/repeticao-despesa";
+import { AvisosLancamento } from "@/components/avisos-lancamento";
 
 type Item = { descricao: string; unidade: string; quantidade: string; valor_unitario: string };
 type ItemPadrao = {
@@ -27,6 +30,10 @@ type Padrao = {
   dados_bancarios?: string | null;
   observacoes?: string | null;
   numero_nf?: string | null;
+  data_competencia?: string | null;
+  categoria_id?: string | null;
+  repetir_intervalo?: number | null;
+  repetir_vezes?: number | null;
   desconto?: number | string | null;
   parcelas?: number;
   parcelasValores?: { vencimento: string; valor: number }[];
@@ -90,6 +97,9 @@ export function FormOP({
   assinaturaUrl = null,
   ehEngenheiro = false,
   assinaturaCriador = null,
+  formaFixa,
+  categorias = [],
+  podeAdicionarCategoria = false,
 }: {
   action: (e: Estado, fd: FormData) => Promise<Estado>;
   obras: { id: string; nome: string; cidade: string; uf: string; temAdministrador: boolean }[];
@@ -101,6 +111,10 @@ export function FormOP({
   assinaturaUrl?: string | null;
   ehEngenheiro?: boolean;
   assinaturaCriador?: { pos: { fx: number; fy: number; fw: number }; atual: boolean } | null;
+  /** Forma escolhida fora do formulário (no topo de "Novo pagamento"); esconde o seletor daqui. */
+  formaFixa?: FormaPagamento;
+  categorias?: { id: string; nome: string }[];
+  podeAdicionarCategoria?: boolean;
 }) {
   // Rascunho: na criação ele nasce ao clicar em "Salvar rascunho para anexar", sem sair da tela.
   const [ordemId, setOrdemId] = useState<string | null>(ordemIdInicial);
@@ -155,6 +169,7 @@ export function FormOP({
   const [forma, setForma] = useState<FormaPagamento>(
     FORMAS_PAGAMENTO_ATUAIS.includes(padrao.forma_pagamento as FormaPagamento) ? (padrao.forma_pagamento as FormaPagamento) : "pix",
   );
+  const formaAtual: FormaPagamento = formaFixa ?? forma;
   const bancoPadrao = lerDadosTransferencia(padrao.dados_bancarios);
   const [desconto, setDesconto] = useState(padrao.desconto ? paraCampo(padrao.desconto, 2) : "");
   const [venc1, setVenc1] = useState(padrao.vencimento ?? "");
@@ -238,8 +253,20 @@ export function FormOP({
           <Campo rotulo="Vencimento" obrigatorio ajuda={parcelasAtivas ? "Vencimento da 1ª parcela. As demais podem ser ajustadas na tabela abaixo." : "Obrigatório para enviar."}>
             <input type="date" name="vencimento" value={venc1} onChange={(e) => mudarVencimento(e.target.value)} className="campo" />
           </Campo>
+          <Campo rotulo="Data de competência" obrigatorio ajuda="Já vem com a data do lançamento. Altere se a despesa for de outro período.">
+            <input
+              type="date"
+              name="data_competencia"
+              required
+              defaultValue={padrao.data_competencia ?? new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date())}
+              className="campo"
+            />
+          </Campo>
           <Campo rotulo="Quantidade de parcelas" ajuda="Use 1 para pagamento único. Você pode ajustar vencimento e valor de cada parcela.">
             <input type="number" name="parcelas" min={1} max={60} value={qtdParc} onChange={(e) => mudarQuantidade(e.target.value)} required className="campo" />
+          </Campo>
+          <Campo rotulo="Categoria" obrigatorio ajuda="Obrigatória para enviar.">
+            <SeletorCategoria categorias={categorias} valorInicial={padrao.categoria_id} podeAdicionar={podeAdicionarCategoria} />
           </Campo>
           <Campo rotulo="Favorecido (fornecedor)" obrigatorio>
             <input name="favorecido" required defaultValue={padrao.favorecido ?? ""} className="campo" maxLength={200} />
@@ -250,19 +277,23 @@ export function FormOP({
           <Campo rotulo="Observação (motivo)" obrigatorio className="sm:col-span-2" ajuda="Aparece no campo OBSERVAÇÃO do PDF.">
             <input name="descricao" required defaultValue={padrao.descricao ?? ""} className="campo" maxLength={500} placeholder="Ex.: Adiantamento de salário" />
           </Campo>
-          <Campo rotulo="Forma de pagamento">
-            <select name="forma_pagamento" value={forma} onChange={(e) => setForma(e.target.value as FormaPagamento)} className="campo">
-              {FORMAS_PAGAMENTO_ATUAIS.map((v) => (
-                <option key={v} value={v}>
-                  {FORMAS_PAGAMENTO[v]}
-                </option>
-              ))}
-            </select>
-          </Campo>
+          {formaFixa ? (
+            <input type="hidden" name="forma_pagamento" value={formaFixa} />
+          ) : (
+            <Campo rotulo="Forma de pagamento">
+              <select name="forma_pagamento" value={forma} onChange={(e) => setForma(e.target.value as FormaPagamento)} className="campo">
+                {FORMAS_PAGAMENTO_ATUAIS.map((v) => (
+                  <option key={v} value={v}>
+                    {FORMAS_PAGAMENTO[v]}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          )}
           <Campo rotulo="Nº da Nota Fiscal" ajuda="Opcional. Se vazio, o sistema usa o número da OP.">
             <input name="numero_nf" defaultValue={padrao.numero_nf ?? ""} className="campo" maxLength={60} />
           </Campo>
-          {forma === "transferencia" ? (
+          {formaAtual === "transferencia" ? (
             <>
               <Campo rotulo="Banco" obrigatorio ajuda="Obrigatório para gerar a OP.">
                 <input name="banco" defaultValue={bancoPadrao.banco} className="campo" maxLength={80} />
@@ -274,7 +305,7 @@ export function FormOP({
                 <input name="conta" defaultValue={bancoPadrao.conta} className="campo" maxLength={30} />
               </Campo>
             </>
-          ) : (
+          ) : formaAtual === "pix" ? (
             <>
               <Campo rotulo="Banco" obrigatorio ajuda="Instituição bancária. Aparece como BANCO no PDF. Obrigatório para gerar a OP.">
                 <input name="banco" defaultValue={bancoPadrao.banco} className="campo" maxLength={80} />
@@ -283,10 +314,15 @@ export function FormOP({
                 <input name="chave_pix" defaultValue={bancoPadrao.chave} className="campo" maxLength={120} />
               </Campo>
             </>
+          ) : (
+            <p className="self-end text-sm text-slate-600">
+              Pagamento em {FORMAS_PAGAMENTO[formaAtual].toLowerCase()}: não precisa de dados bancários.
+            </p>
           )}
           <Campo rotulo="Observação" ajuda="Opcional. Aparece no PDF, abaixo do favorecido.">
             <textarea name="observacoes" rows={2} defaultValue={padrao.observacoes ?? ""} className="campo" maxLength={2000} />
           </Campo>
+          <AvisosLancamento valor={total > 0 ? total : undefined} camposArquivo="" />
         </div>
       </Cartao>
 
@@ -473,6 +509,10 @@ export function FormOP({
           </table>
         </Cartao>
       )}
+
+      <Cartao titulo="Repetição">
+        <RepeticaoDespesa intervaloInicial={padrao.repetir_intervalo} vezesInicial={padrao.repetir_vezes} />
+      </Cartao>
 
       <div className="flex flex-wrap gap-2">
         <BotaoEnviar name="acao" value="salvar" variante="secundario">

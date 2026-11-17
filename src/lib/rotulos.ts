@@ -52,11 +52,12 @@ export const FORMAS_PAGAMENTO: Record<FormaPagamento, string> = {
   transferencia: "Transferência bancária",
   dinheiro: "Dinheiro",
   cartao: "Cartão",
+  cheque: "Cheque",
   outro: "Outro",
 };
 
-/** Formas aceitas em novos pagamentos e OPs. As demais continuam no histórico e nos relatórios. */
-export const FORMAS_PAGAMENTO_ATUAIS: FormaPagamento[] = ["pix", "transferencia"];
+/** Formas aceitas na solicitação de OP (o pagamento direto aceita todas, com boleto como padrão). */
+export const FORMAS_PAGAMENTO_ATUAIS: FormaPagamento[] = ["pix", "transferencia", "dinheiro", "cartao", "cheque", "outro"];
 
 export const STATUS_OBRA: Record<StatusObra, string> = {
   ativa: "Ativa",

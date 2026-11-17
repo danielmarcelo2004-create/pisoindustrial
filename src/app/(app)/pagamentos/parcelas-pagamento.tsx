@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Campo } from "@/components/ui";
 import { moeda } from "@/lib/formato";
-import { extrairParcelasPorPagina } from "@/lib/boleto-parcelas";
+import { extrairBoletos } from "@/lib/boleto-parcelas";
 import { lerPaginasBoleto } from "@/lib/ocr/comprovantes";
 
 type Linha = { vencimento: string; valor: string };
@@ -47,6 +47,8 @@ export function ParcelasPagamento() {
   const [manual, setManual] = useState<Linha[] | null>(null);
   const [aviso, setAviso] = useState<{ tipo: "info" | "alerta"; texto: string } | null>(null);
   const [ref, setRef] = useState<HTMLDivElement | null>(null);
+  // Soma dos valores lidos no(s) boleto(s), para avisar quando o valor digitado for diferente.
+  const [valorBoleto, setValorBoleto] = useState<number | null>(null);
 
   const n = Math.min(Math.max(Math.floor(Number(qtd) || 1), 1), 60);
   const exibidas = manual && manual.length === n ? manual : gerar(n, primeiro, total);
@@ -63,18 +65,30 @@ export function ParcelasPagamento() {
     const aoMudar = async (e: Event) => {
       const alvo = e.target as HTMLInputElement;
       if (alvo.name === "valor" || alvo.name === "vencimento") lerCampos();
-      if (alvo.name === "boleto" && alvo.files?.[0]) {
+      if (alvo.name === "boleto" && !alvo.files?.length) setValorBoleto(null);
+      if (alvo.name === "boleto" && alvo.files?.length) {
         lerCampos();
-        setAviso({ tipo: "info", texto: "Lendo o boleto anexado…" });
+        const arquivos = Array.from(alvo.files);
+        setAviso({ tipo: "info", texto: arquivos.length > 1 ? `Lendo os ${arquivos.length} boletos anexados…` : "Lendo o boleto anexado…" });
         try {
-          const p = extrairParcelasPorPagina(await lerPaginasBoleto(alvo.files[0]));
+          // Cada boleto do(s) arquivo(s) vira uma parcela, na ordem em que foram anexados.
+          const paginas: string[] = [];
+          for (const arq of arquivos) paginas.push(...(await lerPaginasBoleto(arq)));
+          const lidos = extrairBoletos(paginas);
+          setValorBoleto(lidos.valores.length ? Math.round(lidos.valores.reduce((a, b) => a + b, 0) * 100) / 100 : null);
+          const p = lidos.vencimentos.length >= 2 ? lidos : null;
           if (!p) {
-            setAviso({ tipo: "info", texto: "Não identifiquei mais de um boleto neste arquivo. Informe as parcelas manualmente." });
+            setAviso({
+              tipo: "info",
+              texto: lidos.vencimentos.length === 1
+                ? `Boleto lido: ${moeda(lidos.valores[0])}, vencimento ${lidos.vencimentos[0].split("-").reverse().join("/")}.`
+                : "Não identifiquei mais de um boleto neste arquivo. Informe as parcelas manualmente.",
+            });
             return;
           }
           setQtd(String(p.vencimentos.length));
           setManual(p.vencimentos.map((v, i) => ({ vencimento: v, valor: p.valores[i].toFixed(2).replace(".", ",") })));
-          setAviso({ tipo: "info", texto: `${p.vencimentos.length} boletos identificados no arquivo. Parcelas preenchidas; confira antes de cadastrar.` });
+          setAviso({ tipo: "info", texto: `${p.vencimentos.length} boletos identificados ${arquivos.length > 1 ? "nos arquivos" : "no arquivo"}. Parcelas preenchidas; confira antes de cadastrar.` });
         } catch {
           setAviso({ tipo: "alerta", texto: "Não consegui ler o boleto. Informe as parcelas manualmente." });
         }
@@ -111,6 +125,11 @@ export function ParcelasPagamento() {
       {aviso && (
         <div className={aviso.tipo === "alerta" ? "rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" : "rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900"}>
           {aviso.texto}
+        </div>
+      )}
+      {valorBoleto !== null && Number.isFinite(total) && Math.abs(valorBoleto - total) >= 0.005 && (
+        <div role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          O valor lido no boleto é {moeda(valorBoleto)}, mas o valor informado é {moeda(total)}. Confira antes de cadastrar.
         </div>
       )}
       {n >= 2 && (

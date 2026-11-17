@@ -2,7 +2,7 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
-import { cpfCnpj, data, moeda } from "@/lib/formato";
+import { data, moeda } from "@/lib/formato";
 import { FORMAS_PAGAMENTO, type FormaPagamento } from "@/lib/rotulos";
 import { SISTEMA } from "@/lib/sistema";
 
@@ -41,7 +41,6 @@ const altura = (linha: number) => ALTURAS_MODELO[linha - 1] * ESCALA;
 const ALTURA_ITEM = altura(7);
 
 const PRETO = rgb(0, 0, 0);
-const BRANCO = rgb(1, 1, 1);
 const CINZA_CLARO = rgb(0.949, 0.949, 0.949);
 const AZUL_CLARO = rgb(0.588, 0.863, 0.973);
 const VERDE = rgb(0.573, 0.816, 0.314);
@@ -219,7 +218,7 @@ export async function gerarPdfOP(d: DadosPdfOP): Promise<Uint8Array> {
     ["FORNECEDOR", d.favorecido.toUpperCase()],
     ["Nº da Nota Fiscal", d.numeroNf ?? "—"],
     ["Data de vencimento", d.vencimento ? data(d.vencimento) : "—"],
-    ["CONDIÇÃO DE PGTO (pix ou transferência)", FORMAS_PAGAMENTO[d.formaPagamento].toUpperCase()],
+    ["CONDIÇÃO DE PGTO", FORMAS_PAGAMENTO[d.formaPagamento].toUpperCase()],
   ];
   campos.forEach(([rotulo, valor], i) => {
     const l = 2 + i;

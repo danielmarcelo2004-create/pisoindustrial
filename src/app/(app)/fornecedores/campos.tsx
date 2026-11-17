@@ -1,6 +1,7 @@
 import { Campo } from "@/components/ui";
 import { cpfCnpj } from "@/lib/formato";
 import { UFS } from "@/lib/rotulos";
+import { AvisosLancamento } from "@/components/avisos-lancamento";
 
 type Padrao = Partial<Record<"nome" | "cpf_cnpj" | "email" | "telefone" | "cidade" | "uf" | "chave_pix" | "banco" | "agencia" | "conta" | "observacoes", string | null>> & {
   ativo?: boolean;
@@ -16,6 +17,7 @@ export function CamposFornecedor({ padrao, edicao }: { padrao?: Padrao; edicao?:
       <Campo rotulo="CPF / CNPJ">
         <input name="cpf_cnpj" defaultValue={cpfCnpj(p.cpf_cnpj)} className="campo" inputMode="numeric" maxLength={18} />
       </Campo>
+      <AvisosLancamento duplicidade={false} camposArquivo="" />
       <Campo rotulo="E-mail" className="sm:col-span-2">
         <input name="email" type="email" defaultValue={p.email ?? ""} className="campo" />
       </Campo>

@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { FORMAS_PAGAMENTO, type FormaPagamento, type StatusPagamento } from "@/lib/rotulos";
 
 export const SELECAO_LISTA =
-  "id, numero, favorecido, descricao, valor, vencimento, status, fluxo, versao, forma_pagamento, numero_documento, pago_em, valor_pago, created_at, obra:obras(id, nome, cidade, uf), fornecedor:fornecedores(id, nome)";
+  "id, numero, favorecido, descricao, valor, vencimento, data_competencia, categoria:categorias(nome), status, fluxo, versao, forma_pagamento, numero_documento, pago_em, valor_pago, created_at, obra:obras(id, nome, cidade, uf), fornecedor:fornecedores(id, nome)";
 
 export type FiltrosPagamento = {
   busca?: string;

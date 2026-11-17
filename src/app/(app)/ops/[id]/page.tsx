@@ -50,7 +50,7 @@ export default async function OPPage({ params, searchParams }: PageProps<"/ops/[
   return (
     <>
       <Cabecalho
-        voltar={{ href: "/ops", rotulo: u.perfil === "engenheiro" ? "Minhas solicitações" : "Solicitações de OP" }}
+        voltar={{ href: "/pagamentos", rotulo: "Pagamentos" }}
         titulo={
           <span className="flex flex-wrap items-center gap-3">
             {op.numero ?? "Solicitação (rascunho)"}
@@ -125,6 +125,8 @@ export default async function OPPage({ params, searchParams }: PageProps<"/ops/[
                 <span className="text-lg font-semibold tabular-nums">{moeda(total)}</span>
               </Dado>
               <Dado rotulo="Vencimento">{data(op.vencimento)}</Dado>
+              <Dado rotulo="Competência">{data(op.data_competencia)}</Dado>
+              <Dado rotulo="Categoria">{op.categoria?.nome ?? "—"}</Dado>
               <Dado rotulo="Forma de pagamento">{FORMAS_PAGAMENTO[op.forma_pagamento]}</Dado>
               <Dado rotulo="Nº da Nota Fiscal">{op.numero_nf ?? "—"}</Dado>
               <Dado rotulo="Favorecido">{op.favorecido}</Dado>

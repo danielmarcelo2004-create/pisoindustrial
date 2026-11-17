@@ -5,6 +5,7 @@ import { Aviso, Cabecalho, Cartao, Indicador, LinkBotao } from "@/components/ui"
 import { getUsuario } from "@/lib/auth";
 import { pagamentosEmAberto, SELECAO_LISTA, somar } from "@/lib/consultas/pagamentos";
 import { hojeISO, moeda, somarDias } from "@/lib/formato";
+import { analisarSeries } from "@/lib/provisoes-serie";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Painel" };
@@ -17,11 +18,17 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
   const em7 = somarDias(hoje, 7);
   const inicioMes = hoje.slice(0, 8) + "01";
 
-  const [abertos, pendRes, pagosRes] = await Promise.all([
+  const [abertos, pendRes, pagosRes, provVencRes, provSerieRes] = await Promise.all([
     pagamentosEmAberto(),
     supabase.rpc("minhas_pendencias").select(SELECAO_LISTA).order("vencimento").limit(10),
     supabase.from("pagamentos").select("valor_pago, valor").eq("status", "pago").gte("pago_em", inicioMes).lte("pago_em", hoje),
+    // Provisões vencidas que ainda não viraram pagamento (Financeiro e Suprimentos acompanham)
+    supabase.from("provisoes").select("valor_estimado").eq("status", "provisionada").lt("vencimento", hoje),
+    // Séries de provisões (para avisar quando chegam na última parcela)
+    supabase.from("provisoes").select("id, descricao, status, vencimento, created_by, pagamento_origem_id, obra:obras(id)").like("descricao", "%(%/%)").limit(1000),
   ]);
+  const seriesNaUltima = analisarSeries(provSerieRes.data ?? []).naUltima;
+  const provVencidas = provVencRes.data ?? [];
 
   const vencidos = abertos.filter((p) => p.vencimento < hoje);
   const deHoje = abertos.filter((p) => p.vencimento === hoje);
@@ -56,6 +63,33 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
       {sp["sem-permissao"] && (
         <div className="mb-4">
           <Aviso tipo="alerta">Você não tem permissão para acessar aquela página.</Aviso>
+        </div>
+      )}
+
+      {provVencidas.length > 0 && (u.perfil === "financeiro" || u.perfil === "suprimentos" || u.perfil === "administrador_master") && (
+        <div className="mb-4">
+          <Aviso tipo="alerta">
+            {provVencidas.length === 1 ? "1 provisão venceu" : `${provVencidas.length} provisões venceram`} sem virar pagamento
+            {provVencidas.some((x) => x.valor_estimado !== null)
+              ? ` (${moeda(provVencidas.reduce((s, x) => s + Number(x.valor_estimado ?? 0), 0))} estimados)`
+              : ""}
+            .{" "}
+            <Link href="/provisoes?situacao=vencidas" className="font-medium underline">
+              Ver provisões vencidas
+            </Link>
+          </Aviso>
+        </div>
+      )}
+
+      {seriesNaUltima.length > 0 && (u.perfil === "financeiro" || u.perfil === "suprimentos" || u.perfil === "administrador_master") && (
+        <div className="mb-4">
+          <Aviso tipo="info">
+            {seriesNaUltima.length === 1 ? "1 série de provisões está na última parcela" : `${seriesNaUltima.length} séries de provisões estão na última parcela`}.
+            Deseja adicionar mais parcelas?{" "}
+            <Link href="/provisoes?situacao=ultimas" className="font-medium underline">
+              Ver últimas parcelas
+            </Link>
+          </Aviso>
         </div>
       )}
 

@@ -9,6 +9,7 @@ import { salvarOP } from "../../actions";
 import { FormOP } from "../../form";
 import type { AnexoOP } from "../../anexos-op";
 import { assinaturaDoUsuario } from "../../assinatura-usuario";
+import { categoriasAtivas } from "@/lib/consultas/categorias";
 
 export const metadata: Metadata = { title: "Editar solicitação de OP" };
 
@@ -35,7 +36,7 @@ export default async function EditarOPPage({ params }: PageProps<"/ops/[id]/edit
       : null;
   return (
     <>
-      <Cabecalho titulo="Editar solicitação (rascunho)" voltar={{ href: `/ops/${id}`, rotulo: "Voltar" }} />
+      <Cabecalho titulo="Ordem de Pagamento (rascunho)" voltar={{ href: "/pagamentos", rotulo: "Pagamentos" }} />
       <FormOP
         action={salvarOP.bind(null, id)}
         obras={obras}
@@ -45,6 +46,8 @@ export default async function EditarOPPage({ params }: PageProps<"/ops/[id]/edit
         assinaturaUrl={assinaturaUrl}
         ehEngenheiro={ehEngenheiro}
         assinaturaCriador={assinaturaCriador}
+        categorias={await categoriasAtivas()}
+        podeAdicionarCategoria={u.perfil === "financeiro"}
       />
     </>
   );

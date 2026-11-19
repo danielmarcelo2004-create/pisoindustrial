@@ -1,3 +1,4 @@
+import { lerPeriodo } from "@/lib/periodo";
 import { NextResponse, type NextRequest } from "next/server";
 import { listarPagamentos } from "@/lib/consultas/pagamentos";
 import { listarContas, type FiltroCartao } from "@/lib/consultas/contas-a-pagar";
@@ -22,11 +23,11 @@ export async function GET(request: NextRequest) {
 
   // Exportar planilha da tela "Contas a pagar": as mesmas linhas da lista (uma por conta/parcela), com os mesmos filtros
   if (sp.get("lista") === "contas") {
-    const mesP = sp.get("mes") ?? "";
+    const per = lerPeriodo({ periodo: sp.get("periodo") ?? "", mes: sp.get("mes") ?? "", de: sp.get("de") ?? "", ate: sp.get("ate") ?? "" }, hojeISO());
     const { linhas } = await listarContas({
-      mes: /^\d{4}-\d{2}$/.test(mesP) || mesP === "todos" ? mesP : hojeISO().slice(0, 7),
-      de: sp.get("de") ?? "",
-      ate: sp.get("ate") ?? "",
+      mes: per.tipo === "todos" ? "todos" : per.de.slice(0, 7),
+      de: per.de,
+      ate: per.ate,
       busca: sp.get("busca") ?? "",
       obra: sp.get("obra") ?? "",
       forma: sp.get("forma") ?? "",

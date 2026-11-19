@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 import type { Cor } from "@/lib/rotulos";
+import { LinkVoltarContas } from "./voltar-contas";
 
 function cx(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(" ");
@@ -98,11 +99,14 @@ export function Cabecalho({
 }) {
   return (
     <div className="mb-6">
-      {voltar && (
-        <Link href={voltar.href} className="mb-2 inline-block text-sm text-marca-600 hover:underline">
-          ← {voltar.rotulo}
-        </Link>
-      )}
+      {voltar &&
+        (voltar.href === "/pagamentos" ? (
+          <LinkVoltarContas rotulo={voltar.rotulo} className="mb-2 inline-block text-sm text-marca-600 hover:underline" />
+        ) : (
+          <Link href={voltar.href} className="mb-2 inline-block text-sm text-marca-600 hover:underline">
+            ← {voltar.rotulo}
+          </Link>
+        ))}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">{titulo}</h1>

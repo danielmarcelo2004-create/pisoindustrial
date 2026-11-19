@@ -7,7 +7,6 @@ import { moeda } from "@/lib/formato";
 import { acaoEmLote, clonarLancamento, voltarParaEmAberto } from "./actions";
 
 const SELETOR = 'input.caixa-baixar[form="form-baixar"]';
-const marcadas = () => Array.from(document.querySelectorAll<HTMLInputElement>(SELETOR)).filter((c) => c.checked);
 
 /** Envia o formulário de filtros quando um campo muda (mês, centro de custo etc.). */
 export function EnviarAoMudar() {
@@ -22,6 +21,82 @@ export function EnviarAoMudar() {
     return () => form.removeEventListener("change", aoMudar);
   }, []);
   return <span ref={ref} hidden />;
+}
+
+export const CHAVE_SELECAO = "contas-a-pagar:selecao";
+export const CHAVE_LISTA = "contas-a-pagar:lista";
+const EVENTO = "selecao-contas";
+type ItemMarcado = { valor: number; baixavel: boolean; pago: boolean; pagamento: string };
+type Memoria = Record<string, ItemMarcado>;
+
+const gravar = (k: string, v: string | null) => {
+  try {
+    if (v === null) sessionStorage.removeItem(k);
+    else sessionStorage.setItem(k, v);
+  } catch {
+    /* navegador sem armazenamento: só não lembra */
+  }
+};
+/** Contas marcadas nesta aba, inclusive as que não aparecem na lista atual (outra busca, outro filtro, outro mês). */
+export function lerMemoria(): Memoria {
+  try {
+    const m = JSON.parse(sessionStorage.getItem(CHAVE_SELECAO) ?? "{}");
+    return m && typeof m === "object" && !Array.isArray(m) ? m : {};
+  } catch {
+    return {};
+  }
+}
+function gravarMemoria(m: Memoria) {
+  gravar(CHAVE_SELECAO, Object.keys(m).length ? JSON.stringify(m) : null);
+  document.dispatchEvent(new Event(EVENTO));
+}
+const itemDe = (c: HTMLInputElement): ItemMarcado => ({
+  valor: Number(c.dataset.valor ?? 0),
+  baixavel: c.dataset.baixavel === "1",
+  pago: c.dataset.pago === "1",
+  pagamento: c.dataset.pagamento ?? "",
+});
+/** Seleção atual: a memória com as caixinhas da tela por cima (as da tela valem como estão marcadas). */
+function selecaoAtual(): Memoria {
+  const m = lerMemoria();
+  document.querySelectorAll<HTMLInputElement>(SELETOR).forEach((c) => {
+    if (c.checked) m[c.value] = itemDe(c);
+    else delete m[c.value];
+  });
+  return m;
+}
+/** Desmarca tudo: as da tela e as lembradas de outras buscas. */
+export function limparSelecao() {
+  document.querySelectorAll<HTMLInputElement>(SELETOR).forEach((c) => (c.checked = false));
+  gravarMemoria({});
+  document.dispatchEvent(new Event("change"));
+}
+
+/**
+ * Memória das contas marcadas (nesta aba do navegador). Marcar contas, abrir uma e voltar, ou fazer outra busca
+ * com outros filtros, mantém as marcações — as que saem da lista continuam marcadas e entram no Baixar e nas
+ * Ações em lote. Também guarda o endereço da lista para o "← Contas a pagar" voltar para ela.
+ * Depois de uma baixa concluída, a memória é limpa.
+ */
+export function MemoriaSelecao({ limpar }: { limpar: boolean }) {
+  useEffect(() => {
+    gravar(CHAVE_LISTA, window.location.pathname + window.location.search.replace(/([?&])baixados=\d+&?/, "$1").replace(/[?&]$/, ""));
+    // Sincroniza: as da tela valem como estão marcadas; as de fora da tela ficam como estavam
+    const salvar = () => gravarMemoria(selecaoAtual());
+    if (limpar) {
+      gravarMemoria({});
+    } else {
+      const m = lerMemoria();
+      document.querySelectorAll<HTMLInputElement>(SELETOR).forEach((c) => {
+        c.checked = c.value in m;
+      });
+      salvar(); // atualiza valor e situação das que estão na tela (podem ter mudado)
+      document.dispatchEvent(new Event("change"));
+    }
+    document.addEventListener("change", salvar);
+    return () => document.removeEventListener("change", salvar);
+  }, [limpar]);
+  return null;
 }
 
 /** Caixinha do cabeçalho: marca ou desmarca todas as contas que podem ser baixadas. */
@@ -68,17 +143,27 @@ export function BarraSelecao({ podeBaixar, podeAlterar, categorias }: { podeBaix
   const [pendente, iniciar] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
 
+  const [fora, setFora] = useState<string[]>([]); // marcadas em outra busca/filtro (não estão na tela)
+
   useEffect(() => {
+    // Lê na hora do clique (evento "change") e também quando a memória muda (outra busca, limpar)
     const atualizar = () => {
-      const m = marcadas();
+      const sel = selecaoAtual();
+      const m = Object.values(sel);
+      const naTela = new Set(Array.from(document.querySelectorAll<HTMLInputElement>(SELETOR)).map((c) => c.value));
       setQtd(m.length);
-      setTotal(m.reduce((s, c) => s + Number(c.dataset.valor ?? 0), 0));
-      setBaixaveis(m.filter((c) => c.dataset.baixavel === "1").length);
-      setPagas(m.filter((c) => c.dataset.pago === "1").length);
+      setTotal(m.reduce((s, c) => s + Number(c.valor || 0), 0));
+      setBaixaveis(m.filter((c) => c.baixavel).length);
+      setPagas(m.filter((c) => c.pago).length);
+      setFora(Object.keys(sel).filter((k) => !naTela.has(k)));
     };
     document.addEventListener("change", atualizar);
+    document.addEventListener(EVENTO, atualizar);
     atualizar();
-    return () => document.removeEventListener("change", atualizar);
+    return () => {
+      document.removeEventListener("change", atualizar);
+      document.removeEventListener(EVENTO, atualizar);
+    };
   }, []);
   useEffect(() => {
     if (!menu) return;
@@ -89,9 +174,9 @@ export function BarraSelecao({ podeBaixar, podeAlterar, categorias }: { podeBaix
     return () => document.removeEventListener("mousedown", fora);
   }, [menu]);
 
-  const chaves = () => marcadas().map((c) => c.value);
+  const chaves = () => Object.keys(selecaoAtual());
   const exportar = () => {
-    const ids = [...new Set(marcadas().map((c) => c.dataset.pagamento).filter(Boolean))];
+    const ids = [...new Set(Object.values(selecaoAtual()).map((c) => c.pagamento).filter(Boolean))];
     // Download da planilha (rota de arquivo, não é uma página)
     const link = document.createElement("a");
     link.href = `/pagamentos/exportar?ids=${ids.join(",")}`;
@@ -110,8 +195,7 @@ export function BarraSelecao({ podeBaixar, podeAlterar, categorias }: { podeBaix
       const r = await acaoEmLote(dialogo!, chaves(), dados);
       setMsg(r.erro ? { tipo: "erro", texto: r.erro } : { tipo: "ok", texto: r.ok ?? "Feito." });
       setDialogo(null);
-      document.querySelectorAll<HTMLInputElement>(SELETOR).forEach((c) => (c.checked = false));
-      document.dispatchEvent(new Event("change"));
+      limparSelecao();
       router.refresh();
     });
 
@@ -128,6 +212,19 @@ export function BarraSelecao({ podeBaixar, podeAlterar, categorias }: { podeBaix
         <strong className="text-slate-800" role="status">
           {qtd ? `${qtd} selecionada(s) · ${moeda(total)}` : "Nenhuma conta selecionada"}
         </strong>
+        {fora.map((k) => (
+          <input key={k} type="hidden" name="itens" value={k} />
+        ))}
+        {fora.length > 0 && (
+          <span className="text-xs text-slate-600" data-fora-da-lista>
+            {fora.length === 1 ? "1 delas não aparece nesta busca" : `${fora.length} delas não aparecem nesta busca`}
+          </span>
+        )}
+        {qtd > 0 && (
+          <button type="button" onClick={limparSelecao} className="text-xs text-sky-700 hover:underline">
+            Desmarcar todas
+          </button>
+        )}
         {podeBaixar && (
           <button
             type="submit"
@@ -303,7 +400,7 @@ export function AcoesLinha(a: AcoesProps) {
       </button>
       {aberto && (
         <div role="menu" style={pos ?? undefined} className="fixed z-50 w-64 rounded-md border border-slate-200 bg-white py-1 text-left shadow-lg">
-          <Link role="menuitem" href={base} className={item}>
+          <Link role="menuitem" href={`${base}?origem=contas`} className={item}>
             Ver detalhes do lançamento
           </Link>
           {a.podeBaixar && a.baixavel && (
@@ -317,7 +414,7 @@ export function AcoesLinha(a: AcoesProps) {
             </button>
           )}
           {a.podeBaixar && (a.baixavel || a.pago) && (
-            <a role="menuitem" href={`${base}#anexar`} className={item} onClick={() => setAberto(false)}>
+            <a role="menuitem" href={`${base}?origem=contas#anexar`} className={item} onClick={() => setAberto(false)}>
               Anexar comprovante
             </a>
           )}
@@ -343,7 +440,7 @@ export function AcoesLinha(a: AcoesProps) {
             </button>
           )}
           {a.podeCancelar && (
-            <a role="menuitem" href={`${base}#cancelar`} className={`${base0} border-t border-slate-100 text-red-700`} onClick={() => setAberto(false)}>
+            <a role="menuitem" href={`${base}?origem=contas#cancelar`} className={`${base0} border-t border-slate-100 text-red-700`} onClick={() => setAberto(false)}>
               Cancelar lançamento
             </a>
           )}

@@ -36,7 +36,7 @@ export default async function EditarOPPage({ params }: PageProps<"/ops/[id]/edit
       : null;
   return (
     <>
-      <Cabecalho titulo="Ordem de Pagamento (rascunho)" voltar={{ href: "/pagamentos", rotulo: "Pagamentos" }} />
+      <Cabecalho titulo="Ordem de Pagamento (rascunho)" voltar={{ href: "/pagamentos", rotulo: "Contas a pagar" }} />
       <FormOP
         action={salvarOP.bind(null, id)}
         obras={obras}

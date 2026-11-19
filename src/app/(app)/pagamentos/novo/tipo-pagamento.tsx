@@ -24,7 +24,6 @@ export function TipoPagamento({
   op: {
     action: (e: Estado, fd: FormData) => Promise<Estado>;
     obras: ObraOP[];
-    podeAssinar: boolean;
     ehEngenheiro: boolean;
     assinaturaUrl: string | null;
     categorias: { id: string; nome: string }[];
@@ -61,7 +60,6 @@ export function TipoPagamento({
         <FormOP
           action={op.action}
           obras={op.obras}
-          podeAssinar={op.podeAssinar}
           ehEngenheiro={op.ehEngenheiro}
           assinaturaUrl={op.assinaturaUrl}
           formaFixa={forma}

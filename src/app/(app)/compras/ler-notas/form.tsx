@@ -71,6 +71,7 @@ export function FormLerNotas({ pendentes }: { pendentes: Pendente[] }) {
         {pendentes.length === 0 ? (
           <Vazio>Todas as notas anexadas em PDF ou imagem já foram lidas ou registradas.</Vazio>
         ) : (
+          <div className="overflow-x-auto">
           <table className="tabela">
             <thead>
               <tr>
@@ -104,6 +105,7 @@ export function FormLerNotas({ pendentes }: { pendentes: Pendente[] }) {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Cartao>
       {Object.keys(resultados).length > 0 && (

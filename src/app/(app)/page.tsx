@@ -52,7 +52,7 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
               ? "Visão geral das obras"
               : "Visão das obras sob sua responsabilidade"
         }
-        acoes={podeCadastrar && <LinkBotao href="/pagamentos/novo">+ Novo pagamento</LinkBotao>}
+        acoes={podeCadastrar && <LinkBotao href="/pagamentos/novo">+ Nova despesa</LinkBotao>}
       />
 
       {sp["senha"] === "alterada" && (
@@ -123,8 +123,8 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
                 Assinar em lote
               </LinkBotao>
             ) : u.perfil === "financeiro" || u.perfil === "administrador_master" ? (
-              <LinkBotao href="/pagamentos/baixa-lote" variante="secundario" tamanho="sm">
-                Baixa em lote
+              <LinkBotao href="/pagamentos?status=aguardando_pagamento" variante="secundario" tamanho="sm">
+                Baixar pagamentos
               </LinkBotao>
             ) : undefined
           }

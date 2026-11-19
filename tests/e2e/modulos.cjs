@@ -52,7 +52,7 @@ async function entrar(browser, email) {
   // A Ordem de Pagamento agora nasce em Pagamentos → Novo pagamento (engenheiro: só formas que não são boleto)
   await page.goto(BASE + '/pagamentos');
   await shot(page, '30-pagamentos-engenheiro');
-  await Promise.all([page.waitForURL(/pagamentos\/novo/), page.click('text=+ Novo pagamento')]);
+  await Promise.all([page.waitForURL(/pagamentos\/novo/), page.click('text=+ Nova despesa')]);
   await page.getByText('Dados da solicitação').waitFor();
   await page.waitForSelector('select[name=obra_id]');
   const obraV = await page.$eval('select[name=obra_id]', (s) => [...s.options].find((o) => o.text.includes('Galpão')).value);

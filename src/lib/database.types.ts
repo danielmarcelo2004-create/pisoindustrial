@@ -664,6 +664,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "obras"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "provisoes_categoria_id_fkey"
+      columns: ["categoria_id"]
+isOneToOne: false
+      referencedRelation: "categorias"
+      referencedColumns: ["id"]
     }
                   ]
                 }
@@ -919,6 +925,9 @@ isOneToOne: false
                            }
           "definir_categoria_op":
 { Args: { "p_categoria_id": string,"p_ordem_id": string }; Returns: undefined
+                           }
+          "editar_parcelas":
+{ Args: { "p_motivo"?: string,"p_pagamento_id": string,"p_parcelas": Json }; Returns: undefined
                            }
           "estender_serie_provisao":
 { Args: { "p_provisao_id": string,"p_quantidade": number }; Returns: number

@@ -82,7 +82,7 @@ export function TabelaPagamentos({
               {baixa && (
                 <td className="whitespace-nowrap">
                   {p.status === "aguardando_pagamento" && (
-                    <Link href={`/pagamentos/${p.id}#baixa`} className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100">
+                    <Link href={`/pagamentos/baixar?ids=${p.id}`} className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100">
                       Dar baixa
                     </Link>
                   )}

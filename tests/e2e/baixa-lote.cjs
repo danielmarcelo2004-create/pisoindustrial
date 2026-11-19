@@ -39,18 +39,19 @@ const PDF = path.join(__dirname, 'comprovantes-exemplo.pdf');
   await page.fill('input[name=email]', 'financeiro@demo.local');
   await page.fill('input[name=senha]', SENHA);
   await Promise.all([page.waitForURL((u) => !u.pathname.startsWith('/login')), page.click('button:has-text("Entrar")')]);
-  await page.goto('http://127.0.0.1:3000/pagamentos/baixa-lote');
-  // Não precisa marcar antes: o sistema lê o PDF e reconhece o pagamento de cada comprovante
+  // Contas a pagar: marca as 3 contas e clica em Baixar (várias marcadas = baixa em lote)
+  await page.goto('http://127.0.0.1:3000/pagamentos?status=aguardando_pagamento');
+  for (const c of criados) await page.check(`tr[data-linha="pag:${c.id}"] input.caixa-baixar`);
+  await Promise.all([page.waitForURL(/\/pagamentos\/baixar\?/), page.click('#form-baixar button:has-text("Baixar")')]);
   await page.setInputFiles('input[aria-label="PDFs dos comprovantes"]', PDF);
   await page.click('button:has-text("Ler comprovantes")');
   await page.getByText(/página\(s\) lidas/).waitFor({ timeout: 300000 });
   await page.screenshot({ path: path.join(__dirname, '.saida', 'baixa-lote-revisao.png'), fullPage: true });
-  const selects = await page.$$eval('table select', (s) => s.map((x) => x.options[x.selectedIndex].text));
+  const selects = await page.$$eval('tr[data-pagina] select', (s) => s.map((x) => x.options[x.selectedIndex].text));
   console.log('Ligações sugeridas:', selects.join(' | '));
-  if (selects.some((t) => t.startsWith('Não dar baixa'))) throw new Error('alguma página ficou sem ligação: ' + selects.join(' | '));
+  if (selects.some((t) => t.startsWith('Não usar'))) throw new Error('alguma página ficou sem ligação: ' + selects.join(' | '));
   for (const c of criados) if (!selects.some((t) => t.startsWith(`nº ${c.numero} `))) throw new Error(`nº ${c.numero} não foi reconhecido`);
-  await page.click('button:has-text("Registrar 3 baixa(s)")');
-  await page.getByText(/pagamento\(s\) registrados/).waitFor({ timeout: 120000 });
+  await Promise.all([page.waitForURL(/baixados=3/, { timeout: 120000 }), page.click('button:has-text("Registrar 3 baixas")')]);
   console.log('✔ Confirmação exibida');
 
   // 3. Confere no banco

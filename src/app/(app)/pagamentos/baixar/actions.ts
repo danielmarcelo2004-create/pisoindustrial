@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getUsuario } from "@/lib/auth";
 import { enviarDocumento } from "@/lib/documentos";
 import { mensagemErro, type Estado } from "@/lib/erros";
@@ -20,7 +21,7 @@ type Item = {
 };
 
 /**
- * Baixa em lote: cada item é um pagamento (ou parcela) com a data e o valor do seu comprovante.
+ * Baixa de um ou de vários pagamentos marcados na lista: cada item é um pagamento (ou parcela) com a data e o valor do seu comprovante.
  * O comprovante (uma página separada do PDF do banco) é anexado ao pagamento.
  */
 export async function registrarBaixasLote(_: Estado, fd: FormData): Promise<Estado> {
@@ -54,7 +55,7 @@ export async function registrarBaixasLote(_: Estado, fd: FormData): Promise<Esta
       continue;
     }
     const valor = typeof it.valor === "number" && Number.isFinite(it.valor) && it.valor > 0 ? Math.round(it.valor * 100) / 100 : null;
-    const obs = it.arquivo ? "Baixa em lote com comprovante" : "Baixa em lote";
+    const obs = itens.length > 1 ? (it.arquivo ? "Baixa em lote com comprovante" : "Baixa em lote") : it.arquivo ? "Baixa com comprovante" : "Baixa";
 
     let pagamentoId = id;
     let rotulo = "";
@@ -113,5 +114,5 @@ export async function registrarBaixasLote(_: Estado, fd: FormData): Promise<Esta
   revalidatePath("/", "layout");
   const resumo = `${baixados} pagamento(s) registrados como pagos${anexados ? `, com ${anexados} comprovante(s) anexados` : ""}.`;
   if (erros.length) return { erro: `${resumo} Problemas: ${erros.join(" ")}` };
-  return { ok: resumo };
+  redirect(`/pagamentos?baixados=${baixados}`);
 }

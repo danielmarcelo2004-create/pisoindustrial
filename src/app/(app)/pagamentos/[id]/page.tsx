@@ -6,6 +6,8 @@ import { FormDecisao } from "@/components/assinatura";
 import { AssinadorDocumentos } from "./assinador";
 import { CampoArquivos } from "@/components/campo-arquivos";
 import { LeitorComprovante } from "@/components/leitor-comprovante";
+import { AbrirPorAncora } from "@/components/abrir-por-ancora";
+import { AcoesLinha } from "../lista-interativa";
 import { estornarBaixa, estornarParcela, registrarBaixaParcela } from "../actions";
 import { FormAcao } from "@/components/form-acao";
 import { LinhaDoTempo } from "@/components/linha-do-tempo";
@@ -148,7 +150,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
         voltar={
           u.perfil === "engenheiro" || u.perfil === "administrador" || u.perfil === "administrador_master"
             ? { href: "/aprovacoes", rotulo: "Aprovações e assinaturas" }
-            : { href: "/pagamentos", rotulo: "Pagamentos" }
+            : { href: "/pagamentos", rotulo: "Contas a pagar" }
         }
         titulo={
           <span className="flex flex-wrap items-center gap-3">
@@ -185,6 +187,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
         }
       />
 
+      <AbrirPorAncora />
       <div className="space-y-3">
         {sp.criado && <Aviso tipo="sucesso">Pagamento cadastrado e encaminhado conforme o fluxo da obra.</Aviso>}
         {sp.decisao === "aprovado" && <Aviso tipo="sucesso">Documento assinado e encaminhado para a próxima etapa.</Aviso>}
@@ -218,7 +221,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
-          <Cartao titulo="Dados do pagamento">
+          <Cartao titulo={parcelas && parcelas.length > 1 ? `Informações do lançamento · parcelado em ${parcelas.length}x` : "Informações do lançamento"}>
             <dl className="grid gap-4 sm:grid-cols-3">
               <Dado rotulo="Valor">
                 <span className="text-lg font-semibold tabular-nums">{moeda(p.valor)}</span>
@@ -281,6 +284,97 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
               )}
             </dl>
           </Cartao>
+
+          {(() => {
+            // Condição de pagamento: uma linha por parcela (ou uma linha só, no pagamento à vista)
+            const hoje = hojeISO();
+            const linhas = parcelas && parcelas.length > 0
+              ? parcelas.map((pc) => {
+                  const valor = Math.round((Number(pc.valor_base) + Number(pc.multa) + Number(pc.juros) - Number(pc.desconto)) * 100) / 100;
+                  const pago = pc.status === "pago";
+                  return { chave: `parc:${pc.id}`, parcelaId: pc.id as string | null, n: pc.numero, venc: pc.vencimento, valor, pagoValor: pago ? Number(pc.valor_pago ?? valor) : 0, aberto: pago || p.status === "cancelado" ? 0 : valor, pago, pagoEm: pc.pago_em };
+                })
+              : [{ chave: `pag:${p.id}`, parcelaId: null, n: 1, venc: p.vencimento, valor: Number(p.valor), pagoValor: p.status === "pago" ? Number(p.valor_pago ?? p.valor) : 0, aberto: p.status === "pago" || p.status === "cancelado" ? 0 : Number(p.valor), pago: p.status === "pago", pagoEm: p.pago_em }];
+            const totalPago = linhas.reduce((s, l) => s + l.pagoValor, 0);
+            const aPagar = linhas.filter((l) => !l.pago && l.venc >= hoje).reduce((s, l) => s + l.aberto, 0);
+            const atraso = linhas.filter((l) => !l.pago && l.venc < hoje).reduce((s, l) => s + l.aberto, 0);
+            const podeEditarLanc = p.status !== "pago" && p.status !== "cancelado" && Boolean(podeAtuar || u.perfil === "financeiro" || u.perfil === "suprimentos");
+            return (
+              <Cartao titulo="Condição de pagamento" semPadding>
+                <div className="overflow-x-auto">
+                  <table className="tabela">
+                    <thead>
+                      <tr>
+                        <th>Vencimento</th>
+                        <th>Parcela</th>
+                        <th>Forma</th>
+                        <th className="text-right">Valor</th>
+                        <th className="text-right">Pago</th>
+                        <th className="text-right">Em aberto</th>
+                        <th>Situação</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {linhas.map((l) => (
+                        <tr key={l.chave} data-condicao={l.chave}>
+                          <td className={cx("whitespace-nowrap tabular-nums", !l.pago && p.status !== "cancelado" && l.venc < hoje && "font-medium text-red-700")}>{data(l.venc)}</td>
+                          <td className="tabular-nums">{l.n}/{linhas.length}</td>
+                          <td>{FORMAS_PAGAMENTO[p.forma_pagamento]}</td>
+                          <td className="text-right tabular-nums">{moeda(l.valor)}</td>
+                          <td className="text-right tabular-nums">{l.pagoValor ? moeda(l.pagoValor) : "—"}</td>
+                          <td className="text-right tabular-nums">{l.aberto ? moeda(l.aberto) : "—"}</td>
+                          <td>
+                            {l.pago ? (
+                              <Selo cor="verde">Pago {data(l.pagoEm)}</Selo>
+                            ) : p.status === "cancelado" ? (
+                              <Selo cor="cinza">Cancelado</Selo>
+                            ) : p.status === "aguardando_pagamento" ? (
+                              <Selo cor={l.venc < hoje ? "vermelho" : "azul"}>{l.venc < hoje ? "Vencido" : "A pagar"}</Selo>
+                            ) : (
+                              <SeloStatus status={p.status} />
+                            )}
+                          </td>
+                          <td className="text-right">
+                            <AcoesLinha
+                              pagamentoId={p.id}
+                              chave={l.chave}
+                              parcelaId={l.parcelaId}
+                              ordemId={p.ordem_id}
+                              numero={p.numero}
+                              qtdParcelas={parcelas?.length ?? 0}
+                              pago={l.pago}
+                              baixavel={!l.pago && p.status === "aguardando_pagamento"}
+                              podeBaixar={baixa}
+                              podeEditar={podeEditarLanc}
+                              podeEditarParcelas={u.perfil === "financeiro" || p.created_by === u.id}
+                              podeClonar={p.ordem_id ? ["financeiro", "suprimentos", "engenheiro"].includes(u.perfil) : u.perfil === "financeiro" || u.perfil === "suprimentos"}
+                              podeCancelar={atua}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="grid gap-3 border-t border-slate-200 px-4 py-3 text-sm sm:grid-cols-2">
+                  <div className="rounded-md border border-slate-200 px-3 py-2">
+                    <div className="text-xs text-slate-500">Pago</div>
+                    <div className="text-lg font-semibold text-emerald-700 tabular-nums">{moeda(totalPago)}</div>
+                  </div>
+                  <div className="rounded-md border border-slate-200 px-3 py-2">
+                    <div className="text-xs text-slate-500">Em aberto = a pagar + em atraso</div>
+                    <div className="tabular-nums">
+                      <span className="text-lg font-semibold text-sky-800">{moeda(aPagar + atraso)}</span>
+                      <span className="ml-2 text-xs text-slate-500">
+                        = {moeda(aPagar)} + <span className={atraso ? "text-red-700" : ""}>{moeda(atraso)}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </Cartao>
+            );
+          })()}
 
           <Cartao titulo={`Documentos (${ativos.length})`} semPadding>
             {ativos.length === 0 ? (
@@ -377,7 +471,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             )}
             {(atua || (u.perfil === "suprimentos" && !finalizado) || (baixa && (p.status === "pago" || p.status === "aguardando_pagamento"))) && (
               <div className="border-t border-slate-200 px-4 py-3">
-                <details>
+                <details id="anexar" className="scroll-mt-4">
                   <summary className="cursor-pointer text-sm font-medium text-marca-700">+ Anexar documento</summary>
                   <div className="mt-3">
                     <FormAcao action={anexarDocumento.bind(null, id)} enviar="Anexar" limparAoConcluir>
@@ -511,9 +605,9 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
           )}
 
           {/* Parcelas: definidas no lançamento (ou o saldo de uma baixa parcial). Não se redividem aqui. */}
-          {!!parcelas?.length && (
+          {!!parcelas?.length && baixa && (
             <div id="parcelas" className="scroll-mt-4">
-            <Cartao titulo={`Parcelas (${parcelas.length})`} semPadding>
+            <Cartao titulo="Pagar ou estornar parcelas" semPadding>
               {(
                 <ul className="divide-y divide-slate-100">
                   {parcelas.map((pc) => {
@@ -635,11 +729,6 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             />
           )}
           <Cartao titulo="Assinaturas">
-            {p.assinado_no_cadastro && (
-              <p className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                ✓ Cadastro assinado por {p.criador?.nome} (marca de quem cadastrou; não é etapa de aprovação).
-              </p>
-            )}
             {assinaturas && assinaturas.length > 0 ? (
               <ul className="space-y-3">
                 {assinaturas.map((a) => (
@@ -668,7 +757,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
 
           {atua && (
             <Cartao titulo="Cancelar pagamento">
-              <details>
+              <details id="cancelar">
                 <summary className="cursor-pointer text-sm text-red-700">Cancelar este pagamento…</summary>
                 <div className="mt-3">
                   <FormAcao

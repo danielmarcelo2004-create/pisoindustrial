@@ -56,7 +56,7 @@ export function LeitorComprovante({ valor, favorecido, campoValor = "valor_pago"
             linhas.push(`O valor do comprovante (${moeda(c.valor)}) é diferente do valor do pagamento (${moeda(valor)}).`);
           }
         }
-        if (textos.length > 1) linhas.push(`O PDF tem ${textos.length} páginas: foi lida só a primeira. Para vários comprovantes, use a Baixa em lote.`);
+        if (textos.length > 1) linhas.push(`O PDF tem ${textos.length} páginas: foi lida só a primeira. Para vários comprovantes, marque os pagamentos na lista e use Baixar.`);
         if (c.beneficiario && semelhancaNome(c.beneficiario, favorecido) < 0.5 && !c.cnpj && !c.cpfMeio) {
           alerta = true;
           linhas.push(`O favorecido do comprovante (${c.beneficiario}) não parece ser ${favorecido}. Confira se é o comprovante certo.`);

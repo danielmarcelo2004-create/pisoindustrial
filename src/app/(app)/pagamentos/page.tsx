@@ -7,23 +7,17 @@ import { categoriasAtivas } from "@/lib/consultas/categorias";
 import { data, hojeISO, moeda } from "@/lib/formato";
 import { FORMAS_PAGAMENTO, STATUS_PAGAMENTO } from "@/lib/rotulos";
 import { createClient } from "@/lib/supabase/server";
-import { AcoesLinha, BarraSelecao, EnviarAoMudar, MarcarTodas } from "./lista-interativa";
+import { lerPeriodo } from "@/lib/periodo";
+import { BarraFiltros } from "./filtros-contas";
+import { AcoesLinha, BarraSelecao, MarcarTodas, MemoriaSelecao } from "./lista-interativa";
 
 export const metadata: Metadata = { title: "Contas a pagar" };
 
 const POR_PAGINA = 50;
-const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const CARTOES: FiltroCartao[] = ["vencidos", "hoje", "avencer", "aprovacao", "pagos", "liberados", "abertos"];
 
 const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
-const nomeMes = (mes: string) => (mes === "todos" ? "Todos os meses" : `${MESES[Number(mes.slice(5, 7)) - 1]} de ${mes.slice(0, 4)}`);
 const semRS = (v: number) => moeda(v).replace("R$", "").trim();
-function deslocar(mes: string, delta: number) {
-  const [a, m] = mes.split("-").map(Number);
-  const d = new Date(Date.UTC(a, m - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
 function Situacao({ l }: { l: LinhaConta }) {
   if (l.situacao === "provisao") return <span className="rounded-full border border-dashed border-slate-300 px-2.5 py-0.5 text-xs font-medium text-slate-500">Provisão</span>;
   if (l.situacao === "pago") return <Selo cor="verde">Pago ✓</Selo>;
@@ -47,14 +41,13 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
     pago: { cartao: "pagos", todos: false },
   };
   const mapa = legado[str(sp.status)];
-  const mesParam = str(sp.mes);
-  const mes = /^\d{4}-\d{2}$/.test(mesParam) || mesParam === "todos" ? mesParam : mapa?.todos ? "todos" : hoje.slice(0, 7);
+  const periodo = lerPeriodo({ periodo: str(sp.periodo), mes: str(sp.mes), de: str(sp.de), ate: str(sp.ate) }, hoje, mapa?.todos ? "todos" : "mes");
   const cartaoParam = str(sp.cartao) as FiltroCartao;
   const cartao: FiltroCartao = CARTOES.includes(cartaoParam) ? cartaoParam : mapa?.cartao ?? "";
   const filtros = {
-    mes,
-    de: str(sp.de),
-    ate: str(sp.ate),
+    periodo: periodo.tipo,
+    de: periodo.de,
+    ate: periodo.ate,
     busca: str(sp.busca),
     obra: str(sp.obra),
     forma: str(sp.forma),
@@ -65,7 +58,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
 
   const supabase = await createClient();
   const [{ linhas, totais }, { data: obras }, categorias, { data: fornecedores }, { data: rascunhos }] = await Promise.all([
-    listarContas({ ...filtros, cartao }),
+    listarContas({ ...filtros, mes: periodo.tipo === "todos" ? "todos" : periodo.de.slice(0, 7), cartao }),
     supabase.from("obras").select("id, nome").order("nome"),
     categoriasAtivas(),
     supabase.from("fornecedores").select("id, nome").order("nome").limit(500),
@@ -95,8 +88,9 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
     }
     return `/pagamentos?${q}`;
   };
-  const maisFiltros = Boolean(filtros.forma || filtros.categoria || filtros.fornecedor || filtros.de || filtros.ate || filtros.cancelados);
-  const periodoTexto = filtros.de || filtros.ate ? `${filtros.de ? data(filtros.de) : "…"} a ${filtros.ate ? data(filtros.ate) : "…"}` : nomeMes(mes);
+  const periodoTexto = periodo.rotulo;
+  const consulta = new URLSearchParams(base);
+  if (cartao) consulta.set("cartao", cartao);
   // Exportar planilha = exatamente a lista da tela (mesmo mês, cartão e filtros)
   const exportQs = new URLSearchParams(base);
   exportQs.set("lista", "contas");
@@ -151,91 +145,19 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
         </p>
       )}
 
-      {/* Filtros: mês, busca, centro de custo e "Mais filtros" */}
-      <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
-        <EnviarAoMudar />
-        {cartao && <input type="hidden" name="cartao" value={cartao} />}
-        <div>
-          <div className="mb-1 text-xs text-slate-600">Vencimento</div>
-          <div className="flex overflow-hidden rounded-md border border-slate-300 bg-white">
-            <Link href={mes === "todos" ? link({ mes: hoje.slice(0, 7) }) : link({ mes: deslocar(mes, -1), de: "", ate: "" })} className="px-3 py-2 text-sky-800 hover:bg-slate-50" aria-label="Mês anterior">
-              ‹
-            </Link>
-            <select name="mes" data-auto defaultValue={mes} className="border-x border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800" aria-label="Mês de vencimento">
-              {Array.from({ length: 25 }, (_, i) => deslocar(hoje.slice(0, 7), i - 12)).map((m) => (
-                <option key={m} value={m}>
-                  {nomeMes(m)}
-                </option>
-              ))}
-              <option value="todos">Todos os meses</option>
-            </select>
-            <Link href={mes === "todos" ? link({ mes: hoje.slice(0, 7) }) : link({ mes: deslocar(mes, 1), de: "", ate: "" })} className="px-3 py-2 text-sky-800 hover:bg-slate-50" aria-label="Próximo mês">
-              ›
-            </Link>
-          </div>
-        </div>
-        <label className="min-w-56 flex-1 sm:max-w-xs">
-          <div className="mb-1 text-xs text-slate-600">Pesquisar</div>
-          <input name="busca" defaultValue={filtros.busca} placeholder="Favorecido, descrição ou nº" className="campo" />
-        </label>
-        <label>
-          <div className="mb-1 text-xs text-slate-600">Centro de custo</div>
-          <select name="obra" data-auto defaultValue={filtros.obra} className="campo" aria-label="Centro de custo">
-            <option value="">Todos</option>
-            {(obras ?? []).map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-        <details className="relative" open={maisFiltros}>
-          <summary className="cursor-pointer list-none rounded-md border border-sky-300 bg-white px-3 py-2 text-sm font-medium text-sky-800">Mais filtros ▾</summary>
-          <div className="z-10 mt-2 grid w-80 gap-3 rounded-md border border-slate-200 bg-white p-3 shadow-lg sm:absolute">
-            <select name="forma" defaultValue={filtros.forma} className="campo" aria-label="Forma de pagamento">
-              <option value="">Todas as formas</option>
-              {Object.entries(FORMAS_PAGAMENTO).map(([v, r]) => (
-                <option key={v} value={v}>
-                  {r}
-                </option>
-              ))}
-            </select>
-            <select name="categoria" defaultValue={filtros.categoria} className="campo" aria-label="Categoria">
-              <option value="">Todas as categorias</option>
-              {categorias.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
-            <select name="fornecedor" defaultValue={filtros.fornecedor} className="campo" aria-label="Fornecedor">
-              <option value="">Todos os fornecedores</option>
-              {(fornecedores ?? []).map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.nome}
-                </option>
-              ))}
-            </select>
-            <div className="flex items-center gap-1 text-xs text-slate-600">
-              <input type="date" name="de" defaultValue={filtros.de} className="campo" aria-label="Período de" />
-              a
-              <input type="date" name="ate" defaultValue={filtros.ate} className="campo" aria-label="Período até" />
-            </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" name="cancelados" value="1" defaultChecked={filtros.cancelados} /> Mostrar cancelados
-            </label>
-            <button type="submit" className={classeBotao("primario", "sm")}>
-              Aplicar filtros
-            </button>
-          </div>
-        </details>
-        <button type="submit" className={classeBotao("primario", "sm")}>
-          Filtrar
-        </button>
-        <Link href="/pagamentos" className={classeBotao("fantasma", "sm")}>
-          Limpar
-        </Link>
-      </form>
+      <BarraFiltros
+        consulta={consulta.toString()}
+        periodo={periodo}
+        hoje={hoje}
+        busca={filtros.busca}
+        valores={{ obra: filtros.obra, categoria: filtros.categoria, fornecedor: filtros.fornecedor, forma: filtros.forma, cancelados: filtros.cancelados }}
+        opcoes={{
+          obra: (obras ?? []).map((o) => ({ v: o.id, r: o.nome })),
+          categoria: categorias.map((c) => ({ v: c.id, r: c.nome })),
+          fornecedor: (fornecedores ?? []).map((f) => ({ v: f.id, r: f.nome })),
+          forma: Object.entries(FORMAS_PAGAMENTO).map(([v, r]) => ({ v, r })),
+        }}
+      />
 
       {/* Cartões de totais: também são filtros */}
       <div className="grid grid-cols-2 overflow-hidden rounded-t-lg border border-slate-200 bg-white sm:grid-cols-3 xl:grid-cols-6">
@@ -320,7 +242,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
                         )}
                         {l.repeticao && <span className="mr-1.5 font-normal">↻ {l.repeticao}</span>}
                         {l.pagamentoId ? (
-                          <Link href={`/pagamentos/${l.pagamentoId}`} className="hover:underline">
+                          <Link href={`/pagamentos/${l.pagamentoId}?origem=contas`} className="hover:underline">
                             nº {l.numero} · {l.favorecido}
                           </Link>
                         ) : (
@@ -375,6 +297,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
             </tbody>
           </table>
         )}
+        <MemoriaSelecao key={`${consulta}&p=${pagina}`} limpar={typeof sp.baixados === "string"} />
         {visiveis.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
             <span>

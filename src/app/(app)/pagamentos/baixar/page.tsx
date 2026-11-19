@@ -33,7 +33,7 @@ export default async function BaixarPage({ searchParams }: PageProps<"/pagamento
       <Cabecalho
         titulo={qtdPagamentos > 1 ? `Baixar ${qtdPagamentos} pagamentos` : "Baixar pagamento"}
         subtitulo="Confira a data e o valor pago. Se quiser, envie os comprovantes do banco: o sistema lê e liga cada um ao pagamento marcado."
-        voltar={{ href: "/pagamentos?status=aguardando_pagamento", rotulo: "Contas a pagar" }}
+        voltar={{ href: "/pagamentos", rotulo: "Contas a pagar" }}
       />
       {chaves.length + idsDiretos.length === 0 ? (
         <Cartao>

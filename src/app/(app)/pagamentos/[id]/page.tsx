@@ -148,7 +148,8 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
     <>
       <Cabecalho
         voltar={
-          u.perfil === "engenheiro" || u.perfil === "administrador" || u.perfil === "administrador_master"
+          // Quem abriu pela lista de Contas a pagar volta para ela; aprovadores que vieram de outro lugar voltam para Aprovações
+          sp.origem !== "contas" && (u.perfil === "engenheiro" || u.perfil === "administrador" || u.perfil === "administrador_master")
             ? { href: "/aprovacoes", rotulo: "Aprovações e assinaturas" }
             : { href: "/pagamentos", rotulo: "Contas a pagar" }
         }

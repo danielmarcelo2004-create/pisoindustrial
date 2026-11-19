@@ -7,6 +7,7 @@ import { fornecedoresAtivos, obrasParaCadastro } from "@/lib/consultas/cadastros
 import { createClient } from "@/lib/supabase/server";
 import { CamposPagamento } from "../../campos";
 import { atualizarPagamento } from "../../actions";
+import { EditorParcelas } from "./editor-parcelas";
 
 export const metadata: Metadata = { title: "Editar pagamento" };
 
@@ -28,7 +29,7 @@ export default async function EditarPagamentoPage({ params }: PageProps<"/pagame
   if (p.status === "cancelado" || !pode || (p.status === "pago" && !podeFechado)) redirect(`/pagamentos/${id}`);
   const obrasDisponiveis = await obrasParaCadastro(u);
 
-  const [fornecedores, { count: assinaturas }, { count: repeticoes }, { data: boletos }] = await Promise.all([
+  const [fornecedores, { count: assinaturas }, { count: repeticoes }, { data: boletos }, { data: parcelas }] = await Promise.all([
     fornecedoresAtivos(),
     supabase
       .from("assinaturas")
@@ -38,6 +39,7 @@ export default async function EditarPagamentoPage({ params }: PageProps<"/pagame
       .eq("decisao", "aprovado"),
     supabase.from("provisoes").select("id", { count: "exact", head: true }).eq("pagamento_origem_id", id).eq("status", "provisionada"),
     supabase.from("documentos").select("id, nome_arquivo").eq("pagamento_id", id).eq("tipo", "boleto").eq("ativo", true),
+    supabase.from("pagamento_parcelas").select("id, numero, vencimento, valor_base, status").eq("pagamento_id", id).order("numero"),
   ]);
 
   return (
@@ -74,6 +76,14 @@ export default async function EditarPagamentoPage({ params }: PageProps<"/pagame
         <Cartao titulo="Dados do pagamento">
           <CamposPagamento fornecedores={fornecedores} padrao={p} pagamentoId={id} categorias={categorias ?? []} podeAdicionarCategoria={u.perfil === "financeiro" || u.perfil === "administrador_master"} />
         </Cartao>
+        {(parcelas?.length ?? 0) > 1 && (
+          <Cartao titulo={`Parcelas (${parcelas!.length})`}>
+            <EditorParcelas
+              somenteLeitura={!(u.perfil === "financeiro" || p.created_by === u.id)}
+              parcelas={parcelas!.map((x) => ({ id: x.id, numero: x.numero, vencimento: x.vencimento, valor: Number(x.valor_base), pago: x.status === "pago" }))}
+            />
+          </Cartao>
+        )}
         {!!boletos?.length && (
           <Cartao titulo="Boleto">
             <p className="mb-3 text-sm text-slate-600">

@@ -902,3 +902,64 @@ test('última parcela: estender série de provisões renumera, mantém intervalo
   const { data: avulsa } = await u.fin.client.from('provisoes').insert({ obra_id: obraP.id, descricao: 'Avulsa', vencimento: '2027-01-10' }).select().single()
   await rpcFalha('fin', 'estender_serie_provisao', { p_provisao_id: avulsa.id, p_quantidade: 1 }, /série/)
 })
+
+test('valor alterado depois da aprovação: quem assinou é avisado (também quando é o Financeiro que altera); sem nova aprovação', async () => {
+  const aprovar = async (id) => {
+    let p = await pagamento(id)
+    await anexar('sup', p, 'boleto')
+    await anexar('eng', p, 'documento_assinado')
+    await rpc('eng', 'decidir_aprovacao', { p_itens: [{ id, versao: p.versao }], p_decisao: 'aprovado' })
+    p = await pagamento(id)
+    await anexar('adm', p, 'documento_assinado')
+    await rpc('adm', 'decidir_aprovacao', { p_itens: [{ id, versao: p.versao }], p_decisao: 'aprovado' })
+    p = await pagamento(id)
+    assert.equal(p.status, 'aguardando_pagamento')
+    return p
+  }
+  const avisos = async (chave, id) => {
+    const { data } = await u[chave].client.from('notificacoes').select('titulo, mensagem').eq('pagamento_id', id).eq('titulo', 'Valor alterado após a sua aprovação')
+    return data
+  }
+  const editar = (chave, p, valor, motivo, descricao = p.descricao) => rpc(chave, 'atualizar_pagamento', {
+    p_id: p.id, p_fornecedor_id: null, p_favorecido: p.favorecido, p_descricao: descricao, p_valor: valor, p_vencimento: p.vencimento,
+    p_forma_pagamento: p.forma_pagamento, p_numero_documento: p.numero_documento ?? '', p_observacoes: p.observacoes ?? '', p_motivo: motivo,
+  })
+
+  // 1) Financeiro aumenta o valor de um lançamento aprovado
+  const id = await novoPagamento('sup', obraA.id, 1000)
+  let p = await aprovar(id)
+  await editar('fin', p, 1500, 'Boleto reemitido com encargos')
+  p = await pagamento(id)
+  assert.equal(p.status, 'aguardando_pagamento', 'não volta para aprovação')
+  const [aEng, aAdm, aFin] = [await avisos('eng', id), await avisos('adm', id), await avisos('fin', id)]
+  assert.equal(aEng.length, 1, 'engenheiro que aprovou é avisado')
+  assert.equal(aAdm.length, 1, 'administrador que aprovou é avisado')
+  assert.equal(aFin.length, 0, 'quem alterou não recebe o próprio aviso')
+  assert.match(aEng[0].mensagem, /de R\$ 1\.000,00 para R\$ 1\.500,00 por Fin Teste\. Motivo: Boleto reemitido/)
+
+  // 2) Mudança sem alterar o valor (só descrição) não gera aviso a quem aprovou
+  await editar('fin', p, 1500, 'Ajuste de texto', 'Descrição corrigida')
+  assert.equal((await avisos('eng', id)).length, 1)
+
+  // 3) Suprimentos altera o valor: avisa quem aprovou e também o Financeiro (como antes)
+  p = await pagamento(id)
+  await editar('sup', p, 1400, 'Desconto negociado')
+  assert.equal((await avisos('eng', id)).length, 2)
+  const { data: aFinSup } = await u.fin.client.from('notificacoes').select('titulo').eq('pagamento_id', id).eq('titulo', 'Pagamento alterado após liberação')
+  assert.ok(aFinSup.length >= 1)
+
+  // 4) Parcelas: total muda depois da aprovação → quem aprovou é avisado
+  const id2 = await novoPagamento('sup', obraA.id, 600)
+  const p2 = await aprovar(id2)
+  await rpc('sup', 'definir_parcelas', { p_pagamento_id: id2, p_parcelas: [{ vencimento: '2026-12-10', valor: 300 }, { vencimento: '2027-01-10', valor: 300 }] })
+  const { data: pcs } = await admin.from('pagamento_parcelas').select('id').eq('pagamento_id', id2).order('numero')
+  await rpc('fin', 'editar_parcelas', { p_pagamento_id: id2, p_parcelas: [{ id: pcs[1].id, vencimento: '2027-01-10', valor: 350 }], p_motivo: 'Reajuste da 2ª parcela' })
+  assert.equal((await pagamento(id2)).status, 'aguardando_pagamento')
+  const a2 = await avisos('adm', id2)
+  assert.equal(a2.length, 1)
+  assert.match(a2[0].mensagem, /total de R\$ 600,00 para R\$ 650,00/)
+  // só o vencimento: sem aviso
+  await rpc('fin', 'editar_parcelas', { p_pagamento_id: id2, p_parcelas: [{ id: pcs[1].id, vencimento: '2027-01-20', valor: 350 }] })
+  assert.equal((await avisos('adm', id2)).length, 1)
+  assert.equal(p2.id, id2)
+})

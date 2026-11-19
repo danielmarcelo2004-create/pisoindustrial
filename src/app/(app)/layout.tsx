@@ -29,7 +29,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const principal: ItemMenu[] = [
     { href: "/", rotulo: "Painel", icone: Icones.painel },
     { href: "/agenda", rotulo: "Agenda de pagamentos", icone: Icones.agenda },
-    { href: "/pagamentos", rotulo: "Pagamentos", icone: Icones.pagamentos },
+    { href: "/pagamentos", rotulo: "Contas a pagar", icone: Icones.pagamentos },
     ...(assinante ? [{ href: "/aprovacoes", rotulo: "Aprovações e assinaturas", icone: Icones.aprovacoes, contador: pend.count ?? 0 }] : []),
     ...(assinante ? [{ href: "/perfil", rotulo: "Minha assinatura", icone: Icones.usuarios }] : []),
     { href: "/obras", rotulo: "Centros de custo", icone: Icones.obras },

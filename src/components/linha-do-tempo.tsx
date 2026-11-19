@@ -16,6 +16,9 @@ export type EventoAuditoria = {
 
 const ACOES: Record<string, { rotulo: string; cor: string }> = {
   estorno: { rotulo: "Estornou", cor: "bg-amber-500" },
+  parcelou: { rotulo: "Parcelou", cor: "bg-slate-400" },
+  baixa_parcela: { rotulo: "Pagou parcela", cor: "bg-emerald-500" },
+  assinou_cadastro: { rotulo: "Marcou o cadastro", cor: "bg-slate-400" },
   criou: { rotulo: "Criou", cor: "bg-marca-500" },
   alterou: { rotulo: "Alterou", cor: "bg-amber-500" },
   anexou_documento: { rotulo: "Anexou documento", cor: "bg-sky-500" },

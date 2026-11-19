@@ -8,6 +8,7 @@ import { mensagemErro, type Estado } from "@/lib/erros";
 import { lerValor } from "@/lib/formato";
 import { FORMAS_PAGAMENTO, TIPOS_DOCUMENTO, type FormaPagamento, type TipoDocumento } from "@/lib/rotulos";
 import { createClient } from "@/lib/supabase/server";
+import { duplicarOP } from "../ops/actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -48,17 +49,16 @@ function lerDadosPagamento(fd: FormData) {
 async function buscarPagamento(id: string) {
   if (!UUID.test(id)) return null;
   const supabase = await createClient();
-  const { data } = await supabase.from("pagamentos").select("id, obra_id, status").eq("id", id).maybeSingle();
+  const { data } = await supabase.from("pagamentos").select("id, obra_id, status, created_by").eq("id", id).maybeSingle();
   return data;
 }
 
 export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
-  const usuario = await getUsuario();
+  await getUsuario();
   const obra = texto(fd, "obra_id");
   if (!UUID.test(obra)) return { erro: "Selecione a obra." };
   const lido = lerDadosPagamento(fd);
   if ("erro" in lido) return { erro: lido.erro };
-  const assinar = fd.get("assinar") === "on" && (usuario.perfil === "financeiro" || usuario.perfil === "suprimentos");
 
   const categoria = texto(fd, "categoria_id");
   if (!UUID.test(categoria)) return { erro: "Escolha a categoria." };
@@ -104,7 +104,6 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
   const { data: id, error } = await supabase.rpc("criar_pagamento", { p_obra_id: obra, ...lido.dados });
   if (error || !id) return { erro: mensagemErro(error) };
 
-  if (assinar) await supabase.rpc("marcar_assinatura_cadastro", { p_id: id as string, p_assinar: true });
   const competencia = texto(fd, "data_competencia");
   if (/^\d{4}-\d{2}-\d{2}$/.test(competencia)) {
     await supabase.rpc("definir_competencia", { p_pagamento_id: id as string, p_data: competencia });
@@ -137,11 +136,32 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
 }
 
 export async function atualizarPagamento(id: string, _: Estado, fd: FormData): Promise<Estado> {
-  await getUsuario();
+  const usuario = await getUsuario();
   const p = await buscarPagamento(id);
   if (!p) return { erro: "Pagamento não encontrado." };
   const lido = lerDadosPagamento(fd);
   if ("erro" in lido) return { erro: lido.erro };
+
+  // Parcelas editadas: valida tudo ANTES de gravar, para o total nunca ficar diferente da soma das parcelas
+  const parcelasTxt = texto(fd, "parcelas_editadas");
+  let parcelasEditadas: { id: string; vencimento: string; valor: number }[] | null = null;
+  if (parcelasTxt) {
+    if (usuario.perfil !== "financeiro" && p.created_by !== usuario.id) return { erro: "Somente o Financeiro ou quem cadastrou altera as parcelas." };
+    let itens: unknown;
+    try {
+      itens = JSON.parse(parcelasTxt);
+    } catch {
+      return { erro: "Parcelas inválidas." };
+    }
+    if (!Array.isArray(itens)) return { erro: "Parcelas inválidas." };
+    for (const [i, it] of itens.entries()) {
+      const x = it as { id?: unknown; vencimento?: unknown; valor?: unknown };
+      if (typeof x.id !== "string" || !UUID.test(x.id)) return { erro: "Parcelas inválidas." };
+      if (typeof x.vencimento !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(x.vencimento)) return { erro: `Parcela ${i + 1}: informe o vencimento.` };
+      if (typeof x.valor !== "number" || !(x.valor > 0)) return { erro: `Parcela ${i + 1}: informe um valor válido (ex.: 1.250,00).` };
+    }
+    parcelasEditadas = itens as { id: string; vencimento: string; valor: number }[];
+  }
 
   const [novoBoleto] = arquivosDoForm(fd, "novo_boleto");
   if (novoBoleto) {
@@ -150,6 +170,12 @@ export async function atualizarPagamento(id: string, _: Estado, fd: FormData): P
   }
   const supabase = await createClient();
   const { data: antes } = await supabase.from("pagamentos").select("valor, obra_id").eq("id", id).single();
+  // "Editar lançamento (todas as parcelas)": as parcelas são gravadas primeiro (elas acertam o total e o vencimento);
+  // se forem recusadas, nada é salvo.
+  if (parcelasEditadas?.length) {
+    const { error: erroParc } = await supabase.rpc("editar_parcelas", { p_pagamento_id: id, p_parcelas: parcelasEditadas as never, p_motivo: texto(fd, "motivo") || undefined });
+    if (erroParc) return { erro: "Nada foi salvo: " + mensagemErro(erroParc) };
+  }
   const { error } = await supabase.rpc("atualizar_pagamento", {
     p_id: id,
     ...lido.dados,
@@ -395,4 +421,120 @@ export async function registrarBaixaParcela(parcelaId: string, pagamentoId: stri
   revalidatePath(`/pagamentos/${pagamentoId}`);
   revalidatePath("/", "layout");
   return { ok: "Parcela registrada como paga." };
+}
+
+/** Ações da lista: "Voltar para em aberto" (estorno da baixa do pagamento ou da parcela). */
+export async function voltarParaEmAberto(pagamentoId: string, parcelaId: string | null, motivo: string): Promise<{ ok?: string; erro?: string }> {
+  await getUsuario();
+  if (!UUID.test(pagamentoId) || (parcelaId && !UUID.test(parcelaId))) return { erro: "Lançamento não encontrado." };
+  const supabase = await createClient();
+  const { error } = parcelaId
+    ? await supabase.rpc("estornar_baixa_parcela", { p_parcela_id: parcelaId, p_motivo: motivo })
+    : await supabase.rpc("estornar_baixa", { p_id: pagamentoId, p_motivo: motivo });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/", "layout");
+  return { ok: "Voltou para em aberto." };
+}
+
+/** Ações da lista: "Clonar lançamento" — OP vira um novo rascunho; boleto abre a Nova despesa preenchida. */
+export async function clonarLancamento(pagamentoId: string): Promise<{ erro?: string } | void> {
+  const u = await getUsuario();
+  if (!UUID.test(pagamentoId)) return { erro: "Lançamento não encontrado." };
+  const supabase = await createClient();
+  const { data: p } = await supabase.from("pagamentos").select("id, ordem_id").eq("id", pagamentoId).maybeSingle();
+  if (!p) return { erro: "Lançamento não encontrado." };
+  if (p.ordem_id) {
+    if (!["engenheiro", "financeiro", "suprimentos"].includes(u.perfil)) return { erro: "Seu perfil não cria Ordem de Pagamento." };
+    const r = await duplicarOP(p.ordem_id, null);
+    return r?.erro ? { erro: r.erro } : undefined;
+  }
+  if (u.perfil !== "financeiro" && u.perfil !== "suprimentos") return { erro: "Somente o Financeiro e o Suprimentos lançam despesas com boleto." };
+  redirect(`/pagamentos/novo?clonar=${pagamentoId}`);
+}
+
+/** "Editar parcela": vencimento e valor de uma parcela em aberto. */
+export async function editarParcela(pagamentoId: string, parcelaId: string, _: Estado, fd: FormData): Promise<Estado> {
+  await getUsuario();
+  if (!UUID.test(pagamentoId) || !UUID.test(parcelaId)) return { erro: "Parcela não encontrada." };
+  const vencimento = texto(fd, "vencimento");
+  const valor = lerValor(texto(fd, "valor"));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento)) return { erro: "Informe o vencimento." };
+  if (valor === null) return { erro: "Informe um valor válido (ex.: 1.250,00)." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("editar_parcelas", {
+    p_pagamento_id: pagamentoId,
+    p_parcelas: [{ id: parcelaId, vencimento, valor }] as never,
+    p_motivo: texto(fd, "motivo") || undefined,
+  });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/", "layout");
+  redirect(`/pagamentos/${pagamentoId}?salvo=1`);
+}
+
+type AcaoLote = "categoria" | "competencia" | "cancelar" | "estornar";
+
+/**
+ * Ações em lote nas contas marcadas em Contas a pagar. Cada lançamento passa pelas mesmas regras
+ * da ação individual (permissão e situação); o que não puder ser feito volta listado com o motivo.
+ */
+export async function acaoEmLote(acao: AcaoLote, chaves: string[], dados: { categoria?: string; competencia?: string; motivo?: string }): Promise<{ ok?: string; erro?: string }> {
+  await getUsuario();
+  const lista = chaves.filter((c) => /^(pag|parc):/.test(c) && UUID.test(c.split(":")[1])).slice(0, 300);
+  if (!lista.length) return { erro: "Nenhuma conta selecionada." };
+  if (acao === "categoria" && !UUID.test(dados.categoria ?? "")) return { erro: "Escolha a categoria." };
+  if (acao === "competencia" && !/^\d{4}-\d{2}-\d{2}$/.test(dados.competencia ?? "")) return { erro: "Informe a data de competência." };
+  if ((acao === "cancelar" || acao === "estornar") && (dados.motivo ?? "").trim().length < 3) return { erro: "Informe o motivo." };
+
+  const supabase = await createClient();
+  const idsParc = lista.filter((c) => c.startsWith("parc:")).map((c) => c.slice(5));
+  const { data: parcelas } = idsParc.length
+    ? await supabase.from("pagamento_parcelas").select("id, pagamento_id, numero, status").in("id", idsParc)
+    : { data: [] as { id: string; pagamento_id: string; numero: number; status: string }[] };
+  const idsPag = [...new Set([...lista.filter((c) => c.startsWith("pag:")).map((c) => c.slice(4)), ...(parcelas ?? []).map((p) => p.pagamento_id)])];
+  const { data: pags } = await supabase.from("pagamentos").select("id, numero, status").in("id", idsPag);
+  const pagPorId = new Map((pags ?? []).map((p) => [p.id, p]));
+
+  let feitos = 0;
+  const erros: string[] = [];
+  const falhou = (numero: number | undefined, msg: string) => erros.push(`nº ${numero ?? "?"}: ${msg}`);
+
+  if (acao === "estornar") {
+    for (const c of lista) {
+      if (c.startsWith("pag:")) {
+        const p = pagPorId.get(c.slice(4));
+        if (!p) continue;
+        if (p.status !== "pago") continue; // só as pagas voltam para em aberto
+        const { error } = await supabase.rpc("estornar_baixa", { p_id: p.id, p_motivo: dados.motivo! });
+        if (error) falhou(p.numero, mensagemErro(error));
+        else feitos++;
+      } else {
+        const pc = (parcelas ?? []).find((x) => x.id === c.slice(5));
+        if (!pc || pc.status !== "pago") continue;
+        const { error } = await supabase.rpc("estornar_baixa_parcela", { p_parcela_id: pc.id, p_motivo: dados.motivo! });
+        if (error) falhou(pagPorId.get(pc.pagamento_id)?.numero, mensagemErro(error));
+        else feitos++;
+      }
+    }
+  } else {
+    for (const id of idsPag) {
+      const p = pagPorId.get(id);
+      if (!p) continue;
+      const { error } =
+        acao === "categoria"
+          ? await supabase.rpc("definir_categoria", { p_pagamento_id: id, p_categoria_id: dados.categoria! })
+          : acao === "competencia"
+            ? await supabase.rpc("definir_competencia", { p_pagamento_id: id, p_data: dados.competencia! })
+            : p.status === "cancelado"
+              ? { error: null }
+              : await supabase.rpc("cancelar_pagamento", { p_id: id, p_motivo: dados.motivo! });
+      if (error) falhou(p.numero, mensagemErro(error));
+      else if (!(acao === "cancelar" && p.status === "cancelado")) feitos++;
+    }
+  }
+
+  revalidatePath("/", "layout");
+  const verbo = { categoria: "com a categoria alterada", competencia: "com a competência alterada", cancelar: "cancelado(s)", estornar: "voltaram para em aberto" }[acao];
+  const resumo = `${feitos} lançamento(s) ${verbo}.`;
+  if (!feitos && !erros.length) return { erro: acao === "estornar" ? "Nenhuma das contas marcadas está paga." : "Nada a alterar nas contas marcadas." };
+  return erros.length ? { erro: `${resumo} Não foi possível em: ${erros.join(" · ")}` } : { ok: resumo };
 }

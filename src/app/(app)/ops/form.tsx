@@ -90,8 +90,6 @@ export function FormOP({
   action,
   obras,
   padrao = {},
-  podeAssinar = false,
-  assinarPadrao = false,
   ordemId: ordemIdInicial = null,
   anexosIniciais = [],
   assinaturaUrl = null,
@@ -104,8 +102,6 @@ export function FormOP({
   action: (e: Estado, fd: FormData) => Promise<Estado>;
   obras: { id: string; nome: string; cidade: string; uf: string; temAdministrador: boolean }[];
   padrao?: Padrao;
-  podeAssinar?: boolean;
-  assinarPadrao?: boolean;
   ordemId?: string | null;
   anexosIniciais?: AnexoOP[];
   assinaturaUrl?: string | null;
@@ -323,14 +319,6 @@ export function FormOP({
         </div>
       </Cartao>
 
-      {podeAssinar && (
-        <Cartao titulo="Assinatura do cadastro">
-          <label className="flex items-start gap-2 text-sm text-slate-700">
-            <input type="checkbox" name="assinar" defaultChecked={assinarPadrao} className="mt-0.5" />
-            <span>Assinar como quem solicitou. É só uma marca na OP, não é etapa de aprovação.</span>
-          </label>
-        </Cartao>
-      )}
       <Cartao titulo="Itens" semPadding>
         <div className="overflow-x-auto">
           <table className="tabela">

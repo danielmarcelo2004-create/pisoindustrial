@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { FormAcao } from "@/components/form-acao";
 import { Aviso, Cabecalho, Campo, Cartao } from "@/components/ui";
 import { exigirPerfil } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import { fornecedoresAtivos, obrasParaCadastro } from "@/lib/consultas/cadastros";
 import { obrasParaOP } from "@/lib/consultas/obras-op";
 import { categoriasAtivas } from "@/lib/consultas/categorias";
@@ -14,7 +15,7 @@ import { TipoPagamento } from "./tipo-pagamento";
 import { CampoArquivos } from "@/components/campo-arquivos";
 import { RepeticaoDespesa } from "@/components/repeticao-despesa";
 
-export const metadata: Metadata = { title: "Novo pagamento" };
+export const metadata: Metadata = { title: "Nova despesa" };
 
 const ACEITOS = ".pdf,.png,.jpg,.jpeg,.webp,.heic,.xml";
 
@@ -32,19 +33,42 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
   ]);
   // Engenheiro só solicita formas que não são boleto (Ordem de Pagamento).
   const formas: FormaPagamento[] = ehEngenheiro ? FORMAS_PAGAMENTO_ATUAIS : ["boleto", ...FORMAS_PAGAMENTO_ATUAIS];
-  const obraPadrao = typeof sp.obra === "string" ? sp.obra : "";
-  const podeAssinarCadastro = u.perfil === "financeiro" || u.perfil === "suprimentos";
   const texto = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
-  const padraoCampos = {
-    descricao: texto("descricao"),
-    vencimento: texto("vencimento") || null,
-    valor: texto("valor") || null,
-    categoria_id: texto("categoria") || null,
-  };
+  // "Clonar lançamento": abre o formulário com os dados de um pagamento existente (sem vencimento e sem anexos).
+  const clonarId = /^[0-9a-f-]{36}$/i.test(texto("clonar")) ? texto("clonar") : "";
+  const { data: origem } = clonarId
+    ? await (await createClient())
+        .from("pagamentos")
+        .select("numero, obra_id, fornecedor_id, favorecido, descricao, valor, categoria_id, numero_documento, observacoes")
+        .eq("id", clonarId)
+        .maybeSingle()
+    : { data: null };
+  const obraPadrao = origem?.obra_id ?? (typeof sp.obra === "string" ? sp.obra : "");
+  const padraoCampos = origem
+    ? {
+        fornecedor_id: origem.fornecedor_id,
+        favorecido: origem.favorecido,
+        descricao: origem.descricao,
+        valor: origem.valor,
+        categoria_id: origem.categoria_id,
+        observacoes: origem.observacoes,
+        vencimento: null,
+      }
+    : {
+        descricao: texto("descricao"),
+        vencimento: texto("vencimento") || null,
+        valor: texto("valor") || null,
+        categoria_id: texto("categoria") || null,
+      };
 
   return (
     <>
-      <Cabecalho titulo="Novo pagamento" voltar={{ href: "/pagamentos", rotulo: "Pagamentos" }} />
+      <Cabecalho titulo={origem ? `Nova despesa (cópia do nº ${origem.numero})` : "Nova despesa"} voltar={{ href: "/pagamentos", rotulo: "Contas a pagar" }} />
+      {origem && (
+        <div className="mb-4">
+          <Aviso tipo="info">Dados copiados do pagamento nº {origem.numero}. Informe o vencimento e anexe o boleto ou a nota fiscal desta nova despesa.</Aviso>
+        </div>
+      )}
       <TipoPagamento
         formas={formas}
         formaInicial={formas[0]}
@@ -76,16 +100,6 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
               <Cartao titulo="Repetição">
                 <RepeticaoDespesa />
               </Cartao>
-              {podeAssinarCadastro && (
-                <Cartao titulo="Assinatura do cadastro">
-                  <label className="flex items-start gap-2 text-sm text-slate-700">
-                    <input type="checkbox" name="assinar" className="mt-0.5" />
-                    <span>
-                      Assinar como quem cadastrou. É só uma marca no pagamento, não é etapa de aprovação.
-                    </span>
-                  </label>
-                </Cartao>
-              )}
               <Cartao titulo="Documentos">
                 <p className="mb-3 text-sm text-slate-600">
                   Obrigatório: anexe o boleto ou a nota fiscal. É o documento que o engenheiro assina antes da aprovação.
@@ -109,7 +123,6 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
         op={{
           action: salvarOP.bind(null, null),
           obras: obrasOP,
-          podeAssinar: u.perfil === "financeiro" || u.perfil === "suprimentos",
           ehEngenheiro,
           assinaturaUrl,
           categorias,

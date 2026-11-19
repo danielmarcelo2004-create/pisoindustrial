@@ -13,16 +13,17 @@ function chaveDosDados(dados: string | null | undefined): string | null {
  * Tudo que pode receber baixa agora: pagamentos liberados (sem parcelas) e parcelas em aberto
  * de pagamentos liberados, com os dados usados para reconhecer o comprovante (CNPJ/CPF, chave PIX).
  */
-export async function abertosParaBaixa(): Promise<Aberto[]> {
+export async function abertosParaBaixa(somente?: string[]): Promise<Aberto[]> {
   const supabase = await createClient();
-  const { data: pags } = await supabase
+  let consulta = supabase
     .from("pagamentos")
     .select(
       "id, numero, favorecido, descricao, valor, vencimento, forma_pagamento, obra:obras(nome), fornecedor:fornecedores(cpf_cnpj, chave_pix), ordem:ordens_pagamento!pagamentos_ordem_id_fkey(cpf_cnpj, dados_bancarios)",
     )
-    .eq("status", "aguardando_pagamento")
-    .order("vencimento", { ascending: true })
-    .limit(500);
+    .eq("status", "aguardando_pagamento");
+  // Só os pagamentos marcados na lista (baixa de um ou de vários)
+  if (somente) consulta = consulta.in("id", somente.length ? somente : ["00000000-0000-0000-0000-000000000000"]);
+  const { data: pags } = await consulta.order("vencimento", { ascending: true }).limit(500);
   const lista = pags ?? [];
   const ids = lista.map((p) => p.id);
   const { data: parcelas } = ids.length

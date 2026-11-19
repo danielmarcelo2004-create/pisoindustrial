@@ -13,6 +13,8 @@ export type FiltrosPagamento = {
   forma?: string;
   de?: string;
   ate?: string;
+  /** Só estes pagamentos (exportar as contas selecionadas). */
+  ids?: string[];
 };
 
 export const POR_PAGINA = 50;
@@ -28,6 +30,8 @@ export async function listarPagamentos(f: FiltrosPagamento, pagina = 1, limite: 
   const supabase = await createClient();
   let q = supabase.from("pagamentos").select(SELECAO_LISTA, { count: "exact" });
 
+  const ids = (f.ids ?? []).filter((i) => uuidValido(i));
+  if (f.ids) q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
   const obra = uuidValido(f.obra);
   if (obra) q = q.eq("obra_id", obra);
   const forn = uuidValido(f.fornecedor);

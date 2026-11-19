@@ -50,7 +50,7 @@ export default async function OPPage({ params, searchParams }: PageProps<"/ops/[
   return (
     <>
       <Cabecalho
-        voltar={{ href: "/pagamentos", rotulo: "Pagamentos" }}
+        voltar={{ href: "/pagamentos", rotulo: "Contas a pagar" }}
         titulo={
           <span className="flex flex-wrap items-center gap-3">
             {op.numero ?? "Solicitação (rascunho)"}

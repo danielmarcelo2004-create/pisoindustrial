@@ -55,7 +55,7 @@ export default async function ObraPage({ params, searchParams }: PageProps<"/obr
             <LinkBotao href={`/pagamentos?obra=${id}`} variante="secundario">
               Todos os pagamentos
             </LinkBotao>
-            {podeAtuar && o.status === "ativa" && <LinkBotao href={`/pagamentos/novo?obra=${id}`}>+ Novo pagamento</LinkBotao>}
+            {podeAtuar && o.status === "ativa" && <LinkBotao href={`/pagamentos/novo?obra=${id}`}>+ Nova despesa</LinkBotao>}
           </>
         }
       />

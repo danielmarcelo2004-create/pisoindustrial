@@ -1024,6 +1024,10 @@ describe('conciliação bancária', () => {
     const { data: c } = await admin.from('contas_bancarias').select('saldo, saldo_em').eq('id', conta).single()
     assert.deepEqual([Number(c.saldo), c.saldo_em], [1000, '2026-12-20'])
     await falha('fin', 'importar_extrato', { p_banco: '', p_agencia: '', p_conta: '', p_arquivo: 'x', p_inicio: null, p_fim: null, p_saldo: null, p_saldo_em: null, p_linhas: [] }, 'não informa o banco')
+    // Regressão: código do banco com 4 dígitos ("0104" da Caixa) é gravado como "104", não "010"
+    const r4 = await rpc('fin', 'importar_extrato', { p_banco: '0104', p_agencia: '0099', p_conta: '000' + contaNum, p_arquivo: 'x.ofx', p_inicio: null, p_fim: null, p_saldo: null, p_saldo_em: null, p_linhas: [L('2026-12-01', -1, 'B4', 'B4')] })
+    const { data: c4 } = await admin.from('contas_bancarias').select('banco, nome').eq('id', r4.conta_id).single()
+    assert.deepEqual([c4.banco, c4.nome.startsWith('Caixa')], ['104', true])
   })
 
   test('conciliar conta liberada em aberto: dá a baixa com data e valor do banco; não concilia duas vezes', async () => {
@@ -1162,6 +1166,11 @@ describe('conciliação bancária', () => {
     await rpc('fin', 'registrar_baixa', { p_id: p.id, p_pago_em: '2026-12-13' })
     await rpc('fin', 'definir_conta_bancaria', { p_pagamento_id: p.id, p_conta_id: conta })
     assert.equal((await pagamento(p.id)).conta_bancaria_id, conta)
+    // Regressão: salvar uma despesa já paga sem trocar a conta não pode dar erro para quem não é Financeiro
+    const pSup = await novoPagamento('sup', obraA.id, 66); await rpc('sup', 'definir_conta_bancaria', { p_pagamento_id: pSup, p_conta_id: conta })
+    await admin.from('pagamentos').update({ status: 'pago', pago_em: '2026-12-13', valor_pago: 66 }).eq('id', pSup)
+    await rpc('sup', 'definir_conta_bancaria', { p_pagamento_id: pSup, p_conta_id: conta })
+    await falha('sup', 'definir_conta_bancaria', { p_pagamento_id: pSup, p_conta_id: outra }, 'só o Financeiro troca a conta')
     // OP: a conta escolhida no rascunho vai para o pagamento
     const op = await salvarOP('sup', obraA.id)
     await rpc('sup', 'definir_conta_bancaria_op', { p_ordem_id: op, p_conta_id: outra })

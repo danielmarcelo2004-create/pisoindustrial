@@ -59,3 +59,7 @@ Entregue uma matriz curta: cenário, resultado (passou, falhou, não aplicável 
 - Use só o banco local. Não aplique migrações nem SQL em projetos remotos sem autorização explícita do usuário.
 - Não exponha senhas, tokens ou dados pessoais reais nas saídas.
 - Reset do banco local apaga os dados de teste; avise antes se houver dados que o usuário queira manter.
+
+## Bug corrigido = teste de regressão
+
+Toda correção de bug ganha um teste de regressão **no repositório** (`tests/`), que falha sem a correção e passa com ela, com `regressão:` no nome. Escolha a camada mais baixa que reproduz o bug: função pura (`tests/*.test.mts`), regra no banco (`tests/integracao.test.mjs`) ou tela (`tests/e2e/*.cjs`). Um teste que existe só no ambiente temporário não conta.

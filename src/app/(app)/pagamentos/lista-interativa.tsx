@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { moeda } from "@/lib/formato";
-import { acaoEmLote, clonarLancamento, voltarParaEmAberto } from "./actions";
+import { acaoEmLote, alterarContaBancaria, clonarLancamento, voltarParaEmAberto } from "./actions";
 
 const SELETOR = 'input.caixa-baixar[form="form-baixar"]';
 
@@ -124,13 +124,13 @@ export function MarcarTodas() {
 }
 
 /** Barra acima da tabela: quantas contas marcadas, total e o botão Baixar (1 = individual; várias = em lote). */
-type Lote = "categoria" | "competencia" | "estornar" | "cancelar";
+type Lote = "categoria" | "conta" | "competencia" | "estornar" | "cancelar";
 
 /**
  * Barra acima da tabela: quantas contas marcadas, total, "Baixar" (1 = individual; várias = em lote)
  * e "Ações em lote" (exportar, alterar categoria/competência, voltar para em aberto, cancelar).
  */
-export function BarraSelecao({ podeBaixar, podeAlterar, categorias }: { podeBaixar: boolean; podeAlterar: boolean; categorias: { id: string; nome: string }[] }) {
+export function BarraSelecao({ podeBaixar, podeAlterar, categorias, contas = [] }: { podeBaixar: boolean; podeAlterar: boolean; categorias: { id: string; nome: string }[]; contas?: { id: string; nome: string }[] }) {
   const router = useRouter();
   const [qtd, setQtd] = useState(0);
   const [total, setTotal] = useState(0);
@@ -191,7 +191,7 @@ export function BarraSelecao({ podeBaixar, podeAlterar, categorias }: { podeBaix
   };
   const executar = () =>
     iniciar(async () => {
-      const dados = dialogo === "categoria" ? { categoria: valor } : dialogo === "competencia" ? { competencia: valor } : { motivo: valor };
+      const dados = dialogo === "categoria" ? { categoria: valor } : dialogo === "conta" ? { conta: valor } : dialogo === "competencia" ? { competencia: valor } : { motivo: valor };
       const r = await acaoEmLote(dialogo!, chaves(), dados);
       setMsg(r.erro ? { tipo: "erro", texto: r.erro } : { tipo: "ok", texto: r.ok ?? "Feito." });
       setDialogo(null);
@@ -202,6 +202,7 @@ export function BarraSelecao({ podeBaixar, podeAlterar, categorias }: { podeBaix
   const item = "block w-full px-4 py-2 text-left text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300";
   const titulo: Record<Lote, string> = {
     categoria: "Alterar categoria",
+    conta: "Alterar conta bancária",
     competencia: "Alterar data de competência",
     estornar: "Voltar para em aberto",
     cancelar: "Cancelar lançamentos",
@@ -256,6 +257,9 @@ export function BarraSelecao({ podeBaixar, podeAlterar, categorias }: { podeBaix
                   <button role="menuitem" type="button" className={`${item} text-slate-700`} onClick={() => abrir("categoria")}>
                     Alterar categoria
                   </button>
+                  <button role="menuitem" type="button" className={`${item} text-slate-700`} onClick={() => abrir("conta")}>
+                    Alterar conta bancária
+                  </button>
                   <button role="menuitem" type="button" className={`${item} text-slate-700`} onClick={() => abrir("competencia")}>
                     Alterar data de competência
                   </button>
@@ -302,6 +306,15 @@ export function BarraSelecao({ podeBaixar, podeAlterar, categorias }: { podeBaix
                     </option>
                   ))}
                 </select>
+              ) : dialogo === "conta" ? (
+                <select value={valor} onChange={(e) => setValor(e.target.value)} className="campo" aria-label="Nova conta bancária">
+                  <option value="">Escolha a conta bancária…</option>
+                  {contas.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
               ) : dialogo === "competencia" ? (
                 <input type="date" value={valor} onChange={(e) => setValor(e.target.value)} className="campo" aria-label="Nova data de competência" />
               ) : (
@@ -343,6 +356,9 @@ export type AcoesProps = {
   podeEditarParcelas: boolean;
   podeClonar: boolean;
   podeCancelar: boolean;
+  /** "Alterar conta bancária" (ex.: foi paga por outra conta). */
+  contas?: { id: string; nome: string }[];
+  podeAlterarConta?: boolean;
 };
 
 /** Menu "Ações" de cada linha. Mostra só o que a pessoa pode fazer naquela situação. */
@@ -363,6 +379,8 @@ export function AcoesLinha(a: AcoesProps) {
     setAberto(true);
   }
   const [estorno, setEstorno] = useState(false);
+  const [trocaConta, setTrocaConta] = useState(false);
+  const [novaConta, setNovaConta] = useState("");
   const [motivo, setMotivo] = useState("");
   const [erro, setErro] = useState("");
   const [pendente, iniciar] = useTransition();
@@ -428,6 +446,11 @@ export function AcoesLinha(a: AcoesProps) {
               {a.qtdParcelas > 1 && a.podeEditarParcelas ? "Editar lançamento (todas as parcelas)" : "Editar lançamento"}
             </Link>
           )}
+          {a.podeAlterarConta && (a.contas?.length ?? 0) > 0 && (
+            <button role="menuitem" type="button" className={item} onClick={() => { setTrocaConta(true); setNovaConta(""); setErro(""); setAberto(false); }}>
+              Alterar conta bancária
+            </button>
+          )}
           {a.podeClonar && (
             <button
               role="menuitem"
@@ -480,7 +503,43 @@ export function AcoesLinha(a: AcoesProps) {
           </div>
         </div>
       )}
-      {erro && !estorno && <div className="absolute right-0 z-10 mt-1 w-64 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{erro}</div>}
+      {trocaConta && (
+        <div role="dialog" aria-label="Alterar conta bancária" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-5 text-left shadow-xl">
+            <h3 className="text-base font-semibold text-slate-800">Alterar conta bancária</h3>
+            <p className="mt-1 text-sm text-slate-600">De qual conta sai (ou saiu) o pagamento nº {a.numero}. A troca fica registrada no histórico.</p>
+            <select value={novaConta} onChange={(e) => setNovaConta(e.target.value)} className="campo mt-3" aria-label="Nova conta bancária">
+              <option value="">Escolha a conta bancária…</option>
+              {(a.contas ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+            {erro && <p className="mt-2 text-sm text-red-700">{erro}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="rounded-md border border-slate-300 px-3 py-1.5 text-sm" onClick={() => { setTrocaConta(false); setErro(""); }}>
+                Voltar
+              </button>
+              <button
+                type="button"
+                disabled={pendente || !novaConta}
+                className="rounded-md bg-sky-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+                onClick={() =>
+                  iniciar(async () => {
+                    const r = await alterarContaBancaria(a.pagamentoId, novaConta);
+                    if (r.erro) setErro(r.erro);
+                    else setTrocaConta(false);
+                  })
+                }
+              >
+                {pendente ? "Salvando…" : "Salvar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {erro && !estorno && !trocaConta && <div className="absolute right-0 z-10 mt-1 w-64 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{erro}</div>}
     </div>
   );
 }

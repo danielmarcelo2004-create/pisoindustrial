@@ -97,6 +97,8 @@ async function gravarRascunho(id: string | null, fd: FormData, paraEnviar = fals
 
   const categoria = t(fd, "categoria_id");
   if (paraEnviar && !UUID.test(categoria)) return { erro: "Escolha a categoria antes de gerar a OP." };
+  const contaBancaria = t(fd, "conta_bancaria_id");
+  if (paraEnviar && !UUID.test(contaBancaria)) return { erro: "Escolha a conta bancária (de onde sai o pagamento) antes de gerar a OP." };
 
   // Desconto é opcional (padrão zero); não pode passar do total dos itens.
   const descontoTxt = t(fd, "desconto");
@@ -140,11 +142,16 @@ async function gravarRascunho(id: string | null, fd: FormData, paraEnviar = fals
     const { error: erroCat } = await supabase.rpc("definir_categoria_op", { p_ordem_id: data as string, p_categoria_id: categoria });
     if (erroCat) return { erro: mensagemErro(erroCat) };
   }
+  if (UUID.test(contaBancaria)) {
+    const { error: erroConta } = await supabase.rpc("definir_conta_bancaria_op", { p_ordem_id: data as string, p_conta_id: contaBancaria });
+    if (erroConta) return { erro: mensagemErro(erroConta) };
+  }
 
   // Repetição: guardada no rascunho; as provisões nascem no envio
   const repIntervalo = Number(t(fd, "repetir_intervalo") || 0) || null;
   const repVezes = Number(t(fd, "repetir_vezes") || 0) || null;
-  const { error: erroRep } = await supabase.rpc("definir_repeticao_op", { p_ordem_id: data as string, p_intervalo: repIntervalo, p_vezes: repVezes });
+  // Sem repetição = nulo (a função aceita; o tipo gerado não marca como opcional)
+  const { error: erroRep } = await supabase.rpc("definir_repeticao_op", { p_ordem_id: data as string, p_intervalo: repIntervalo as number, p_vezes: repVezes as number });
   if (erroRep) return { erro: mensagemErro(erroRep) };
   return { id: data as string };
 }
@@ -288,6 +295,7 @@ export async function duplicarOP(id: string, _: Estado): Promise<Estado> {
     });
   }
   if (op.categoria_id) await supabase.rpc("definir_categoria_op", { p_ordem_id: novaId, p_categoria_id: op.categoria_id });
+  if (op.conta_bancaria_id) await supabase.rpc("definir_conta_bancaria_op", { p_ordem_id: novaId, p_conta_id: op.conta_bancaria_id });
   if (op.data_competencia) await supabase.rpc("definir_competencia_op", { p_ordem_id: novaId, p_data: op.data_competencia });
   if (op.repetir_intervalo && op.repetir_vezes) {
     await supabase.rpc("definir_repeticao_op", { p_ordem_id: novaId, p_intervalo: op.repetir_intervalo, p_vezes: op.repetir_vezes });

@@ -5,13 +5,14 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { OPCOES_PERIODO, deslocarPeriodo, paramsPeriodo, periodoDe, type Periodo } from "@/lib/periodo";
 
 type Opcao = { v: string; r: string };
-type Chave = "obra" | "categoria" | "fornecedor" | "forma";
+type Chave = "obra" | "categoria" | "fornecedor" | "forma" | "conta";
 
 const FILTROS: { chave: Chave | "cancelados"; rotulo: string }[] = [
   { chave: "obra", rotulo: "Centro de custo" },
   { chave: "categoria", rotulo: "Categoria" },
   { chave: "fornecedor", rotulo: "Fornecedor" },
   { chave: "forma", rotulo: "Forma de pagamento" },
+  { chave: "conta", rotulo: "Conta bancária" },
   { chave: "cancelados", rotulo: "Mostrar cancelados" },
 ];
 
@@ -299,7 +300,7 @@ export function BarraFiltros({
               );
             })}
             {algumFiltro && (
-              <button type="button" onClick={() => ir({ obra: "", categoria: "", fornecedor: "", forma: "", cancelados: "", busca: "" })} className="px-2 py-1 text-sm text-sky-700 hover:underline">
+              <button type="button" onClick={() => ir({ obra: "", categoria: "", fornecedor: "", forma: "", conta: "", cancelados: "", busca: "" })} className="px-2 py-1 text-sm text-sky-700 hover:underline">
                 Limpar filtros
               </button>
             )}

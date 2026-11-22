@@ -27,6 +27,8 @@ export function TipoPagamento({
     ehEngenheiro: boolean;
     assinaturaUrl: string | null;
     categorias: { id: string; nome: string }[];
+    contasBancarias: { id: string; nome: string }[];
+    podeCadastrarConta: boolean;
     podeAdicionarCategoria: boolean;
   };
 }) {
@@ -64,6 +66,8 @@ export function TipoPagamento({
           assinaturaUrl={op.assinaturaUrl}
           formaFixa={forma}
           categorias={op.categorias}
+          contasBancarias={op.contasBancarias}
+          podeCadastrarConta={op.podeCadastrarConta}
           podeAdicionarCategoria={op.podeAdicionarCategoria}
           padrao={{ forma_pagamento: forma }}
         />

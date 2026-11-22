@@ -10,6 +10,7 @@ import { FormOP } from "../../form";
 import type { AnexoOP } from "../../anexos-op";
 import { assinaturaDoUsuario } from "../../assinatura-usuario";
 import { categoriasAtivas } from "@/lib/consultas/categorias";
+import { contasBancariasAtivas } from "@/lib/consultas/contas-bancarias";
 
 export const metadata: Metadata = { title: "Editar solicitação de OP" };
 
@@ -48,6 +49,8 @@ export default async function EditarOPPage({ params }: PageProps<"/ops/[id]/edit
         assinaturaCriador={assinaturaCriador}
         categorias={await categoriasAtivas()}
         podeAdicionarCategoria={u.perfil === "financeiro"}
+        contasBancarias={await contasBancariasAtivas()}
+        podeCadastrarConta={u.perfil === "financeiro"}
       />
     </>
   );

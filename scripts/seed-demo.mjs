@@ -114,6 +114,8 @@ for (const nome of ["Materiais de construção", "Mão de obra", "Aluguel de equ
 }
 console.log("Criando obras e fornecedores…");
 const F = u.financeiro.client;
+// Conta bancária da empresa (de onde saem os pagamentos); com uma só, os formulários já vêm com ela
+ok(await F.rpc("criar_conta_bancaria", { p_nome: "Banco do Brasil (demo)", p_banco: "001", p_agencia: "1234", p_conta: "99999-9" }));
 const obraA = ok(await F.from("obras").insert({ codigo: "OB-001", nome: "Galpão Logístico Camaçari", cliente: "LogBA S.A.", cidade: "Camaçari", uf: "BA", fluxo: "A", engenheiro_id: u.engenheiro.id, administrador_id: u.administrador.id }).select().single());
 const obraB = ok(await F.from("obras").insert({ codigo: "OB-002", nome: "Piso Industrial Feira", cliente: "Atacadão Norte", cidade: "Feira de Santana", uf: "BA", fluxo: "B", administrador_id: u.administrador2.id }).select().single());
 const obraC = ok(await F.from("obras").insert({ codigo: "OB-003", nome: "Ampliação CD Aracaju", cliente: "Distribuidora SE", cidade: "Aracaju", uf: "SE", fluxo: "C" }).select().single());

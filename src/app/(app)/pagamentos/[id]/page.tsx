@@ -80,7 +80,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
   const { data: p } = await supabase
     .from("pagamentos")
     .select(
-      `*, categoria:categorias(nome), obra:obras(id, nome, cidade, uf, fluxo, engenheiro_id, administrador_id,
+      `*, categoria:categorias(nome), conta_bancaria:contas_bancarias(nome), obra:obras(id, nome, cidade, uf, fluxo, engenheiro_id, administrador_id,
         engenheiro:profiles!obras_engenheiro_id_fkey(nome), administrador:profiles!obras_administrador_id_fkey(nome)),
        fornecedor:fornecedores(id, nome, cpf_cnpj, chave_pix, banco, agencia, conta),
        criador:profiles!pagamentos_created_by_fkey(nome),
@@ -232,6 +232,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
               </Dado>
               <Dado rotulo="Competência">{data(p.data_competencia)}</Dado>
               <Dado rotulo="Categoria">{p.categoria?.nome ?? "—"}</Dado>
+              <Dado rotulo="Conta bancária">{(p as unknown as { conta_bancaria: { nome: string } | null }).conta_bancaria?.nome ?? "—"}</Dado>
               <Dado rotulo="Forma de pagamento">{FORMAS_PAGAMENTO[p.forma_pagamento]}</Dado>
               <Dado rotulo="Favorecido">{p.favorecido}</Dado>
               <Dado rotulo="Fornecedor">

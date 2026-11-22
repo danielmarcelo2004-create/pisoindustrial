@@ -4,6 +4,7 @@ import { FORMAS_PAGAMENTO } from "@/lib/rotulos";
 import { ParcelasPagamento } from "./parcelas-pagamento";
 import { SeletorCategoria } from "@/components/seletor-categoria";
 import { AvisosLancamento } from "@/components/avisos-lancamento";
+import { SeletorContaBancaria } from "@/components/seletor-conta-bancaria";
 
 type Padrao = {
   fornecedor_id?: string | null;
@@ -13,6 +14,7 @@ type Padrao = {
   vencimento?: string | null;
   data_competencia?: string | null;
   categoria_id?: string | null;
+  conta_bancaria_id?: string | null;
   forma_pagamento?: string | null;
   numero_documento?: string | null;
   observacoes?: string | null;
@@ -26,6 +28,8 @@ export function CamposPagamento({
   categorias,
   podeAdicionarCategoria = false,
   pagamentoId,
+  contasBancarias,
+  podeCadastrarConta = false,
 }: {
   fornecedores: { id: string; nome: string; cpf_cnpj: string | null }[];
   padrao?: Padrao;
@@ -36,6 +40,9 @@ export function CamposPagamento({
   podeAdicionarCategoria?: boolean;
   /** Na edição: o próprio pagamento não conta como duplicado. */
   pagamentoId?: string;
+  /** Contas bancárias (de onde sai o pagamento). */
+  contasBancarias?: { id: string; nome: string }[];
+  podeCadastrarConta?: boolean;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -55,6 +62,11 @@ export function CamposPagamento({
       {categorias && (
         <Campo rotulo="Categoria" obrigatorio className="sm:col-span-2">
           <SeletorCategoria categorias={categorias} valorInicial={padrao.categoria_id} podeAdicionar={podeAdicionarCategoria} />
+        </Campo>
+      )}
+      {contasBancarias && (
+        <Campo rotulo="Conta bancária" obrigatorio className="sm:col-span-2" ajuda="De qual conta sai o pagamento. Se for paga por outra, dá para trocar depois em Ações.">
+          <SeletorContaBancaria contas={contasBancarias} valorInicial={padrao.conta_bancaria_id} podeCadastrar={podeCadastrarConta} />
         </Campo>
       )}
       <Campo rotulo="Descrição" obrigatorio className="sm:col-span-2">

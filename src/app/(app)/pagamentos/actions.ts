@@ -62,6 +62,8 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
 
   const categoria = texto(fd, "categoria_id");
   if (!UUID.test(categoria)) return { erro: "Escolha a categoria." };
+  const contaBancaria = texto(fd, "conta_bancaria_id");
+  if (!UUID.test(contaBancaria)) return { erro: "Escolha a conta bancária (de onde sai o pagamento)." };
   const repIntervalo = Number(texto(fd, "repetir_intervalo") || 0);
   const repVezes = Number(texto(fd, "repetir_vezes") || 0);
   if (repIntervalo && (repIntervalo < 1 || repIntervalo > 12 || repVezes < 2 || repVezes > 60)) {
@@ -109,6 +111,7 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
     await supabase.rpc("definir_competencia", { p_pagamento_id: id as string, p_data: competencia });
   }
   await supabase.rpc("definir_categoria", { p_pagamento_id: id as string, p_categoria_id: categoria });
+  const { error: erroConta } = await supabase.rpc("definir_conta_bancaria", { p_pagamento_id: id as string, p_conta_id: contaBancaria });
   if (parcelas.length >= 2) {
     const { error: erroParcelas } = await supabase.rpc("definir_parcelas", {
       p_pagamento_id: id as string,
@@ -121,6 +124,7 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
   }
 
   const falhas: string[] = [];
+  if (erroConta) falhas.push("A conta bancária não foi gravada: " + mensagemErro(erroConta));
   if (repIntervalo) {
     const { error: erroRep } = await supabase.rpc("criar_repeticoes", { p_pagamento_id: id as string, p_intervalo: repIntervalo, p_vezes: repVezes });
     if (erroRep) falhas.push("As repetições não foram criadas: " + mensagemErro(erroRep));
@@ -192,6 +196,11 @@ export async function atualizarPagamento(id: string, _: Estado, fd: FormData): P
   if (UUID.test(categoria)) {
     const { error: erroCat } = await supabase.rpc("definir_categoria", { p_pagamento_id: id, p_categoria_id: categoria });
     if (erroCat) return { erro: mensagemErro(erroCat) };
+  }
+  const contaBancaria = texto(fd, "conta_bancaria_id");
+  if (UUID.test(contaBancaria)) {
+    const { error: erroConta } = await supabase.rpc("definir_conta_bancaria", { p_pagamento_id: id, p_conta_id: contaBancaria });
+    if (erroConta) return { erro: mensagemErro(erroConta) };
   }
   // "Aplicar o novo valor às próximas": provisões em aberto da repetição
   if (fd.get("reajustar_serie") === "on") {
@@ -471,17 +480,18 @@ export async function editarParcela(pagamentoId: string, parcelaId: string, _: E
   redirect(`/pagamentos/${pagamentoId}?salvo=1`);
 }
 
-type AcaoLote = "categoria" | "competencia" | "cancelar" | "estornar";
+type AcaoLote = "categoria" | "conta" | "competencia" | "cancelar" | "estornar";
 
 /**
  * Ações em lote nas contas marcadas em Contas a pagar. Cada lançamento passa pelas mesmas regras
  * da ação individual (permissão e situação); o que não puder ser feito volta listado com o motivo.
  */
-export async function acaoEmLote(acao: AcaoLote, chaves: string[], dados: { categoria?: string; competencia?: string; motivo?: string }): Promise<{ ok?: string; erro?: string }> {
+export async function acaoEmLote(acao: AcaoLote, chaves: string[], dados: { categoria?: string; competencia?: string; motivo?: string; conta?: string }): Promise<{ ok?: string; erro?: string }> {
   await getUsuario();
   const lista = chaves.filter((c) => /^(pag|parc):/.test(c) && UUID.test(c.split(":")[1])).slice(0, 300);
   if (!lista.length) return { erro: "Nenhuma conta selecionada." };
   if (acao === "categoria" && !UUID.test(dados.categoria ?? "")) return { erro: "Escolha a categoria." };
+  if (acao === "conta" && !UUID.test(dados.conta ?? "")) return { erro: "Escolha a conta bancária." };
   if (acao === "competencia" && !/^\d{4}-\d{2}-\d{2}$/.test(dados.competencia ?? "")) return { erro: "Informe a data de competência." };
   if ((acao === "cancelar" || acao === "estornar") && (dados.motivo ?? "").trim().length < 3) return { erro: "Informe o motivo." };
 
@@ -522,6 +532,8 @@ export async function acaoEmLote(acao: AcaoLote, chaves: string[], dados: { cate
       const { error } =
         acao === "categoria"
           ? await supabase.rpc("definir_categoria", { p_pagamento_id: id, p_categoria_id: dados.categoria! })
+          : acao === "conta"
+            ? await supabase.rpc("definir_conta_bancaria", { p_pagamento_id: id, p_conta_id: dados.conta! })
           : acao === "competencia"
             ? await supabase.rpc("definir_competencia", { p_pagamento_id: id, p_data: dados.competencia! })
             : p.status === "cancelado"
@@ -533,8 +545,19 @@ export async function acaoEmLote(acao: AcaoLote, chaves: string[], dados: { cate
   }
 
   revalidatePath("/", "layout");
-  const verbo = { categoria: "com a categoria alterada", competencia: "com a competência alterada", cancelar: "cancelado(s)", estornar: "voltaram para em aberto" }[acao];
+  const verbo = { categoria: "com a categoria alterada", conta: "com a conta bancária alterada", competencia: "com a competência alterada", cancelar: "cancelado(s)", estornar: "voltaram para em aberto" }[acao];
   const resumo = `${feitos} lançamento(s) ${verbo}.`;
   if (!feitos && !erros.length) return { erro: acao === "estornar" ? "Nenhuma das contas marcadas está paga." : "Nada a alterar nas contas marcadas." };
   return erros.length ? { erro: `${resumo} Não foi possível em: ${erros.join(" · ")}` } : { ok: resumo };
+}
+
+/** Ações → "Alterar conta bancária" (ex.: foi paga por outra conta). */
+export async function alterarContaBancaria(pagamentoId: string, contaId: string): Promise<{ ok?: string; erro?: string }> {
+  await getUsuario();
+  if (!UUID.test(pagamentoId) || !UUID.test(contaId)) return { erro: "Escolha a conta bancária." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_conta_bancaria", { p_pagamento_id: pagamentoId, p_conta_id: contaId });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/", "layout");
+  return { ok: "Conta bancária alterada." };
 }

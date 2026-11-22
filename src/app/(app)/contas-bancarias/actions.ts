@@ -1,0 +1,142 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { getUsuario } from "@/lib/auth";
+import { mensagemErro } from "@/lib/erros";
+import { decodificarOfx, lerOfx, normalizarBanco, normalizarConta } from "@/lib/ofx";
+import { createClient } from "@/lib/supabase/server";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CLASSES = ["tarifa", "aplicacao", "entrada", "transferencia", "cartao", "imposto", "emprestimo", "outro"];
+type Resultado = { erro?: string; ok?: string };
+
+async function soFinanceiro() {
+  const u = await getUsuario();
+  return u.perfil === "financeiro";
+}
+
+/** Importa um ou mais arquivos OFX. A conta é reconhecida pelo arquivo (banco, agência e conta). */
+export async function importarExtrato(_: Resultado | null, fd: FormData): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro importa extratos." };
+  const arquivos = fd.getAll("arquivo").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!arquivos.length) return { erro: "Escolha o arquivo OFX do extrato." };
+  const contaEsperada = String(fd.get("conta_id") ?? "");
+  const supabase = await createClient();
+  let esperada: { banco: string; agencia: string; conta: string; nome: string } | null = null;
+  if (UUID.test(contaEsperada)) {
+    const { data } = await supabase.from("contas_bancarias").select("banco, agencia, conta, nome").eq("id", contaEsperada).maybeSingle();
+    esperada = data;
+  }
+  const resumo: string[] = [];
+  let destino = "";
+  for (const f of arquivos) {
+    if (f.size > 5 * 1024 * 1024) return { erro: `${f.name}: arquivo maior que 5 MB.` };
+    if (!/\.ofx$/i.test(f.name)) return { erro: `${f.name}: envie o extrato no formato OFX (exporte do internet banking como OFX/Money).` };
+    let ext;
+    try {
+      ext = lerOfx(decodificarOfx(new Uint8Array(await f.arrayBuffer())));
+    } catch (e) {
+      return { erro: `${f.name}: ${(e as Error).message}` };
+    }
+    const banco = normalizarBanco(ext.banco);
+    const agencia = normalizarConta(ext.agencia);
+    const conta = normalizarConta(ext.conta);
+    // Importando "nesta conta": o arquivo precisa ser dela
+    if (esperada && (esperada.banco !== banco || esperada.conta !== conta || (esperada.agencia && agencia && esperada.agencia !== agencia))) {
+      return { erro: `${f.name} é de outra conta (banco ${banco}, ${agencia ? `ag. ${agencia}, ` : ""}conta ${conta}), não de “${esperada.nome}”. Nada foi importado.` };
+    }
+    if (!ext.linhas.length) {
+      resumo.push(`${f.name}: nenhum lançamento no período`);
+      continue;
+    }
+    const { data, error } = await supabase.rpc("importar_extrato", {
+      p_banco: banco,
+      p_agencia: agencia,
+      p_conta: conta,
+      p_arquivo: f.name,
+      p_inicio: ext.inicio as string,
+      p_fim: ext.fim as string,
+      p_saldo: ext.saldo as number,
+      p_saldo_em: ext.saldoEm as string,
+      p_linhas: ext.linhas,
+    });
+    if (error) return { erro: `${f.name}: ${mensagemErro(error)}` };
+    const r = data as { conta_id: string; novas: number; repetidas: number };
+    destino = r.conta_id;
+    resumo.push(`${f.name}: ${r.novas} lançamento(s) novo(s)${r.repetidas ? `, ${r.repetidas} já importado(s) antes` : ""}`);
+  }
+  revalidatePath("/contas-bancarias");
+  redirect(`/contas-bancarias?conta=${destino || contaEsperada}&importado=${encodeURIComponent(resumo.join(" · "))}`);
+}
+
+export async function conciliar(linhaId: string, itens: { tipo: "pagamento" | "parcela"; id: string }[], diferenca: "desconto" | "saldo" | "juros" | "encargos" | null): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro faz a conciliação." };
+  if (!UUID.test(linhaId) || !itens.length || itens.some((i) => !UUID.test(i.id) || !["pagamento", "parcela"].includes(i.tipo))) return { erro: "Seleção inválida." };
+  if (diferenca !== null && !["desconto", "saldo", "juros", "encargos"].includes(diferenca)) return { erro: "Diferença inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("conciliar_linha", { p_linha_id: linhaId, p_itens: itens, p_diferenca: diferenca as string });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/contas-bancarias");
+  revalidatePath("/pagamentos");
+  return { ok: "Conciliado." };
+}
+
+export async function desfazer(linhaId: string, voltarAberto: boolean, motivo: string): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro desfaz conciliações." };
+  if (!UUID.test(linhaId)) return { erro: "Lançamento inválido." };
+  if (motivo.trim().length < 3) return { erro: "Informe o motivo." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("desfazer_conciliacao", { p_linha_id: linhaId, p_voltar_aberto: voltarAberto, p_motivo: motivo.trim() });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/contas-bancarias");
+  revalidatePath("/pagamentos");
+  return { ok: "Conciliação desfeita." };
+}
+
+export async function arquivar(ids: string[], classificacao: string, observacao = ""): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro arquiva lançamentos." };
+  if (!ids.length || ids.some((i) => !UUID.test(i)) || !CLASSES.includes(classificacao)) return { erro: "Seleção inválida." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("arquivar_linhas", { p_ids: ids, p_classificacao: classificacao, p_observacao: observacao });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/contas-bancarias");
+  return { ok: `${data} lançamento(s) arquivado(s).` };
+}
+
+export async function restaurar(id: string): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro restaura lançamentos." };
+  if (!UUID.test(id)) return { erro: "Lançamento inválido." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("restaurar_linha", { p_id: id });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/contas-bancarias");
+  return { ok: "Lançamento voltou para as pendentes." };
+}
+
+export async function renomearConta(id: string, nome: string): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro renomeia contas." };
+  if (!UUID.test(id) || !nome.trim()) return { erro: "Informe o nome." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("renomear_conta_bancaria", { p_id: id, p_nome: nome.trim() });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/contas-bancarias");
+  return { ok: "Nome alterado." };
+}
+
+/** Cadastra uma conta bancária à mão (o extrato importado depois é reconhecido pela conta). */
+export async function criarContaBancaria(_: Resultado | null, fd: FormData): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro cadastra contas bancárias." };
+  const nome = String(fd.get("nome") ?? "").trim();
+  const banco = String(fd.get("banco") === "outro" ? fd.get("banco_outro") ?? "" : fd.get("banco") ?? "").trim();
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("criar_conta_bancaria", {
+    p_nome: nome,
+    p_banco: banco,
+    p_agencia: String(fd.get("agencia") ?? ""),
+    p_conta: String(fd.get("conta") ?? ""),
+  });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/", "layout");
+  redirect(`/contas-bancarias?conta=${data}&criada=1`);
+}

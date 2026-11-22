@@ -4,6 +4,7 @@ import { Aviso, Cabecalho, LinkBotao, Selo, Vazio, classeBotao, cx } from "@/com
 import { getUsuario } from "@/lib/auth";
 import { listarContas, type FiltroCartao, type LinhaConta } from "@/lib/consultas/contas-a-pagar";
 import { categoriasAtivas } from "@/lib/consultas/categorias";
+import { contasBancariasAtivas } from "@/lib/consultas/contas-bancarias";
 import { data, hojeISO, moeda } from "@/lib/formato";
 import { FORMAS_PAGAMENTO, STATUS_PAGAMENTO } from "@/lib/rotulos";
 import { createClient } from "@/lib/supabase/server";
@@ -52,17 +53,19 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
     obra: str(sp.obra),
     forma: str(sp.forma),
     categoria: str(sp.categoria),
+    conta: str(sp.conta),
     fornecedor: str(sp.fornecedor),
     cancelados: str(sp.cancelados) === "1",
   };
 
   const supabase = await createClient();
-  const [{ linhas, totais }, { data: obras }, categorias, { data: fornecedores }, { data: rascunhos }] = await Promise.all([
+  const [{ linhas, totais }, { data: obras }, categorias, { data: fornecedores }, { data: rascunhos }, contasBanc] = await Promise.all([
     listarContas({ ...filtros, mes: periodo.tipo === "todos" ? "todos" : periodo.de.slice(0, 7), cartao }),
     supabase.from("obras").select("id, nome").order("nome"),
     categoriasAtivas(),
     supabase.from("fornecedores").select("id, nome").order("nome").limit(500),
     supabase.from("ordens_pagamento").select("id, favorecido").eq("solicitante_id", u.id).eq("status", "em_elaboracao").order("created_at", { ascending: false }),
+    contasBancariasAtivas(),
   ]);
   // Quantas parcelas tem cada lançamento (para "Editar lançamento (todas as parcelas)")
   const idsPag = [...new Set(linhas.map((l) => l.pagamentoId).filter(Boolean))] as string[];
@@ -150,8 +153,9 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
         periodo={periodo}
         hoje={hoje}
         busca={filtros.busca}
-        valores={{ obra: filtros.obra, categoria: filtros.categoria, fornecedor: filtros.fornecedor, forma: filtros.forma, cancelados: filtros.cancelados }}
+        valores={{ obra: filtros.obra, categoria: filtros.categoria, fornecedor: filtros.fornecedor, forma: filtros.forma, conta: filtros.conta, cancelados: filtros.cancelados }}
         opcoes={{
+          conta: contasBanc.map((c) => ({ v: c.id, r: c.nome })),
           obra: (obras ?? []).map((o) => ({ v: o.id, r: o.nome })),
           categoria: categorias.map((c) => ({ v: c.id, r: c.nome })),
           fornecedor: (fornecedores ?? []).map((f) => ({ v: f.id, r: f.nome })),
@@ -187,7 +191,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
         </div>
       )}
 
-      <BarraSelecao podeBaixar={podeBaixar} podeAlterar={u.perfil === "financeiro" || u.perfil === "suprimentos"} categorias={categorias} />
+      <BarraSelecao podeBaixar={podeBaixar} podeAlterar={u.perfil === "financeiro" || u.perfil === "suprimentos"} categorias={categorias} contas={contasBanc} />
 
       <div className="overflow-x-auto rounded-b-lg border-x border-b border-slate-200 bg-white">
         {visiveis.length === 0 ? (
@@ -251,7 +255,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         {l.descricao && <span className="text-xs text-slate-500">{l.descricao}</span>}
-                        {[l.categoria, l.obra, l.forma ? FORMAS_PAGAMENTO[l.forma] : null].filter(Boolean).map((t, i) => (
+                        {[l.categoria, l.obra, l.forma ? FORMAS_PAGAMENTO[l.forma] : null, l.conta ? `🏦 ${l.conta}` : null].filter(Boolean).map((t, i) => (
                           <span key={`${t}-${i}`} className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
                             {t}
                           </span>
@@ -288,6 +292,8 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
                           podeEditarParcelas={u.perfil === "financeiro" || l.criadoPor === u.id}
                           podeClonar={l.ordemId ? podeCadastrar : u.perfil === "financeiro" || u.perfil === "suprimentos"}
                           podeCancelar={podeEditar}
+                          contas={contasBanc}
+                          podeAlterarConta={l.situacao !== "cancelado" && (u.perfil === "financeiro" || (l.situacao !== "pago" && (l.criadoPor === u.id || podeEditar)))}
                         />
                       )}
                     </td>

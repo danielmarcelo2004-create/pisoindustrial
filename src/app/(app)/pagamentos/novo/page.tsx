@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fornecedoresAtivos, obrasParaCadastro } from "@/lib/consultas/cadastros";
 import { obrasParaOP } from "@/lib/consultas/obras-op";
 import { categoriasAtivas } from "@/lib/consultas/categorias";
+import { contasBancariasAtivas } from "@/lib/consultas/contas-bancarias";
 import { FLUXOS, FORMAS_PAGAMENTO_ATUAIS, type FormaPagamento } from "@/lib/rotulos";
 import { CamposPagamento } from "../campos";
 import { criarPagamento } from "../actions";
@@ -24,12 +25,13 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
   const sp = await searchParams;
   const ehEngenheiro = u.perfil === "engenheiro";
   const podeAdicionarCategoria = u.perfil === "financeiro";
-  const [obras, fornecedores, obrasOP, assinaturaUrl, categorias] = await Promise.all([
+  const [obras, fornecedores, obrasOP, assinaturaUrl, categorias, contasBancarias] = await Promise.all([
     ehEngenheiro ? Promise.resolve([]) : obrasParaCadastro(u),
     ehEngenheiro ? Promise.resolve([]) : fornecedoresAtivos(),
     obrasParaOP(),
     assinaturaDoUsuario(u.id, ehEngenheiro),
     categoriasAtivas(),
+    contasBancariasAtivas(),
   ]);
   // Engenheiro só solicita formas que não são boleto (Ordem de Pagamento).
   const formas: FormaPagamento[] = ehEngenheiro ? FORMAS_PAGAMENTO_ATUAIS : ["boleto", ...FORMAS_PAGAMENTO_ATUAIS];
@@ -39,7 +41,7 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
   const { data: origem } = clonarId
     ? await (await createClient())
         .from("pagamentos")
-        .select("numero, obra_id, fornecedor_id, favorecido, descricao, valor, categoria_id, numero_documento, observacoes")
+        .select("numero, obra_id, fornecedor_id, favorecido, descricao, valor, categoria_id, conta_bancaria_id, numero_documento, observacoes")
         .eq("id", clonarId)
         .maybeSingle()
     : { data: null };
@@ -51,6 +53,7 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
         descricao: origem.descricao,
         valor: origem.valor,
         categoria_id: origem.categoria_id,
+        conta_bancaria_id: origem.conta_bancaria_id,
         observacoes: origem.observacoes,
         vencimento: null,
       }
@@ -95,7 +98,7 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
                 </Campo>
               </Cartao>
               <Cartao titulo="Dados do pagamento">
-                <CamposPagamento fornecedores={fornecedores} padrao={padraoCampos} parcelar formaFixa="boleto" categorias={categorias} podeAdicionarCategoria={podeAdicionarCategoria} />
+                <CamposPagamento fornecedores={fornecedores} padrao={padraoCampos} parcelar formaFixa="boleto" categorias={categorias} podeAdicionarCategoria={podeAdicionarCategoria} contasBancarias={contasBancarias} podeCadastrarConta={u.perfil === "financeiro"} />
               </Cartao>
               <Cartao titulo="Repetição">
                 <RepeticaoDespesa />
@@ -127,6 +130,8 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
           assinaturaUrl,
           categorias,
           podeAdicionarCategoria,
+          contasBancarias,
+          podeCadastrarConta: u.perfil === "financeiro",
         }}
       />
     </>

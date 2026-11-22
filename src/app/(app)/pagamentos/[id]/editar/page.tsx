@@ -6,6 +6,7 @@ import { getUsuario } from "@/lib/auth";
 import { fornecedoresAtivos, obrasParaCadastro } from "@/lib/consultas/cadastros";
 import { createClient } from "@/lib/supabase/server";
 import { CamposPagamento } from "../../campos";
+import { contasBancariasAtivas } from "@/lib/consultas/contas-bancarias";
 import { atualizarPagamento } from "../../actions";
 import { EditorParcelas } from "./editor-parcelas";
 
@@ -74,7 +75,7 @@ export default async function EditarPagamentoPage({ params }: PageProps<"/pagame
           </Campo>
         </Cartao>
         <Cartao titulo="Dados do pagamento">
-          <CamposPagamento fornecedores={fornecedores} padrao={p} pagamentoId={id} categorias={categorias ?? []} podeAdicionarCategoria={u.perfil === "financeiro" || u.perfil === "administrador_master"} />
+          <CamposPagamento fornecedores={fornecedores} padrao={p} pagamentoId={id} categorias={categorias ?? []} podeAdicionarCategoria={u.perfil === "financeiro" || u.perfil === "administrador_master"} contasBancarias={await contasBancariasAtivas()} podeCadastrarConta={u.perfil === "financeiro"} />
         </Cartao>
         {(parcelas?.length ?? 0) > 1 && (
           <Cartao titulo={`Parcelas (${parcelas!.length})`}>

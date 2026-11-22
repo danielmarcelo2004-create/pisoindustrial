@@ -10,6 +10,7 @@ import { salvarRascunhoAjax } from "./actions";
 import { AnexosOP, type AnexoOP } from "./anexos-op";
 import { AssinarOP } from "./assinar-op";
 import { SeletorCategoria } from "@/components/seletor-categoria";
+import { SeletorContaBancaria } from "@/components/seletor-conta-bancaria";
 import { RepeticaoDespesa } from "@/components/repeticao-despesa";
 import { AvisosLancamento } from "@/components/avisos-lancamento";
 
@@ -32,6 +33,7 @@ type Padrao = {
   numero_nf?: string | null;
   data_competencia?: string | null;
   categoria_id?: string | null;
+  conta_bancaria_id?: string | null;
   repetir_intervalo?: number | null;
   repetir_vezes?: number | null;
   desconto?: number | string | null;
@@ -98,6 +100,8 @@ export function FormOP({
   formaFixa,
   categorias = [],
   podeAdicionarCategoria = false,
+  contasBancarias = [],
+  podeCadastrarConta = false,
 }: {
   action: (e: Estado, fd: FormData) => Promise<Estado>;
   obras: { id: string; nome: string; cidade: string; uf: string; temAdministrador: boolean }[];
@@ -111,6 +115,8 @@ export function FormOP({
   formaFixa?: FormaPagamento;
   categorias?: { id: string; nome: string }[];
   podeAdicionarCategoria?: boolean;
+  contasBancarias?: { id: string; nome: string }[];
+  podeCadastrarConta?: boolean;
 }) {
   // Rascunho: na criação ele nasce ao clicar em "Salvar rascunho para anexar", sem sair da tela.
   const [ordemId, setOrdemId] = useState<string | null>(ordemIdInicial);
@@ -263,6 +269,9 @@ export function FormOP({
           </Campo>
           <Campo rotulo="Categoria" obrigatorio ajuda="Obrigatória para enviar.">
             <SeletorCategoria categorias={categorias} valorInicial={padrao.categoria_id} podeAdicionar={podeAdicionarCategoria} />
+          </Campo>
+          <Campo rotulo="Conta bancária" obrigatorio ajuda="De qual conta sai o pagamento. Obrigatória para enviar.">
+            <SeletorContaBancaria contas={contasBancarias} valorInicial={padrao.conta_bancaria_id} podeCadastrar={podeCadastrarConta} />
           </Campo>
           <Campo rotulo="Favorecido (fornecedor)" obrigatorio>
             <input name="favorecido" required defaultValue={padrao.favorecido ?? ""} className="campo" maxLength={200} />

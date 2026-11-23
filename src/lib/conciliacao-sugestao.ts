@@ -23,6 +23,9 @@ export type LinhaExtrato = {
   classificacao: Classificacao | null;
   observacao: string | null;
   encargos: number | null;
+  transferencia_id?: string | null;
+  estorno_linha?: string | null;
+  recebimento_id?: string | null;
 };
 
 export type Candidato = {
@@ -46,9 +49,16 @@ export type Candidato = {
   pago: boolean;
 };
 
+export type TransferenciaAberta = { id: string; contaOrigem: string; contaDestino: string; outraConta: string; valor: number; data: string; descricao: string };
+
 export type Sugestao =
   | { tipo: "conta"; candidato: Candidato; nivel: "encontramos" | "quase"; motivo: string; diferenca: number }
-  | { tipo: "classificar"; classificacao: Classificacao };
+  | { tipo: "classificar"; classificacao: Classificacao }
+  | { tipo: "transferencia"; transferencia: TransferenciaAberta }
+  | { tipo: "estorno"; saida: SaidaEstornavel };
+
+/** Saída da mesma conta que um estorno pode devolver (pendente, ou já conciliada com uma conta paga). */
+export type SaidaEstornavel = { id: string; data: string; valor: number; descricao: string; situacao: "pendente" | "conciliada"; conciliadaCom: string | null };
 
 const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 const dias = (a: string, b: string) => Math.round(Math.abs(new Date(a + "T12:00:00Z").getTime() - new Date(b + "T12:00:00Z").getTime()) / 86400000);
@@ -60,19 +70,20 @@ const PALAVRAS_VAZIAS = new Set([
   "CONTA", "TARIFA", "COMPRA", "CARTAO", "INTERNET", "DEPOSITO", "SAQUE", "TITULO", "CONVENIO", "IMPOSTO", "IMPOSTOS",
 ]);
 
-/** O nome ou o CPF/CNPJ do favorecido aparece na descrição do banco? (O BB informa; a Caixa não.) */
-function nomeConfere(desc: string, c: Candidato) {
+/** Algum dos nomes (ou o CPF/CNPJ) aparece na descrição do banco? (O BB informa; a Caixa não.) */
+export function nomesConferem(desc: string, nomes: (string | null | undefined)[], documento?: string | null) {
   const d = semAcento(desc);
   const digitos = d.replace(/\D/g, "");
-  if (c.documento && c.documento.length >= 11 && digitos.includes(c.documento)) return true;
-  for (const nome of [c.favorecido, c.fornecedor ?? ""]) {
-    const palavras = semAcento(nome)
+  if (documento && documento.length >= 11 && digitos.includes(documento)) return true;
+  for (const nome of nomes) {
+    const palavras = semAcento(nome ?? "")
       .split(/[^A-Z0-9]+/)
       .filter((p) => p.length >= 4 && !PALAVRAS_VAZIAS.has(p));
     if (palavras.length && palavras.slice(0, 2).some((p) => new RegExp(`\\b${p}`).test(d))) return true;
   }
   return false;
 }
+const nomeConfere = (desc: string, c: Candidato) => nomesConferem(desc, [c.favorecido, c.fornecedor], c.documento);
 
 /** Tipo provável de linhas que não são contas a pagar. */
 export function classificacaoProvavel(descricao: string, valor: number): Classificacao | null {
@@ -141,10 +152,150 @@ export function sugerir(linhas: LinhaExtrato[], candidatos: Candidato[], contaId
       motivo: `${valor}${p.nome ? ", nome confere" : ""} · ${quando}${p.d ? ` (${p.d} dia${p.d > 1 ? "s" : ""} de diferença)` : " (mesma data)"}${p.outraConta ? ` · lançada em outra conta (${p.c.contaNome}); ao conciliar, passa para esta` : ""}`,
     });
   }
+  // Sem dica de arquivar: aplicação/resgate viram transferência, tarifa/IOF/empréstimo e compra no cartão viram
+  // novo lançamento de despesa, entrada vira recebimento (Contas a receber) e estorno se concilia com a saída.
+  return res;
+}
+
+
+/**
+ * Transferência já registrada na outra conta que espera esta movimentação: mesmo valor, sentido certo
+ * (saída na origem / entrada no destino) e data até 5 dias de diferença. Uma transferência por linha.
+ */
+export function sugerirTransferencias(linhas: LinhaExtrato[], abertas: TransferenciaAberta[], contaId: string): Map<string, TransferenciaAberta> {
+  const res = new Map<string, TransferenciaAberta>();
+  const usadas = new Set<string>();
+  const pares: { l: LinhaExtrato; t: TransferenciaAberta; d: number }[] = [];
   for (const l of linhas) {
-    if (l.situacao !== "pendente" || res.has(l.id)) continue;
-    const c = classificacaoProvavel(l.descricao, l.valor);
-    if (c) res.set(l.id, { tipo: "classificar", classificacao: c });
+    if (l.situacao !== "pendente") continue;
+    for (const t of abertas) {
+      if (!iguais(t.valor, Math.abs(l.valor))) continue;
+      if (l.valor > 0 ? t.contaDestino !== contaId : t.contaOrigem !== contaId) continue;
+      const d = dias(t.data, l.data);
+      if (d <= 5) pares.push({ l, t, d });
+    }
+  }
+  pares.sort((a, b) => a.d - b.d);
+  for (const p of pares) {
+    if (res.has(p.l.id) || usadas.has(p.t.id)) continue;
+    usadas.add(p.t.id);
+    res.set(p.l.id, p.t);
   }
   return res;
+}
+
+/** Lançamentos já feitos, para sugerir categoria/centro de custo/fornecedor de um novo lançamento. */
+export type Historico = {
+  memo: string | null; // descrição do banco, quando o lançamento foi conciliado
+  favorecido: string;
+  fornecedorId: string | null;
+  fornecedor: string | null;
+  documento: string | null;
+  categoriaId: string | null;
+  obraId: string;
+  data: string; // mais recente vence
+};
+export type SugestaoLancamento = { descricao: string; categoriaId: string | null; obraId: string | null; fornecedorId: string | null; origem: "extrato" | "nome" | "palavra" | null };
+
+/** Texto do banco sem datas, horas e números (o que se repete de um mês para outro). */
+export function chaveMemo(desc: string) {
+  return semAcento(desc)
+    .replace(/\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/g, " ")
+    .replace(/\b\d{1,2}:\d{2}(:\d{2})?\b/g, " ")
+    .replace(/\d+/g, " ")
+    .replace(/[^A-Z]+/g, " ")
+    .trim();
+}
+
+// Palavras do banco → nome de categoria provável (procura uma categoria com esse nome cadastrada)
+const PALAVRAS_CATEGORIA: [RegExp, RegExp][] = [
+  [/^TAR\b|\bTARIFA|TAR PIX|CESTA|PACOTE DE SERV|MENSALIDADE|\bIOF\b|ANUIDADE/, /TARIFA|BANCARI/],
+  [/EMPRESTIMO|FINANCIAMENTO|CONSORCIO|CAPITALIZACAO/, /EMPRESTIMO|FINANCIAMENTO|CONSORCIO|CAPITALIZACAO/],
+  [/DARF|IMPOSTO|RFB|SIMPLES NAC|\bINSS\b|\bFGTS\b|\bISS\b|\bGPS\b|SEFAZ|\bDAE\b|\bDAM\b/, /IMPOSTO|TRIBUT|ENCARGO/],
+  [/SALARIO|FOLHA|ADIANT|PRO LABORE|PROLABORE/, /SALARIO|FOLHA|PESSOAL|PRO LABORE/],
+  [/COMBUST|POSTO|GASOLINA|DIESEL|ETANOL/, /COMBUST/],
+  [/ENERGIA|COELBA|NEOENERGIA|ENEL|CEMIG|COPEL|\bLUZ\b/, /ENERGIA|\bLUZ\b/],
+  [/\bAGUA\b|EMBASA|SABESP|DESO|CASAN/, /\bAGUA\b/],
+  [/ALUGUEL|LOCACAO/, /ALUGUEL|LOCACAO/],
+  [/TELEFON|INTERNET|VIVO|CLARO|\bTIM\b|\bOI\b/, /TELEFON|INTERNET|COMUNICA/],
+];
+
+/**
+ * Sugestão para "Novo lançamento" (o ⚡ do Conta Azul): 1) a mesma descrição do banco já conciliada antes;
+ * 2) o nome/CNPJ de um favorecido ou fornecedor aparece na descrição; 3) palavras do banco (DARF, salário…)
+ * apontam uma categoria cadastrada. A descrição vem do próprio banco. Só sugere: nada é gravado.
+ */
+export function sugerirLancamento(desc: string, historico: Historico[], categorias: { id: string; nome: string }[]): SugestaoLancamento {
+  const descricao = desc.replace(/\s+/g, " ").trim();
+  const recentes = [...historico].sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0));
+  const chave = chaveMemo(desc);
+  const mesmo = chave ? recentes.find((h) => h.memo && chaveMemo(h.memo) === chave) : undefined;
+  if (mesmo) return { descricao, categoriaId: mesmo.categoriaId, obraId: mesmo.obraId, fornecedorId: mesmo.fornecedorId, origem: "extrato" };
+  const porNome = recentes.find((h) => nomesConferem(desc, [h.fornecedor, h.favorecido], h.documento));
+  if (porNome) return { descricao, categoriaId: porNome.categoriaId, obraId: porNome.obraId, fornecedorId: porNome.fornecedorId, origem: "nome" };
+  const d = semAcento(desc);
+  for (const [banco, cat] of PALAVRAS_CATEGORIA) {
+    if (!banco.test(d)) continue;
+    const c = categorias.find((x) => cat.test(semAcento(x.nome)));
+    if (c) return { descricao, categoriaId: c.id, obraId: null, fornecedorId: null, origem: "palavra" };
+  }
+  return { descricao, categoriaId: null, obraId: null, fornecedorId: null, origem: null };
+}
+
+
+/** A descrição do banco indica devolução de uma saída (PIX devolvido, TED estornada, boleto rejeitado…)? */
+export function pareceEstorno(desc: string) {
+  return /ESTORN|DEVOLU|DEVOLVID|REJEITAD|RECUSAD|\bEST\b/.test(semAcento(desc));
+}
+
+/** Saídas que esta entrada pode estornar: mesmo valor, anteriores (até 30 dias); a mais próxima primeiro. */
+export function saidasParaEstorno(credito: LinhaExtrato, saidas: SaidaEstornavel[], limiteDias = 30) {
+  if (credito.valor <= 0) return [];
+  return saidas
+    .filter((s) => s.id !== credito.id && iguais(-s.valor, credito.valor) && s.data <= credito.data && dias(s.data, credito.data) <= limiteDias)
+    .sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0) || Number(a.situacao === "conciliada") - Number(b.situacao === "conciliada"));
+}
+
+/**
+ * Sugestão de estorno ("Encontramos"): entrada pendente com palavra de estorno/devolução e uma saída da mesma
+ * conta com o mesmo valor até 10 dias antes. Cada saída é sugerida para um estorno só.
+ */
+export function sugerirEstornos(linhas: LinhaExtrato[], saidas: SaidaEstornavel[]): Map<string, SaidaEstornavel> {
+  const res = new Map<string, SaidaEstornavel>();
+  const usadas = new Set<string>();
+  const creditos = linhas.filter((l) => l.situacao === "pendente" && l.valor > 0 && pareceEstorno(l.descricao)).sort((a, b) => (a.data < b.data ? -1 : 1));
+  for (const c of creditos) {
+    const s = saidasParaEstorno(c, saidas, 10).find((x) => !usadas.has(x.id));
+    if (!s) continue;
+    usadas.add(s.id);
+    res.set(c.id, s);
+  }
+  return res;
+}
+
+/** Aplicação/resgate (BB Rende Fácil, poupança…): sugere a conta de investimento (pelo nome, ou a única). */
+export function contaDeAplicacao(desc: string, investimentos: { id: string; nome: string }[]) {
+  if (classificacaoProvavel(desc, -1) !== "aplicacao" || !investimentos.length) return null;
+  const porNome = investimentos.find((c) => nomesConferem(desc, [c.nome]));
+  return porNome ?? (investimentos.length === 1 ? investimentos[0] : null);
+}
+
+/** Recebimentos já lançados, para sugerir centro de custo, categoria e cliente de uma nova entrada. */
+export type HistoricoReceita = { memo: string | null; cliente: string; categoriaId: string | null; obraId: string; data: string };
+export type SugestaoRecebimento = { descricao: string; categoriaId: string | null; obraId: string | null; cliente: string; origem: "extrato" | "nome" | "palavra" | null };
+
+/** "Novo lançamento" de receita: mesma descrição do banco já lançada; cliente na descrição; "medição" → categoria de medição. */
+export function sugerirRecebimento(desc: string, historico: HistoricoReceita[], categorias: { id: string; nome: string }[]): SugestaoRecebimento {
+  const descricao = desc.replace(/\s+/g, " ").trim();
+  const recentes = [...historico].sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0));
+  const chave = chaveMemo(desc);
+  const mesmo = chave ? recentes.find((h) => h.memo && chaveMemo(h.memo) === chave) : undefined;
+  if (mesmo) return { descricao, categoriaId: mesmo.categoriaId, obraId: mesmo.obraId, cliente: mesmo.cliente, origem: "extrato" };
+  const porNome = recentes.find((h) => nomesConferem(desc, [h.cliente]));
+  if (porNome) return { descricao, categoriaId: porNome.categoriaId, obraId: porNome.obraId, cliente: porNome.cliente, origem: "nome" };
+  if (/MEDIC/.test(semAcento(desc))) {
+    const c = categorias.find((x) => /MEDIC/.test(semAcento(x.nome)));
+    if (c) return { descricao, categoriaId: c.id, obraId: null, cliente: "", origem: "palavra" };
+  }
+  return { descricao, categoriaId: null, obraId: null, cliente: "", origem: null };
 }

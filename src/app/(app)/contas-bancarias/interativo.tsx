@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useActionState, useContext, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { moeda } from "@/lib/formato";
-import type { Candidato, Classificacao, LinhaExtrato, Sugestao } from "@/lib/consultas/conciliacao";
-import { arquivar, conciliar, criarContaBancaria, desfazer, importarExtrato, renomearConta, restaurar } from "./actions";
+import type { Candidato, Classificacao, LinhaExtrato, SaidaEstornavel, Sugestao, SugestaoLancamento, SugestaoRecebimento } from "@/lib/consultas/conciliacao";
+import { pareceEstorno } from "@/lib/conciliacao-sugestao";
+import { arquivar, conciliar, conciliarEstorno, conciliarTransferencia, criarContaBancaria, criarContaInvestimento, desfazer, importarExtrato, novaTransferencia, novoLancamento, novoLancamentoCompleto, novoRecebimento, renomearConta, restaurar } from "./actions";
 
 const br = (iso: string) => iso.split("-").reverse().join("/");
 const botao = "rounded-md px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40";
@@ -138,24 +139,97 @@ function MenuIgnorar({ ids, rotulo = "Arquivar ▾", sugerida, aoTerminar, peque
 const DIAS = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 const diaSemana = (iso: string) => DIAS[new Date(iso + "T12:00:00Z").getUTCDay()];
 
+type Opcao = { id: string; nome: string };
+export type ListasConciliacao = {
+  candidatos: Candidato[];
+  categorias: Opcao[];
+  categoriasReceita: Opcao[];
+  obras: (Opcao & { cliente?: string | null })[];
+  fornecedores: Opcao[];
+  contas: Opcao[]; // outras contas bancárias da empresa (para transferência)
+  contaAtual: string;
+};
+const ContextoListas = createContext<ListasConciliacao>({ candidatos: [], categorias: [], categoriasReceita: [], obras: [], fornecedores: [], contas: [], contaAtual: "" });
+
+/** Listas usadas pelas linhas (contas a pagar candidatas, categorias, centros de custo, fornecedores, contas) — uma vez só na página. */
+export function ProvedorListas({ listas, children }: { listas: ListasConciliacao; children: ReactNode }) {
+  return <ContextoListas.Provider value={listas}>{children}</ContextoListas.Provider>;
+}
+
+const raio = <span className="ml-1 rounded bg-sky-100 px-1 text-[10px] font-semibold text-sky-700" title="Sugerido a partir dos lançamentos anteriores">⚡ sugerido</span>;
+
 /**
  * Uma conciliação pendente, como no Conta Azul: "Lançamentos do banco" à esquerda, a sugestão no meio
- * (Encontramos / Quase lá + Conciliar) e "Lançamentos do sistema" à direita. Nada acontece sem clique.
+ * (Encontramos / Quase lá + Conciliar) e "Lançamentos do sistema" à direita. Sem conta a pagar parecida,
+ * o lado direito oferece "Novo lançamento" (despesa já paga, sem aprovação) ou "Nova transferência".
+ * Nada acontece sem clique.
  */
-export function LinhaPendente({ linha, sugestao, candidatos, podeAgir }: { linha: LinhaExtrato; sugestao: Sugestao | null; candidatos: Candidato[]; podeAgir: boolean }) {
+export function LinhaPendente({
+  linha,
+  sugestao,
+  sugestaoLancamento,
+  podeAgir,
+  estornos = [],
+  contaAplicacao = null,
+  aplicacaoSemConta = false,
+  sugestaoRecebimento = null,
+}: {
+  linha: LinhaExtrato;
+  sugestao: Sugestao | null;
+  sugestaoLancamento: SugestaoLancamento | null;
+  podeAgir: boolean;
+  estornos?: SaidaEstornavel[]; // saídas que esta entrada pode devolver
+  contaAplicacao?: Opcao | null; // aplicação/resgate: a conta de investimento sugerida
+  aplicacaoSemConta?: boolean; // aplicação/resgate sem conta de investimento cadastrada
+  sugestaoRecebimento?: SugestaoRecebimento | null; // entrada: sugestão do "Novo lançamento" de receita
+}) {
+  const { candidatos, categorias, categoriasReceita, obras, fornecedores, contas, contaAtual } = useContext(ContextoListas);
   const router = useRouter();
   const [erro, setErro] = useState("");
   const [buscar, setBuscar] = useState(false);
   const [descartada, setDescartada] = useState(false);
   const [inicial, setInicial] = useState<string[]>([]);
   const [pend, iniciar] = useTransition();
+  const saida = linha.valor < 0;
+  const [aba, setAba] = useState<"lancamento" | "transferencia" | "estorno">(
+    contaAplicacao || aplicacaoSemConta ? "transferencia" : saida ? "lancamento" : estornos.length && pareceEstorno(linha.descricao) ? "estorno" : "lancamento",
+  );
+  const [estSel, setEstSel] = useState(estornos.length === 1 ? estornos[0].id : "");
+  const [completar, setCompletar] = useState(false);
+  const [lanc, setLanc] = useState({
+    descricao: sugestaoLancamento?.descricao ?? linha.descricao,
+    categoria: sugestaoLancamento?.categoriaId ?? "",
+    obra: sugestaoLancamento?.obraId ?? "",
+    fornecedor: sugestaoLancamento?.fornecedorId ?? "",
+  });
+  const [rec, setRec] = useState({
+    descricao: sugestaoRecebimento?.descricao ?? linha.descricao,
+    categoria: sugestaoRecebimento?.categoriaId ?? "",
+    obra: sugestaoRecebimento?.obraId ?? "",
+    cliente: sugestaoRecebimento?.cliente ?? "",
+  });
+  const [transf, setTransf] = useState({ descricao: linha.descricao, conta: contaAplicacao?.id ?? "" });
   const fim = (e?: string) => (e ? setErro(e) : (setErro(""), router.refresh()));
   const sug = descartada ? null : sugestao;
   const conta = sug?.tipo === "conta" ? sug : null;
   const classe = sug?.tipo === "classificar" ? sug.classificacao : null;
-  const saida = linha.valor < 0;
+  const transfSug = sug?.tipo === "transferencia" ? sug.transferencia : null;
+  const estornoSug = sug?.tipo === "estorno" ? sug.saida : null;
   const abrirBusca = (pre: string[] = []) => (setInicial(pre), setBuscar(true));
   const conciliarAgora = () => conta && iniciar(async () => fim((await conciliar(linha.id, [{ tipo: conta.candidato.tipo, id: conta.candidato.id }], null)).erro));
+  const semConta = !conta && !transfSug && !estornoSug;
+  const podeLancar = Boolean(lanc.categoria && lanc.obra && lanc.descricao.trim());
+  const acaoMeio = () => {
+    if (transfSug) return iniciar(async () => fim((await conciliarTransferencia(linha.id, transfSug.id)).erro));
+    if (estornoSug) return iniciar(async () => fim((await conciliarEstorno(linha.id, estornoSug.id)).erro));
+    if (aba === "estorno") return iniciar(async () => fim((await conciliarEstorno(linha.id, estSel)).erro));
+    if (aba === "lancamento" && !saida) return iniciar(async () => fim((await novoRecebimento(linha.id, { obra: rec.obra, categoria: rec.categoria, cliente: rec.cliente, descricao: rec.descricao })).erro));
+    if (aba === "lancamento") return iniciar(async () => fim((await novoLancamento(linha.id, { obra: lanc.obra, categoria: lanc.categoria, descricao: lanc.descricao, fornecedor: lanc.fornecedor })).erro));
+    return iniciar(async () => fim((await novaTransferencia(linha.id, transf.conta, transf.descricao)).erro));
+  };
+  const meioHabilitado = transfSug || estornoSug ? true : aba === "lancamento" ? (saida ? podeLancar : Boolean(rec.categoria && rec.obra && rec.cliente.trim() && rec.descricao.trim())) : aba === "estorno" ? Boolean(estSel) : Boolean(transf.conta);
+  const sugerido = (campo: "categoria" | "obra" | "fornecedor", valor: string) =>
+    sugestaoLancamento && valor && valor === (campo === "categoria" ? sugestaoLancamento.categoriaId : campo === "obra" ? sugestaoLancamento.obraId : sugestaoLancamento.fornecedorId);
 
   return (
     <div className="grid items-stretch gap-3 px-4 py-3 lg:grid-cols-[1fr_8rem_1fr]" data-linha-banco={linha.id}>
@@ -179,7 +253,9 @@ export function LinhaPendente({ linha, sugestao, candidatos, podeAgir }: { linha
           </span>
           <span className={`text-base font-semibold tabular-nums ${saida ? "text-red-600" : "text-emerald-700"}`}>{moeda(linha.valor)}</span>
         </div>
-        <div className="flex-1 px-3 py-2 text-sm break-words text-slate-800">{linha.descricao || linha.tipo || "—"}</div>
+        <div className="flex-1 px-3 py-2 text-sm break-words text-slate-800" data-descricao-banco>
+          {linha.descricao || linha.tipo || "—"}
+        </div>
         <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-3 py-2">
           <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Integração bancária (OFX)</span>
           {podeAgir && <MenuIgnorar ids={[linha.id]} sugerida={classe} aoTerminar={fim} pequeno />}
@@ -205,12 +281,30 @@ export function LinhaPendente({ linha, sugestao, candidatos, podeAgir }: { linha
               </button>
             )}
           </>
-        ) : classe ? (
-          <span className="rounded bg-slate-100 px-2 py-0.5 text-center text-xs font-semibold text-slate-600" data-sugestao="classificar">
-            Não é conta a pagar?
-          </span>
         ) : (
-          <span className="text-xs text-slate-400">Sem sugestão</span>
+          <>
+            {transfSug || estornoSug ? (
+              <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800" data-sugestao={transfSug ? "transferencia" : "estorno"}>
+                Encontramos
+              </span>
+            ) : classe ? (
+              <span className="rounded bg-slate-100 px-2 py-0.5 text-center text-xs font-semibold text-slate-600" data-sugestao="classificar">
+                Não é conta a pagar?
+              </span>
+            ) : null}
+            {podeAgir && (
+              <button
+                type="button"
+                disabled={pend || !meioHabilitado}
+                className={`${botao} w-28 bg-sky-700 text-white hover:bg-sky-800`}
+                onClick={acaoMeio}
+                title={!meioHabilitado ? (aba === "lancamento" ? (saida ? "Escolha a categoria e o centro de custo" : "Escolha a categoria, o centro de custo e o cliente") : aba === "estorno" ? "Escolha a saída estornada" : "Escolha a outra conta") : undefined}
+                data-conciliar-novo
+              >
+                {pend ? "…" : "Conciliar"}
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -270,45 +364,338 @@ export function LinhaPendente({ linha, sugestao, candidatos, podeAgir }: { linha
               </div>
             )}
           </>
-        ) : (
-          <div className="flex flex-1 flex-col items-start justify-center gap-2 px-3 py-3 text-sm text-slate-600">
-            {classe ? (
-              <>
-                <span>
-                  Parece <strong>{ROTULOS[classe]}</strong> — não é uma conta a pagar.
-                </span>
-                {podeAgir && (
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" disabled={pend} className={`${botao} bg-slate-700 text-white hover:bg-slate-800`} onClick={() => iniciar(async () => fim((await arquivar([linha.id], classe)).erro))}>
-                      Arquivar como {ROTULOS[classe]}
-                    </button>
-                    {saida && (
-                      <button type="button" className={`${botao} border border-slate-300 bg-white text-slate-700`} onClick={() => abrirBusca()}>
-                        Buscar lançamento
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : saida ? (
-              <>
-                <span>Nenhuma conta a pagar com valor e data parecidos.</span>
-                {podeAgir && (
-                  <button type="button" className={`${botao} border border-sky-300 bg-white text-sky-800 hover:bg-sky-50`} onClick={() => abrirBusca()}>
-                    🔍 Buscar lançamento
-                  </button>
-                )}
-              </>
-            ) : (
-              <span>Entrada no banco: não é conta a pagar. Use “Arquivar ▾” e escolha o tipo.</span>
+        ) : transfSug ? (
+          <div className="flex-1 space-y-1 px-3 py-3 text-sm" data-transferencia-sugerida>
+            <div className="font-medium text-slate-800">
+              Transferência {saida ? "para" : "de"} {transfSug.outraConta} · <span className="tabular-nums">{moeda(transfSug.valor)}</span>
+            </div>
+            <div className="text-xs text-slate-600">
+              Registrada em {br(transfSug.data)} na outra conta{transfSug.descricao ? ` · ${transfSug.descricao}` : ""}. Ao conciliar, as duas pontas ficam ligadas.
+            </div>
+            {podeAgir && (
+              <button type="button" className="mt-1 text-xs text-sky-700 hover:underline" onClick={() => setDescartada(true)}>
+                Não é esta transferência
+              </button>
             )}
           </div>
+        ) : estornoSug ? (
+          <div className="flex-1 space-y-1 px-3 py-3 text-sm" data-estorno-sugerido>
+            <div className="font-medium text-slate-800">
+              Estorno de: {estornoSug.descricao} · <span className="tabular-nums">{moeda(estornoSug.valor)}</span> ({br(estornoSug.data)})
+            </div>
+            <div className="text-xs text-slate-600">
+              {estornoSug.conciliadaCom ? (
+                <>
+                  Essa saída já estava conciliada com <strong>{estornoSug.conciliadaCom}</strong>. Ao conciliar o estorno, o pagamento é desfeito: a conta volta para <strong>em aberto</strong> (o lançamento criado pela conciliação é cancelado) e quem responde pelo centro de custo é avisado.
+                </>
+              ) : (
+                "O dinheiro saiu e voltou: as duas linhas são conciliadas juntas, sem lançamento."
+              )}
+            </div>
+            {podeAgir && (
+              <button type="button" className="mt-1 text-xs text-sky-700 hover:underline" onClick={() => setDescartada(true)}>
+                Não é este estorno
+              </button>
+            )}
+          </div>
+        ) : podeAgir ? (
+          <div className="flex flex-1 flex-col">
+            {classe && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                Parece <strong>{ROTULOS[classe]}</strong> — não é uma conta a pagar.
+                <button type="button" disabled={pend} className="rounded bg-slate-700 px-2 py-1 font-medium text-white hover:bg-slate-800" onClick={() => iniciar(async () => fim((await arquivar([linha.id], classe)).erro))}>
+                  Arquivar como {ROTULOS[classe]}
+                </button>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2">
+              <div className="flex overflow-hidden rounded border border-sky-300 text-xs font-medium" role="tablist">
+                <button type="button" role="tab" aria-selected={aba === "lancamento"} className={`px-2 py-1 ${aba === "lancamento" ? "bg-sky-700 text-white" : "bg-white text-sky-800"}`} onClick={() => setAba("lancamento")}>
+                  Novo lançamento
+                </button>
+                <button type="button" role="tab" aria-selected={aba === "transferencia"} className={`px-2 py-1 ${aba === "transferencia" ? "bg-sky-700 text-white" : "bg-white text-sky-800"}`} onClick={() => setAba("transferencia")}>
+                  Nova transferência
+                </button>
+                {!saida && estornos.length > 0 && (
+                  <button type="button" role="tab" aria-selected={aba === "estorno"} className={`px-2 py-1 ${aba === "estorno" ? "bg-sky-700 text-white" : "bg-white text-sky-800"}`} onClick={() => setAba("estorno")}>
+                    Estorno
+                  </button>
+                )}
+              </div>
+              {saida && (
+                <button type="button" className="text-xs font-medium text-sky-700 hover:underline" onClick={() => abrirBusca()}>
+                  🔍 Buscar lançamento
+                </button>
+              )}
+            </div>
+            {aba === "lancamento" && saida ? (
+              <div className="grid gap-2 px-3 py-2 text-xs sm:grid-cols-2" data-novo-lancamento>
+                <label className="sm:col-span-2">
+                  Descrição *
+                  <input value={lanc.descricao} onChange={(e) => setLanc({ ...lanc, descricao: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Descrição do novo lançamento" />
+                </label>
+                <label>
+                  Categoria *{sugerido("categoria", lanc.categoria) && raio}
+                  <select value={lanc.categoria} onChange={(e) => setLanc({ ...lanc, categoria: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Categoria do novo lançamento">
+                    <option value="">Escolha…</option>
+                    {categorias.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Centro de custo *{sugerido("obra", lanc.obra) && raio}
+                  <select value={lanc.obra} onChange={(e) => setLanc({ ...lanc, obra: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Centro de custo do novo lançamento">
+                    <option value="">Escolha…</option>
+                    {obras.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="sm:col-span-2">
+                  Fornecedor{sugerido("fornecedor", lanc.fornecedor) && raio}
+                  <select value={lanc.fornecedor} onChange={(e) => setLanc({ ...lanc, fornecedor: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Fornecedor do novo lançamento">
+                    <option value="">— Sem fornecedor —</option>
+                    {fornecedores.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex items-center justify-between gap-2 sm:col-span-2">
+                  <span className="text-[11px] text-slate-500">Entra como despesa paga, sem aprovação; quem aprova no centro de custo é avisado.</span>
+                  <button type="button" className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" onClick={() => setCompletar(true)}>
+                    Completar informações
+                  </button>
+                </div>
+              </div>
+            ) : aba === "lancamento" && !saida ? (
+              <div className="grid gap-2 px-3 py-2 text-xs sm:grid-cols-2" data-novo-recebimento>
+                <label className="sm:col-span-2">
+                  Descrição *
+                  <input value={rec.descricao} onChange={(e) => setRec({ ...rec, descricao: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Descrição do recebimento" />
+                </label>
+                <label>
+                  Categoria de receita *{sugestaoRecebimento?.categoriaId && rec.categoria === sugestaoRecebimento.categoriaId && raio}
+                  <select value={rec.categoria} onChange={(e) => setRec({ ...rec, categoria: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Categoria do recebimento">
+                    <option value="">{categoriasReceita.length ? "Escolha…" : "Cadastre em Categorias › Receitas"}</option>
+                    {categoriasReceita.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Centro de custo *{sugestaoRecebimento?.obraId && rec.obra === sugestaoRecebimento.obraId && raio}
+                  <select
+                    value={rec.obra}
+                    onChange={(e) => {
+                      const o = obras.find((x) => x.id === e.target.value);
+                      setRec({ ...rec, obra: e.target.value, cliente: rec.cliente.trim() ? rec.cliente : (o?.cliente ?? "") });
+                    }}
+                    className="campo mt-0.5 py-1 text-sm"
+                    aria-label="Centro de custo do recebimento"
+                  >
+                    <option value="">Escolha…</option>
+                    {obras.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="sm:col-span-2">
+                  Cliente *{sugestaoRecebimento?.cliente && rec.cliente === sugestaoRecebimento.cliente && raio}
+                  <input value={rec.cliente} onChange={(e) => setRec({ ...rec, cliente: e.target.value })} placeholder="Quem pagou (o cliente da obra vem preenchido)" className="campo mt-0.5 py-1 text-sm" aria-label="Cliente do recebimento" />
+                </label>
+                <span className="text-[11px] text-slate-500 sm:col-span-2">Entra em Contas a receber como recebido, com a data e o valor do banco. A nota de medição pode ser anexada depois, no recebimento.</span>
+              </div>
+            ) : aba === "estorno" && !saida ? (
+              <div className="grid gap-2 px-3 py-2 text-xs" data-estorno>
+                <span className="text-slate-600">Qual saída desta conta voltou? (mesmo valor, até 30 dias antes)</span>
+                {estornos.map((e) => (
+                  <label key={e.id} className="flex items-start gap-2 rounded border border-slate-200 px-2 py-1.5 text-sm">
+                    <input type="radio" name={`estorno-${linha.id}`} checked={estSel === e.id} onChange={() => setEstSel(e.id)} className="mt-1" />
+                    <span>
+                      <strong className="tabular-nums">{br(e.data)}</strong> · {e.descricao} · <span className="tabular-nums">{moeda(e.valor)}</span>
+                      <span className="block text-xs text-slate-500">{e.conciliadaCom ? `Conciliada com ${e.conciliadaCom}: a conta volta para em aberto` : "Pendente: as duas linhas são conciliadas juntas"}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <div className="grid gap-2 px-3 py-2 text-xs" data-nova-transferencia>
+                <label>
+                  Descrição *
+                  <input value={transf.descricao} onChange={(e) => setTransf({ ...transf, descricao: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Descrição da transferência" />
+                </label>
+                <label>
+                  {saida ? "Destino *" : "Origem *"}
+                  {contaAplicacao && transf.conta === contaAplicacao.id && raio}
+                  <select value={transf.conta} onChange={(e) => setTransf({ ...transf, conta: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label={saida ? "Conta de destino" : "Conta de origem"}>
+                    <option value="">Escolha a conta…</option>
+                    {contas.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {aplicacaoSemConta && (
+                  <span className="flex flex-wrap items-center gap-2 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-900" data-sem-investimento>
+                    Parece {saida ? "aplicação" : "resgate"}: cadastre a conta de investimento (ex.: BB Rende Fácil) para lançar como transferência.
+                    <CadastrarConta investimentoInicial voltar={contaAtual} rotulo="+ Conta de investimento" />
+                  </span>
+                )}
+                <span className="text-[11px] text-slate-500">Transferência entre contas da empresa: não é despesa. {saida ? "A entrada" : "A saída"} na outra conta aparece sugerida quando o extrato dela for importado.</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center px-3 py-3 text-sm text-slate-500">{classe ? `Parece ${ROTULOS[classe]}.` : "Sem conta a pagar parecida."}</div>
         )}
         <div className="px-3">
           <Mensagem erro={erro} />
         </div>
       </div>
+      {semConta && completar && (
+        <CompletarLancamento linha={linha} inicial={lanc} aoFechar={() => setCompletar(false)} aoConcluir={() => (setCompletar(false), router.refresh())} />
+      )}
       {buscar && <BuscarConta linha={linha} candidatos={candidatos} inicial={inicial} aoFechar={() => (setBuscar(false), setInicial([]))} aoConciliar={() => (setBuscar(false), router.refresh())} />}
+    </div>
+  );
+}
+
+/** "Completar informações" do novo lançamento (a tela de nova despesa do Conta Azul, já preenchida e paga). */
+function CompletarLancamento({ linha, inicial, aoFechar, aoConcluir }: { linha: LinhaExtrato; inicial: { descricao: string; categoria: string; obra: string; fornecedor: string }; aoFechar: () => void; aoConcluir: () => void }) {
+  const { categorias, obras, fornecedores } = useContext(ContextoListas);
+  const [estado, acao, enviando] = useActionState(novoLancamentoCompleto.bind(null, linha.id), null);
+  const banco = -linha.valor;
+  const [v, setV] = useState({ valor: banco.toLocaleString("pt-BR", { minimumFractionDigits: 2 }), juros: "", multa: "", desconto: "" });
+  const num = (x: string) => (x.trim() ? Number(x.replace(/\./g, "").replace(",", ".")) : 0);
+  const total = Math.round((num(v.valor) + num(v.juros) + num(v.multa) - num(v.desconto)) * 100) / 100;
+  const bate = Math.abs(total - banco) < 0.005;
+  useEffect(() => {
+    if (estado?.ok && !estado.erro) aoConcluir();
+  }, [estado, aoConcluir]);
+  return (
+    <div role="dialog" aria-label="Completar informações do lançamento" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4">
+      <form action={acao} className="max-h-[92vh] w-full max-w-3xl space-y-4 overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-slate-800">Nova despesa (lançada pela conciliação)</h3>
+          <button type="button" onClick={aoFechar} className="text-slate-500" aria-label="Fechar">
+            ✕
+          </button>
+        </div>
+        <fieldset className="grid gap-3 rounded-md border border-slate-200 p-3 text-sm sm:grid-cols-4">
+          <legend className="px-1 text-xs font-semibold text-slate-600">Informações do lançamento</legend>
+          <label className="sm:col-span-2">
+            Fornecedor
+            <select name="fornecedor_id" defaultValue={inicial.fornecedor} className="campo mt-1">
+              <option value="">— Sem fornecedor —</option>
+              {fornecedores.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Data de competência *
+            <input type="date" name="data_competencia" required defaultValue={linha.data} className="campo mt-1" />
+          </label>
+          <label>
+            Valor *
+            <input name="valor" value={v.valor} onChange={(e) => setV({ ...v, valor: e.target.value })} inputMode="decimal" className="campo mt-1 tabular-nums" aria-label="Valor da despesa" />
+          </label>
+          <label className="sm:col-span-4">
+            Descrição *
+            <input name="descricao" required defaultValue={inicial.descricao} maxLength={500} className="campo mt-1" />
+          </label>
+          <label className="sm:col-span-2">
+            Categoria *
+            <select name="categoria_id" required defaultValue={inicial.categoria} className="campo mt-1">
+              <option value="">Escolha…</option>
+              {categorias.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="sm:col-span-2">
+            Centro de custo *
+            <select name="obra_id" required defaultValue={inicial.obra} className="campo mt-1">
+              <option value="">Escolha…</option>
+              {obras.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+        </fieldset>
+        <fieldset className="grid gap-3 rounded-md border border-slate-200 p-3 text-sm sm:grid-cols-4">
+          <legend className="px-1 text-xs font-semibold text-slate-600">Condição e informações do pagamento</legend>
+          <label>
+            Forma de pagamento
+            <select name="forma_pagamento" defaultValue="" className="campo mt-1">
+              <option value="">—</option>
+              <option value="pix">PIX</option>
+              <option value="boleto">Boleto</option>
+              <option value="transferencia">Transferência bancária</option>
+              <option value="dinheiro">Dinheiro</option>
+              <option value="cartao">Cartão</option>
+              <option value="cheque">Cheque</option>
+              <option value="outro">Outro</option>
+            </select>
+          </label>
+          <div>
+            Data do pagamento
+            <div className="campo mt-1 bg-slate-50">{br(linha.data)}</div>
+          </div>
+          <div className="sm:col-span-2">
+            Valor pago (saiu do banco) · <span className="text-emerald-700">✓ Pago</span>
+            <div className="campo mt-1 bg-slate-50 tabular-nums">{moeda(banco)}</div>
+          </div>
+          {(["juros", "multa", "desconto"] as const).map((k) => (
+            <label key={k}>
+              {k === "juros" ? "Juros" : k === "multa" ? "Multa" : "Desconto"}
+              <input name={k} value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value })} inputMode="decimal" placeholder="0,00" className="campo mt-1 tabular-nums" aria-label={k} />
+            </label>
+          ))}
+          <div className={`text-right text-sm ${bate ? "text-slate-700" : "text-red-600"}`} data-total-lancamento>
+            Total: <strong className="tabular-nums">{moeda(total)}</strong>
+            {!bate && <div className="text-xs">precisa dar {moeda(banco)}</div>}
+          </div>
+        </fieldset>
+        <label className="block text-sm">
+          Observações
+          <textarea name="observacoes" rows={2} className="campo mt-1" />
+        </label>
+        <label className="block text-sm">
+          Anexos (comprovante, nota, recibo)
+          <input type="file" name="anexos" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.xml" className="campo mt-1" />
+        </label>
+        <p className="text-xs text-slate-500">
+          Entra como despesa paga e conciliada com este lançamento do banco, sem fluxo de aprovação (o valor já saiu da conta). O engenheiro e o administrador do centro de custo recebem um aviso.
+        </p>
+        {estado?.erro && <Mensagem erro={estado.erro} />}
+        <div className="flex justify-end gap-2">
+          <button type="button" className={`${botao} border border-slate-300`} onClick={aoFechar}>
+            Voltar
+          </button>
+          <button type="submit" disabled={enviando || !bate} className={`${botao} bg-sky-700 text-white hover:bg-sky-800`}>
+            {enviando ? "Salvando…" : "Salvar e conciliar"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -464,7 +851,7 @@ function BuscarConta({ linha, candidatos, inicial = [], aoFechar, aoConciliar }:
   );
 }
 
-export function Desfazer({ linhaId, algumaBaixou }: { linhaId: string; algumaBaixou: boolean }) {
+export function Desfazer({ linhaId, algumaBaixou, lancado = false, transferencia = false, estorno = false, recebimento = false }: { linhaId: string; algumaBaixou: boolean; lancado?: boolean; transferencia?: boolean; estorno?: boolean; recebimento?: boolean }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
   const [voltar, setVoltar] = useState(false);
@@ -482,10 +869,30 @@ export function Desfazer({ linhaId, algumaBaixou }: { linhaId: string; algumaBai
             <h3 className="text-base font-semibold text-slate-800">Desfazer conciliação</h3>
             <p className="mt-1 text-sm text-slate-600">O lançamento do banco volta para as pendentes.</p>
             <div className="mt-3 space-y-2 text-sm">
+              {recebimento ? (
+                <>
+                  <label className="flex items-start gap-2">
+                    <input type="radio" name="voltar" checked={!voltar} onChange={() => setVoltar(false)} /> <span>Apenas desfazer: o recebimento continua lançado</span>
+                  </label>
+                  <label className="flex items-start gap-2">
+                    <input type="radio" name="voltar" checked={voltar} onChange={() => setVoltar(true)} /> <span>Desfazer e cancelar o recebimento</span>
+                  </label>
+                </>
+              ) : estorno ? (
+                <p className="text-slate-700">O estorno é separado da saída: as duas linhas voltam para as pendentes. A conta que foi reaberta pelo estorno continua em aberto.</p>
+              ) : transferencia ? (
+                <p className="text-slate-700">A transferência é solta desta movimentação{" "}(se a outra ponta também não estiver conciliada, a transferência é apagada).</p>
+              ) : (
               <label className="flex items-start gap-2">
                 <input type="radio" name="voltar" checked={!voltar} onChange={() => setVoltar(false)} /> <span>Apenas desfazer — as contas continuam pagas</span>
               </label>
-              {algumaBaixou && (
+              )}
+              {lancado && !transferencia && !estorno && (
+                <label className="flex items-start gap-2">
+                  <input type="radio" name="voltar" checked={voltar} onChange={() => setVoltar(true)} /> <span>Desfazer e cancelar o lançamento criado pela conciliação</span>
+                </label>
+              )}
+              {algumaBaixou && !transferencia && !estorno && (
                 <label className="flex items-start gap-2">
                   <input type="radio" name="voltar" checked={voltar} onChange={() => setVoltar(true)} /> <span>Desfazer e estornar a baixa feita pela conciliação — as contas voltam a ficar a pagar</span>
                 </label>
@@ -580,7 +987,6 @@ export function BarraLancamentos({ ordem, linkOrdem }: { ordem: string; linkOrde
             <button role="menuitem" type="button" className={item} onClick={() => marcar(() => true)}>Todos desta página</button>
             <button role="menuitem" type="button" className={item} onClick={() => marcar((c) => c.dataset.nivel === "encontramos" && Boolean(c.dataset.conc))}>Com sugestão “Encontramos”</button>
             <button role="menuitem" type="button" className={item} onClick={() => marcar((c) => Boolean(c.dataset.conc))}>Com sugestão de valor igual</button>
-            <button role="menuitem" type="button" className={item} onClick={() => marcar((c) => Boolean(c.dataset.classe))}>Que não parecem contas a pagar (tarifas, entradas…)</button>
             <button role="menuitem" type="button" className={`${item} border-t border-slate-100`} onClick={() => marcar(() => false)}>Nenhum</button>
           </div>
         )}
@@ -607,7 +1013,7 @@ export function BarraLancamentos({ ordem, linkOrdem }: { ordem: string; linkOrde
       >
         {pend ? "Aguarde…" : `Conciliar${sel.conc ? ` (${sel.conc})` : ""}`}
       </button>
-      <IgnorarMarcadas habilitado={sel.total > 0} comSugestao={sel.classe} aoTerminar={(r) => (setMsg(r), router.refresh())} />
+      <IgnorarMarcadas habilitado={sel.total > 0} aoTerminar={(r) => (setMsg(r), router.refresh())} />
       <div className="relative ml-auto">
         <button type="button" onClick={() => setMenu(menu === "ordenar" ? "" : "ordenar")} className={`${botao} border border-slate-300 bg-white text-slate-700`}>
           Ordenar ▾
@@ -637,8 +1043,8 @@ export function BarraLancamentos({ ordem, linkOrdem }: { ordem: string; linkOrde
   );
 }
 
-/** "Arquivar ▾" da barra: arquiva as marcadas com o tipo sugerido de cada uma, ou todas com um tipo escolhido. */
-function IgnorarMarcadas({ habilitado, comSugestao, aoTerminar }: { habilitado: boolean; comSugestao: number; aoTerminar: (r: { tipo: "ok" | "erro"; texto: string }) => void }) {
+/** "Arquivar ▾" da barra: arquiva as marcadas com o tipo escolhido (só para o que não é dinheiro de verdade). */
+function IgnorarMarcadas({ habilitado, aoTerminar }: { habilitado: boolean; aoTerminar: (r: { tipo: "ok" | "erro"; texto: string }) => void }) {
   const [aberto, setAberto] = useState(false);
   const [pend, iniciar] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
@@ -662,28 +1068,7 @@ function IgnorarMarcadas({ habilitado, comSugestao, aoTerminar }: { habilitado: 
       </button>
       {aberto && (
         <div role="menu" className="absolute left-0 z-30 mt-1 w-80 rounded-md border border-slate-200 bg-white py-1 shadow-lg">
-          <button
-            role="menuitem"
-            type="button"
-            disabled={!comSugestao}
-            className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:text-slate-300"
-            onClick={() =>
-              executar(async () => {
-                const grupos = new Map<string, string[]>();
-                for (const c of marcadas()) if (c.dataset.classe) grupos.set(c.dataset.classe, [...(grupos.get(c.dataset.classe) ?? []), c.dataset.linha!]);
-                let n = 0;
-                for (const [classe, ids] of grupos) {
-                  const r = await arquivar(ids, classe);
-                  if (r.erro) return { n, erro: r.erro };
-                  n += ids.length;
-                }
-                return { n };
-              })
-            }
-          >
-            Com o tipo sugerido de cada uma ({comSugestao})
-          </button>
-          <div className="border-t border-slate-100 px-4 py-1 text-xs text-slate-500">Ou todas as marcadas como:</div>
+<div className="px-4 py-1 text-xs text-slate-500">Arquivar as marcadas como (não é dinheiro de verdade, ex.: lançamento duplicado do banco):</div>
           {(Object.keys(ROTULOS) as Classificacao[]).map((c) => (
             <button
               key={c}
@@ -758,23 +1143,35 @@ export function SeletorConta({ contas, atual }: { contas: { id: string; nome: st
 
 
 /** "Cadastrar conta": nome, banco, agência e conta (o extrato importado depois cai nela). */
-export function CadastrarConta({ abertoInicial = false }: { abertoInicial?: boolean }) {
+export function CadastrarConta({ abertoInicial = false, investimentoInicial = false, voltar, rotulo = "+ Cadastrar conta" }: { abertoInicial?: boolean; investimentoInicial?: boolean; voltar?: string; rotulo?: string }) {
   const [aberto, setAberto] = useState(abertoInicial);
   const [estado, acao, enviando] = useActionState(criarContaBancaria, null);
+  const [estadoInv, acaoInv, enviandoInv] = useActionState(criarContaInvestimento, null);
   const [banco, setBanco] = useState("001");
+  const [investimento, setInvestimento] = useState(investimentoInicial);
   if (!aberto)
     return (
       <button type="button" onClick={() => setAberto(true)} className={`${botao} border border-sky-300 bg-white text-sky-800 hover:bg-sky-50`}>
-        + Cadastrar conta
+        {rotulo}
       </button>
     );
+  const erro = investimento ? estadoInv?.erro : estado?.erro;
   return (
     <div role="dialog" aria-label="Cadastrar conta bancária" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4">
-      <form action={acao} className="w-full max-w-md space-y-3 rounded-lg bg-white p-5 shadow-xl">
+      <form action={investimento ? acaoInv : acao} className="w-full max-w-md space-y-3 rounded-lg bg-white p-5 shadow-xl">
         <h3 className="text-base font-semibold text-slate-800">Cadastrar conta bancária</h3>
+        <div className="flex gap-4 text-sm" role="radiogroup" aria-label="Tipo da conta">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="tipo_conta" checked={!investimento} onChange={() => setInvestimento(false)} /> Conta corrente
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="tipo_conta" checked={investimento} onChange={() => setInvestimento(true)} /> Investimento (ex.: BB Rende Fácil)
+          </label>
+        </div>
+        {voltar && <input type="hidden" name="voltar" value={voltar} />}
         <label className="block text-sm">
           Nome
-          <input name="nome" required maxLength={80} placeholder="Ex.: Caixa Matriz, BB Parceria" className="campo mt-1" />
+          <input name="nome" required maxLength={80} placeholder={investimento ? "Ex.: BB Rende Fácil" : "Ex.: Caixa Matriz, BB Parceria"} defaultValue={investimento && investimentoInicial ? "BB Rende Fácil" : undefined} className="campo mt-1" />
         </label>
         <label className="block text-sm">
           Banco
@@ -786,33 +1183,41 @@ export function CadastrarConta({ abertoInicial = false }: { abertoInicial?: bool
             <option value="033">033 — Santander</option>
             <option value="756">756 — Sicoob</option>
             <option value="748">748 — Sicredi</option>
-            <option value="outro">Outro (informar o código)</option>
+            {!investimento && <option value="outro">Outro (informar o código)</option>}
           </select>
         </label>
-        {banco === "outro" && (
+        {!investimento && banco === "outro" && (
           <label className="block text-sm">
             Código do banco
             <input name="banco_outro" required inputMode="numeric" maxLength={3} className="campo mt-1" />
           </label>
         )}
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block text-sm">
-            Agência
-            <input name="agencia" inputMode="numeric" maxLength={10} className="campo mt-1" />
-          </label>
-          <label className="block text-sm">
-            Conta (com dígito)
-            <input name="conta" required maxLength={20} placeholder="Ex.: 13970-X" className="campo mt-1" />
-          </label>
-        </div>
-        <p className="text-xs text-slate-500">O extrato OFX importado depois é reconhecido por banco, agência e conta.</p>
-        {estado?.erro && <Mensagem erro={estado.erro} />}
+        {investimento ? (
+          <p className="text-xs text-slate-500">
+            Não tem extrato próprio: a aplicação aparece no extrato da conta corrente e é conciliada como <strong>transferência</strong> para esta conta (o resgate, como transferência de volta). O saldo aplicado é a soma dessas transferências.
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm">
+                Agência
+                <input name="agencia" inputMode="numeric" maxLength={10} className="campo mt-1" />
+              </label>
+              <label className="block text-sm">
+                Conta (com dígito)
+                <input name="conta" required maxLength={20} placeholder="Ex.: 13970-X" className="campo mt-1" />
+              </label>
+            </div>
+            <p className="text-xs text-slate-500">O extrato OFX importado depois é reconhecido por banco, agência e conta.</p>
+          </>
+        )}
+        {erro && <Mensagem erro={erro} />}
         <div className="flex justify-end gap-2">
           <button type="button" className={`${botao} border border-slate-300`} onClick={() => setAberto(false)}>
             Voltar
           </button>
-          <button type="submit" disabled={enviando} className={`${botao} bg-marca-700 text-white hover:bg-marca-800`}>
-            {enviando ? "Salvando…" : "Cadastrar"}
+          <button type="submit" disabled={enviando || enviandoInv} className={`${botao} bg-marca-700 text-white hover:bg-marca-800`}>
+            {enviando || enviandoInv ? "Salvando…" : "Cadastrar"}
           </button>
         </div>
       </form>

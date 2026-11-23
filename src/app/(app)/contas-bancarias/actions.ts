@@ -6,6 +6,8 @@ import { getUsuario } from "@/lib/auth";
 import { mensagemErro } from "@/lib/erros";
 import { decodificarOfx, lerOfx, normalizarBanco, normalizarConta } from "@/lib/ofx";
 import { createClient } from "@/lib/supabase/server";
+import { arquivosDoForm, enviarDocumento, validarArquivo } from "@/lib/documentos";
+import { lerValor } from "@/lib/formato";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CLASSES = ["tarifa", "aplicacao", "entrada", "transferencia", "cartao", "imposto", "emprestimo", "outro"];
@@ -139,4 +141,154 @@ export async function criarContaBancaria(_: Resultado | null, fd: FormData): Pro
   if (error) return { erro: mensagemErro(error) };
   revalidatePath("/", "layout");
   redirect(`/contas-bancarias?conta=${data}&criada=1`);
+}
+
+const FORMAS = ["boleto", "pix", "transferencia", "dinheiro", "cartao", "outro", "cheque"];
+type DadosLancamento = { obra: string; categoria: string; descricao: string; fornecedor?: string; competencia?: string; forma?: string; valor?: number | null; juros?: number; multa?: number; desconto?: number; observacoes?: string };
+
+async function lancar(linhaId: string, d: DadosLancamento) {
+  if (!UUID.test(linhaId)) return { erro: "Lançamento inválido." };
+  if (!UUID.test(d.obra)) return { erro: "Escolha o centro de custo." };
+  if (!UUID.test(d.categoria)) return { erro: "Escolha a categoria." };
+  if (!d.descricao.trim()) return { erro: "Informe a descrição." };
+  if (d.fornecedor && !UUID.test(d.fornecedor)) return { erro: "Fornecedor inválido." };
+  if (d.competencia && !/^\d{4}-\d{2}-\d{2}$/.test(d.competencia)) return { erro: "Data de competência inválida." };
+  if (d.forma && !FORMAS.includes(d.forma)) return { erro: "Forma de pagamento inválida." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("criar_lancamento_conciliacao", {
+    p_linha_id: linhaId,
+    p_obra_id: d.obra,
+    p_categoria_id: d.categoria,
+    p_descricao: d.descricao.trim(),
+    p_fornecedor_id: (d.fornecedor || null) as string,
+    p_competencia: (d.competencia || null) as string,
+    p_forma: (d.forma || null) as "outro",
+    p_valor: (d.valor ?? null) as number,
+    p_juros: d.juros ?? 0,
+    p_multa: d.multa ?? 0,
+    p_desconto: d.desconto ?? 0,
+    p_observacoes: (d.observacoes ?? "").trim(),
+  });
+  if (error) return { erro: mensagemErro(error) };
+  return { id: data as string, supabase };
+}
+
+/** "Novo lançamento" direto no cartão: cria a despesa já paga e conciliada (sem aprovação; avisa quem aprova). */
+export async function novoLancamento(linhaId: string, d: DadosLancamento): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro faz a conciliação." };
+  const r = await lancar(linhaId, d);
+  if ("erro" in r && r.erro) return { erro: r.erro };
+  revalidatePath("/contas-bancarias");
+  revalidatePath("/pagamentos");
+  return { ok: "Lançamento criado e conciliado." };
+}
+
+/** "Completar informações": o mesmo lançamento com competência, forma, juros/multa/desconto, observações e anexos. */
+export async function novoLancamentoCompleto(linhaId: string, _: Resultado | null, fd: FormData): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro faz a conciliação." };
+  const t = (k: string) => String(fd.get(k) ?? "").trim();
+  // Campo vazio = zero (juros/multa/desconto) ou "o valor do banco" (valor); preenchido e inválido = erro
+  const ler = (k: string) => (t(k) ? lerValor(t(k)) : undefined);
+  const valores = { valor: ler("valor"), juros: ler("juros"), multa: ler("multa"), desconto: ler("desconto") };
+  if (Object.values(valores).some((v) => v === null)) return { erro: "Valores inválidos (use o formato 1.234,56)." };
+  const arquivos = arquivosDoForm(fd, "anexos");
+  for (const a of arquivos) {
+    const e = validarArquivo(a);
+    if (e) return { erro: e };
+  }
+  const r = await lancar(linhaId, {
+    obra: t("obra_id"),
+    categoria: t("categoria_id"),
+    descricao: t("descricao"),
+    fornecedor: t("fornecedor_id"),
+    competencia: t("data_competencia"),
+    forma: t("forma_pagamento"),
+    valor: valores.valor ?? null,
+    juros: valores.juros ?? 0,
+    multa: valores.multa ?? 0,
+    desconto: valores.desconto ?? 0,
+    observacoes: t("observacoes"),
+  });
+  if ("erro" in r && r.erro) return { erro: r.erro };
+  const { id, supabase } = r as { id: string; supabase: Awaited<ReturnType<typeof createClient>> };
+  const avisos: string[] = [];
+  if (arquivos.length) {
+    const { data: p } = await supabase.from("pagamentos").select("obra_id").eq("id", id).single();
+    for (const a of arquivos) {
+      const e = await enviarDocumento(supabase, { id, obra_id: p!.obra_id }, "comprovante", a);
+      if (e.erro) avisos.push(`${a.name}: ${e.erro}`);
+    }
+  }
+  revalidatePath("/contas-bancarias");
+  revalidatePath("/pagamentos");
+  return avisos.length ? { ok: "Lançamento criado e conciliado.", erro: `Mas nem todos os anexos foram salvos: ${avisos.join(" · ")}` } : { ok: "Lançamento criado e conciliado." };
+}
+
+/** "Nova transferência": saída para outra conta da empresa (ou entrada vinda dela). */
+export async function novaTransferencia(linhaId: string, outraConta: string, descricao: string): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro faz a conciliação." };
+  if (!UUID.test(linhaId) || !UUID.test(outraConta)) return { erro: "Escolha a outra conta." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("criar_transferencia", { p_linha_id: linhaId, p_outra_conta: outraConta, p_descricao: descricao });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/contas-bancarias");
+  return { ok: "Transferência registrada." };
+}
+
+export async function conciliarTransferencia(linhaId: string, transferenciaId: string): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro faz a conciliação." };
+  if (!UUID.test(linhaId) || !UUID.test(transferenciaId)) return { erro: "Seleção inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("conciliar_transferencia", { p_linha_id: linhaId, p_transferencia_id: transferenciaId });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/contas-bancarias");
+  return { ok: "Transferência conciliada." };
+}
+
+/** Estorno: concilia a entrada com a saída que ela devolve (se a saída já estava conciliada, a conta volta para em aberto). */
+export async function conciliarEstorno(creditoId: string, debitoId: string): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro faz a conciliação." };
+  if (!UUID.test(creditoId) || !UUID.test(debitoId)) return { erro: "Escolha a saída estornada." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("conciliar_estorno", { p_credito: creditoId, p_debito: debitoId });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/", "layout");
+  return { ok: "Estorno conciliado." };
+}
+
+/** Conta de investimento (ex.: BB Rende Fácil): sem extrato próprio; recebe as aplicações e devolve os resgates. */
+export async function criarContaInvestimento(_: Resultado | null, fd: FormData): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro cadastra contas bancárias." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("criar_conta_investimento", { p_nome: String(fd.get("nome") ?? "").trim(), p_banco: String(fd.get("banco") ?? "") });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/", "layout");
+  const volta = String(fd.get("voltar") ?? "");
+  redirect(UUID.test(volta) ? `/contas-bancarias?conta=${volta}` : `/contas-bancarias?conta=${data}&criada=1`);
+}
+
+type DadosRecebimento = { obra: string; categoria: string; cliente: string; descricao: string; competencia?: string; observacoes?: string };
+
+/** "Novo lançamento" numa entrada do extrato: recebimento já recebido (Contas a receber). */
+export async function novoRecebimento(linhaId: string, d: DadosRecebimento): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro faz a conciliação." };
+  if (!UUID.test(linhaId)) return { erro: "Lançamento inválido." };
+  if (!UUID.test(d.obra)) return { erro: "Escolha o centro de custo." };
+  if (!UUID.test(d.categoria)) return { erro: "Escolha a categoria de receita." };
+  if (!d.cliente.trim()) return { erro: "Informe o cliente." };
+  if (!d.descricao.trim()) return { erro: "Informe a descrição." };
+  if (d.competencia && !/^\d{4}-\d{2}-\d{2}$/.test(d.competencia)) return { erro: "Data de competência inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("criar_recebimento_conciliacao", {
+    p_linha_id: linhaId,
+    p_obra_id: d.obra,
+    p_categoria_id: d.categoria,
+    p_cliente: d.cliente,
+    p_descricao: d.descricao,
+    ...(d.competencia ? { p_competencia: d.competencia } : {}),
+    ...(d.observacoes ? { p_observacoes: d.observacoes } : {}),
+  });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/", "layout");
+  return { ok: "Recebimento lançado." };
 }

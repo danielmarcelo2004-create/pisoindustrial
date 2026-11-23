@@ -56,6 +56,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
     conta: str(sp.conta),
     fornecedor: str(sp.fornecedor),
     cancelados: str(sp.cancelados) === "1",
+    lancados: str(sp.lancados) === "1",
   };
 
   const supabase = await createClient();
@@ -80,7 +81,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
   const visiveis = linhas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
   const somaLista = visiveis.filter((l) => l.tipo !== "provisao").reduce((s, l) => s + l.valor, 0);
 
-  const base = new URLSearchParams(Object.entries({ ...filtros, cancelados: filtros.cancelados ? "1" : "" }).filter(([, v]) => v) as [string, string][]);
+  const base = new URLSearchParams(Object.entries({ ...filtros, cancelados: filtros.cancelados ? "1" : "", lancados: filtros.lancados ? "1" : "" }).filter(([, v]) => v) as [string, string][]);
   const link = (mudancas: Record<string, string>) => {
     const q = new URLSearchParams(base);
     if (cartao) q.set("cartao", cartao);
@@ -153,7 +154,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
         periodo={periodo}
         hoje={hoje}
         busca={filtros.busca}
-        valores={{ obra: filtros.obra, categoria: filtros.categoria, fornecedor: filtros.fornecedor, forma: filtros.forma, conta: filtros.conta, cancelados: filtros.cancelados }}
+        valores={{ obra: filtros.obra, categoria: filtros.categoria, fornecedor: filtros.fornecedor, forma: filtros.forma, conta: filtros.conta, cancelados: filtros.cancelados, lancados: filtros.lancados }}
         opcoes={{
           conta: contasBanc.map((c) => ({ v: c.id, r: c.nome })),
           obra: (obras ?? []).map((o) => ({ v: o.id, r: o.nome })),
@@ -255,7 +256,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         {l.descricao && <span className="text-xs text-slate-500">{l.descricao}</span>}
-                        {[l.categoria, l.obra, l.forma ? FORMAS_PAGAMENTO[l.forma] : null, l.conta ? `🏦 ${l.conta}` : null].filter(Boolean).map((t, i) => (
+                        {[l.categoria, l.obra, l.forma ? FORMAS_PAGAMENTO[l.forma] : null, l.conta ? `🏦 ${l.conta}` : null, l.lancadoConciliacao ? "Lançado pela conciliação" : null].filter(Boolean).map((t, i) => (
                           <span key={`${t}-${i}`} className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
                             {t}
                           </span>

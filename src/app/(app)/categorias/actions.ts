@@ -17,10 +17,21 @@ export async function criarCategoriaRapida(nome: string): Promise<{ id?: string;
   return { id: data, nome: nome.trim() };
 }
 
+/** Cadastro rápido de categoria de receita (conciliação de entradas / contas a receber). */
+export async function criarCategoriaReceitaRapida(nome: string): Promise<{ id?: string; nome?: string; erro?: string }> {
+  await exigirPerfil("financeiro", "administrador_master");
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("criar_categoria_receita", { p_nome: nome });
+  if (error || !data) return { erro: mensagemErro(error) };
+  revalidatePath("/categorias");
+  return { id: data, nome: nome.trim() };
+}
+
 export async function criarCategoria(_: Estado, fd: FormData): Promise<Estado> {
   await exigirPerfil("financeiro", "administrador_master");
   const supabase = await createClient();
-  const { error } = await supabase.rpc("criar_categoria", { p_nome: String(fd.get("nome") ?? "") });
+  const nome = String(fd.get("nome") ?? "");
+  const { error } = fd.get("tipo") === "receita" ? await supabase.rpc("criar_categoria_receita", { p_nome: nome }) : await supabase.rpc("criar_categoria", { p_nome: nome });
   if (error) return { erro: mensagemErro(error) };
   revalidatePath("/categorias");
   return { ok: "Categoria cadastrada." };

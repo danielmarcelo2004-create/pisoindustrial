@@ -35,6 +35,8 @@ export async function GET(request: NextRequest) {
       fornecedor: sp.get("fornecedor") ?? "",
       cartao: (sp.get("cartao") ?? "") as FiltroCartao,
       cancelados: sp.get("cancelados") === "1",
+      conta: sp.get("conta") ?? "",
+      lancados: sp.get("lancados") === "1",
     });
     const cab = ["Vencimento", "Nº", "Parcela", "Favorecido", "Descrição", "Categoria", "Centro de custo", "Forma", "Valor", "A pagar", "Situação", "Pago em"];
     const rotSit: Record<string, string> = { pago: "Pago", vencido: "Vencido", hoje: "Vence hoje", a_pagar: "A pagar", aprovacao: "Em aprovação", rejeitado: "Rejeitado", cancelado: "Cancelado", provisao: "Provisão" };

@@ -65,14 +65,14 @@ isOneToOne: false
                   ]
                 },"categorias": {
                   Row: {
-                    "ativo": boolean,"created_at": string,"created_by": string | null,"id": string,"nome": string
+                    "ativo": boolean,"created_at": string,"created_by": string | null,"id": string,"nome": string,"tipo": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "ativo"?: boolean,"created_at"?: string,"created_by"?: string | null,"id"?: string,"nome": string
+                    "ativo"?: boolean,"created_at"?: string,"created_by"?: string | null,"id"?: string,"nome": string,"tipo"?: string
                   }
                   Update: {
-                    "ativo"?: boolean,"created_at"?: string,"created_by"?: string | null,"id"?: string,"nome"?: string
+                    "ativo"?: boolean,"created_at"?: string,"created_by"?: string | null,"id"?: string,"nome"?: string,"tipo"?: string
                   }
                   Relationships: [
                     {
@@ -123,14 +123,14 @@ isOneToOne: false
                   ]
                 },"contas_bancarias": {
                   Row: {
-                    "agencia": string,"ativa": boolean,"banco": string,"conta": string,"created_at": string,"created_by": string,"id": string,"nome": string,"saldo": number | null,"saldo_em": string | null
+                    "agencia": string,"ativa": boolean,"banco": string,"conta": string,"created_at": string,"created_by": string,"id": string,"nome": string,"saldo": number | null,"saldo_em": string | null,"tipo": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "agencia"?: string,"ativa"?: boolean,"banco": string,"conta": string,"created_at"?: string,"created_by": string,"id"?: string,"nome": string,"saldo"?: number | null,"saldo_em"?: string | null
+                    "agencia"?: string,"ativa"?: boolean,"banco": string,"conta": string,"created_at"?: string,"created_by": string,"id"?: string,"nome": string,"saldo"?: number | null,"saldo_em"?: string | null,"tipo"?: string
                   }
                   Update: {
-                    "agencia"?: string,"ativa"?: boolean,"banco"?: string,"conta"?: string,"created_at"?: string,"created_by"?: string,"id"?: string,"nome"?: string,"saldo"?: number | null,"saldo_em"?: string | null
+                    "agencia"?: string,"ativa"?: boolean,"banco"?: string,"conta"?: string,"created_at"?: string,"created_by"?: string,"id"?: string,"nome"?: string,"saldo"?: number | null,"saldo_em"?: string | null,"tipo"?: string
                   }
                   Relationships: [
                     {
@@ -219,14 +219,14 @@ isOneToOne: false
                   ]
                 },"extrato_linhas": {
                   Row: {
-                    "classificacao": string | null,"conta_id": string,"created_at": string,"data": string,"descricao": string,"documento": string,"encargos": number | null,"fitid": string,"id": string,"importacao_id": string,"observacao": string | null,"situacao": string,"tipo": string,"tratado_em": string | null,"tratado_por": string | null,"valor": number
+                    "classificacao": string | null,"conta_id": string,"created_at": string,"data": string,"descricao": string,"documento": string,"encargos": number | null,"estorno_linha": string | null,"fitid": string,"id": string,"importacao_id": string,"observacao": string | null,"recebimento_id": string | null,"situacao": string,"tipo": string,"transferencia_id": string | null,"tratado_em": string | null,"tratado_por": string | null,"valor": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "classificacao"?: string | null,"conta_id": string,"created_at"?: string,"data": string,"descricao"?: string,"documento"?: string,"encargos"?: number | null,"fitid"?: string,"id"?: string,"importacao_id": string,"observacao"?: string | null,"situacao"?: string,"tipo"?: string,"tratado_em"?: string | null,"tratado_por"?: string | null,"valor": number
+                    "classificacao"?: string | null,"conta_id": string,"created_at"?: string,"data": string,"descricao"?: string,"documento"?: string,"encargos"?: number | null,"estorno_linha"?: string | null,"fitid"?: string,"id"?: string,"importacao_id": string,"observacao"?: string | null,"recebimento_id"?: string | null,"situacao"?: string,"tipo"?: string,"transferencia_id"?: string | null,"tratado_em"?: string | null,"tratado_por"?: string | null,"valor": number
                   }
                   Update: {
-                    "classificacao"?: string | null,"conta_id"?: string,"created_at"?: string,"data"?: string,"descricao"?: string,"documento"?: string,"encargos"?: number | null,"fitid"?: string,"id"?: string,"importacao_id"?: string,"observacao"?: string | null,"situacao"?: string,"tipo"?: string,"tratado_em"?: string | null,"tratado_por"?: string | null,"valor"?: number
+                    "classificacao"?: string | null,"conta_id"?: string,"created_at"?: string,"data"?: string,"descricao"?: string,"documento"?: string,"encargos"?: number | null,"estorno_linha"?: string | null,"fitid"?: string,"id"?: string,"importacao_id"?: string,"observacao"?: string | null,"recebimento_id"?: string | null,"situacao"?: string,"tipo"?: string,"transferencia_id"?: string | null,"tratado_em"?: string | null,"tratado_por"?: string | null,"valor"?: number
                   }
                   Relationships: [
                     {
@@ -236,10 +236,28 @@ isOneToOne: false
       referencedRelation: "contas_bancarias"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "extrato_linhas_estorno_linha_fkey"
+      columns: ["estorno_linha"]
+isOneToOne: false
+      referencedRelation: "extrato_linhas"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "extrato_linhas_importacao_id_fkey"
       columns: ["importacao_id"]
 isOneToOne: false
       referencedRelation: "extrato_importacoes"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "extrato_linhas_recebimento_id_fkey"
+      columns: ["recebimento_id"]
+isOneToOne: false
+      referencedRelation: "recebimentos"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "extrato_linhas_transferencia_id_fkey"
+      columns: ["transferencia_id"]
+isOneToOne: false
+      referencedRelation: "transferencias"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "extrato_linhas_tratado_por_fkey"
@@ -715,14 +733,14 @@ isOneToOne: false
                   ]
                 },"pagamentos": {
                   Row: {
-                    "assinado_no_cadastro": boolean,"cancelamento_motivo": string | null,"categoria_id": string | null,"conta_bancaria_id": string | null,"created_at": string,"created_by": string,"data_competencia": string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"numero": number,"numero_documento": string | null,"obra_id": string,"observacoes": string | null,"ordem_id": string | null,"pago_em": string | null,"pago_por": string | null,"rejeicao_motivo": string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at": string,"valor": number,"valor_pago": number | null,"vencimento": string,"versao": number,"eh_assinante_da_etapa": boolean | null
+                    "assinado_no_cadastro": boolean,"cancelamento_motivo": string | null,"categoria_id": string | null,"conta_bancaria_id": string | null,"created_at": string,"created_by": string,"data_competencia": string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"fornecedor_id": string | null,"id": string,"lancado_conciliacao": boolean,"numero": number,"numero_documento": string | null,"obra_id": string,"observacoes": string | null,"ordem_id": string | null,"pago_em": string | null,"pago_por": string | null,"rejeicao_motivo": string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at": string,"valor": number,"valor_pago": number | null,"vencimento": string,"versao": number,"eh_assinante_da_etapa": boolean | null
                   }
                   ComputedFields: "eh_assinante_da_etapa"
                   Insert: {
-                    "assinado_no_cadastro"?: boolean,"cancelamento_motivo"?: string | null,"categoria_id"?: string | null,"conta_bancaria_id"?: string | null,"created_at"?: string,"created_by": string,"data_competencia"?: string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: never,"numero_documento"?: string | null,"obra_id": string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor": number,"valor_pago"?: number | null,"vencimento": string,"versao"?: number
+                    "assinado_no_cadastro"?: boolean,"cancelamento_motivo"?: string | null,"categoria_id"?: string | null,"conta_bancaria_id"?: string | null,"created_at"?: string,"created_by": string,"data_competencia"?: string,"descricao": string,"favorecido": string,"fluxo": Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"lancado_conciliacao"?: boolean,"numero"?: never,"numero_documento"?: string | null,"obra_id": string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status": Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor": number,"valor_pago"?: number | null,"vencimento": string,"versao"?: number
                   }
                   Update: {
-                    "assinado_no_cadastro"?: boolean,"cancelamento_motivo"?: string | null,"categoria_id"?: string | null,"conta_bancaria_id"?: string | null,"created_at"?: string,"created_by"?: string,"data_competencia"?: string,"descricao"?: string,"favorecido"?: string,"fluxo"?: Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"numero"?: never,"numero_documento"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status"?: Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor"?: number,"valor_pago"?: number | null,"vencimento"?: string,"versao"?: number
+                    "assinado_no_cadastro"?: boolean,"cancelamento_motivo"?: string | null,"categoria_id"?: string | null,"conta_bancaria_id"?: string | null,"created_at"?: string,"created_by"?: string,"data_competencia"?: string,"descricao"?: string,"favorecido"?: string,"fluxo"?: Database["public"]['Enums']["fluxo_aprovacao"],"forma_pagamento"?: Database["public"]['Enums']["forma_pagamento"],"fornecedor_id"?: string | null,"id"?: string,"lancado_conciliacao"?: boolean,"numero"?: never,"numero_documento"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"ordem_id"?: string | null,"pago_em"?: string | null,"pago_por"?: string | null,"rejeicao_motivo"?: string | null,"status"?: Database["public"]['Enums']["status_pagamento"],"updated_at"?: string,"valor"?: number,"valor_pago"?: number | null,"vencimento"?: string,"versao"?: number
                   }
                   Relationships: [
                     {
@@ -821,6 +839,94 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"recebimentos": {
+                  Row: {
+                    "cancelamento_motivo": string | null,"categoria_id": string | null,"cliente": string,"conta_bancaria_id": string | null,"created_at": string,"created_by": string,"data_competencia": string | null,"descricao": string,"id": string,"lancado_conciliacao": boolean,"nota_medicao_id": string | null,"numero": number,"obra_id": string,"observacoes": string | null,"recebido_em": string | null,"status": string,"updated_at": string,"valor": number,"valor_recebido": number | null,"vencimento": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "cancelamento_motivo"?: string | null,"categoria_id"?: string | null,"cliente": string,"conta_bancaria_id"?: string | null,"created_at"?: string,"created_by"?: string,"data_competencia"?: string | null,"descricao": string,"id"?: string,"lancado_conciliacao"?: boolean,"nota_medicao_id"?: string | null,"numero"?: never,"obra_id": string,"observacoes"?: string | null,"recebido_em"?: string | null,"status"?: string,"updated_at"?: string,"valor": number,"valor_recebido"?: number | null,"vencimento": string
+                  }
+                  Update: {
+                    "cancelamento_motivo"?: string | null,"categoria_id"?: string | null,"cliente"?: string,"conta_bancaria_id"?: string | null,"created_at"?: string,"created_by"?: string,"data_competencia"?: string | null,"descricao"?: string,"id"?: string,"lancado_conciliacao"?: boolean,"nota_medicao_id"?: string | null,"numero"?: never,"obra_id"?: string,"observacoes"?: string | null,"recebido_em"?: string | null,"status"?: string,"updated_at"?: string,"valor"?: number,"valor_recebido"?: number | null,"vencimento"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "recebimentos_categoria_id_fkey"
+      columns: ["categoria_id"]
+isOneToOne: false
+      referencedRelation: "categorias"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "recebimentos_conta_bancaria_id_fkey"
+      columns: ["conta_bancaria_id"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "recebimentos_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "recebimentos_nota_medicao_id_fkey"
+      columns: ["nota_medicao_id"]
+isOneToOne: true
+      referencedRelation: "notas_medicao"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "recebimentos_obra_id_fkey"
+      columns: ["obra_id"]
+isOneToOne: false
+      referencedRelation: "obras"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"transferencias": {
+                  Row: {
+                    "conta_destino": string,"conta_origem": string,"created_at": string,"created_by": string,"data": string,"descricao": string,"id": string,"linha_destino": string | null,"linha_origem": string | null,"valor": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "conta_destino": string,"conta_origem": string,"created_at"?: string,"created_by": string,"data": string,"descricao"?: string,"id"?: string,"linha_destino"?: string | null,"linha_origem"?: string | null,"valor": number
+                  }
+                  Update: {
+                    "conta_destino"?: string,"conta_origem"?: string,"created_at"?: string,"created_by"?: string,"data"?: string,"descricao"?: string,"id"?: string,"linha_destino"?: string | null,"linha_origem"?: string | null,"valor"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "transferencias_conta_destino_fkey"
+      columns: ["conta_destino"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "transferencias_conta_origem_fkey"
+      columns: ["conta_origem"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "transferencias_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "transferencias_linha_destino_fkey"
+      columns: ["linha_destino"]
+isOneToOne: false
+      referencedRelation: "extrato_linhas"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "transferencias_linha_origem_fkey"
+      columns: ["linha_origem"]
+isOneToOne: false
+      referencedRelation: "extrato_linhas"
+      referencedColumns: ["id"]
+    }
+                  ]
                 }
           }
           Views: {
@@ -880,6 +986,9 @@ isOneToOne: false
 "_exigir_financeiro_conciliacao":
 { Args: Record<PropertyKey, never>; Returns: undefined
                            },
+"_exigir_mexer_receber":
+{ Args: Record<PropertyKey, never>; Returns: undefined
+                           },
 "_notificar":
 { Args: { "p_link": string,"p_mensagem": string,"p_pagamento_id"?: string,"p_titulo": string,"p_user_id": string }; Returns: undefined
                            },
@@ -925,8 +1034,14 @@ isOneToOne: false
 "cancelar_serie":
 { Args: { "p_a_partir"?: string,"p_pagamento_id": string }; Returns: number
                            },
+"conciliar_estorno":
+{ Args: { "p_credito": string,"p_debito": string,"p_motivo"?: string }; Returns: undefined
+                           },
 "conciliar_linha":
 { Args: { "p_diferenca"?: string,"p_itens": Json,"p_linha_id": string }; Returns: undefined
+                           },
+"conciliar_transferencia":
+{ Args: { "p_linha_id": string,"p_transferencia_id": string }; Returns: undefined
                            },
 "concluir_criacao_assinada":
 { Args: { "p_mime": string,"p_nome": string,"p_pagamento_id": string,"p_sha256": string,"p_storage_path": string,"p_tamanho": number }; Returns: undefined
@@ -940,17 +1055,32 @@ isOneToOne: false
 "criar_categoria":
 { Args: { "p_nome": string }; Returns: string
                            },
+"criar_categoria_receita":
+{ Args: { "p_nome": string }; Returns: string
+                           },
 "criar_conta_bancaria":
 { Args: { "p_agencia": string,"p_banco": string,"p_conta": string,"p_nome": string }; Returns: string
+                           },
+"criar_conta_investimento":
+{ Args: { "p_banco"?: string,"p_nome": string }; Returns: string
                            },
 "criar_fundo_fixo":
 { Args: { "p_obra_id": string,"p_pessoa_id": string,"p_valor": number }; Returns: string
                            },
+"criar_lancamento_conciliacao":
+{ Args: { "p_categoria_id": string,"p_competencia"?: string,"p_desconto"?: number,"p_descricao": string,"p_favorecido"?: string,"p_forma"?: Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id"?: string,"p_juros"?: number,"p_linha_id": string,"p_multa"?: number,"p_obra_id": string,"p_observacoes"?: string,"p_valor"?: number }; Returns: string
+                           },
 "criar_pagamento":
 { Args: { "p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_numero_documento"?: string,"p_obra_id": string,"p_observacoes"?: string,"p_valor": number,"p_vencimento": string }; Returns: string
                            },
+"criar_recebimento_conciliacao":
+{ Args: { "p_categoria_id": string,"p_cliente": string,"p_competencia"?: string,"p_descricao": string,"p_linha_id": string,"p_obra_id": string,"p_observacoes"?: string }; Returns: string
+                           },
 "criar_repeticoes":
 { Args: { "p_intervalo": number,"p_pagamento_id": string,"p_vezes": number }; Returns: number
+                           },
+"criar_transferencia":
+{ Args: { "p_descricao"?: string,"p_linha_id": string,"p_outra_conta": string }; Returns: string
                            },
 "decidir_aprovacao":
 { Args: { "p_comentario"?: string,"p_decisao": Database["public"]['Enums']["decisao_aprovacao"],"p_ip"?: string,"p_itens": Json,"p_user_agent"?: string }; Returns: string
@@ -993,6 +1123,9 @@ isOneToOne: false
                            },
 "editar_parcelas":
 { Args: { "p_motivo"?: string,"p_pagamento_id": string,"p_parcelas": Json }; Returns: undefined
+                           },
+"editar_recebimento":
+{ Args: { "p_categoria_id": string,"p_cliente": string,"p_competencia": string,"p_descricao": string,"p_id": string,"p_obra_id": string,"p_observacoes": string }; Returns: undefined
                            },
 "eh_assinante_da_etapa":
 { Args: { "p": Omit<Database["public"]['Tables']["pagamentos"]['Row'], Database["public"]['Tables']["pagamentos"]['ComputedFields']> }; Returns: boolean
@@ -1060,6 +1193,7 @@ isOneToOne: false
 "forma_pagamento": Database["public"]['Enums']["forma_pagamento"],
 "fornecedor_id": string | null,
 "id": string,
+"lancado_conciliacao": boolean,
 "numero": number,
 "numero_documento": string | null,
 "obra_id": string,
@@ -1156,6 +1290,9 @@ isOneToOne: false
 { Args: { "p_favorecido": string,"p_hashes": (string)[],"p_valor": number,"p_vencimento": string }; Returns: {
               "motivo": string,"numero": number,"obra": string,"pagamento_id": string,"status": Database["public"]['Enums']["status_pagamento"],"valor": number,"vencimento": string
             }[]
+                           },
+"vincular_nota_medicao":
+{ Args: { "p_nota_id": string,"p_recebimento_id": string }; Returns: undefined
                            }
           }
           Enums: {

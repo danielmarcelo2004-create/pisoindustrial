@@ -7,14 +7,20 @@ import { OPCOES_PERIODO, deslocarPeriodo, paramsPeriodo, periodoDe, type Periodo
 type Opcao = { v: string; r: string };
 type Chave = "obra" | "categoria" | "fornecedor" | "forma" | "conta";
 
-const FILTROS: { chave: Chave | "cancelados"; rotulo: string }[] = [
+type Booleano = "cancelados" | "lancados" | "semtransf";
+const BOOLEANOS: Record<Booleano, string> = { cancelados: "Mostrando cancelados", lancados: "Só lançados pela conciliação", semtransf: "Sem transferências" };
+const ehBooleano = (c: string): c is Booleano => c in BOOLEANOS;
+const TODOS_FILTROS: { chave: Chave | Booleano; rotulo: string }[] = [
   { chave: "obra", rotulo: "Centro de custo" },
   { chave: "categoria", rotulo: "Categoria" },
   { chave: "fornecedor", rotulo: "Fornecedor" },
   { chave: "forma", rotulo: "Forma de pagamento" },
   { chave: "conta", rotulo: "Conta bancária" },
+  { chave: "lancados", rotulo: "Lançados pela conciliação" },
   { chave: "cancelados", rotulo: "Mostrar cancelados" },
+  { chave: "semtransf", rotulo: "Esconder transferências" },
 ];
+const PADRAO: (Chave | Booleano)[] = ["obra", "categoria", "fornecedor", "forma", "conta", "lancados", "cancelados"];
 
 const Seta = ({ abre }: { abre?: boolean }) => (
   <svg viewBox="0 0 20 20" className={`h-4 w-4 transition-transform ${abre ? "rotate-180" : ""}`} fill="currentColor" aria-hidden>
@@ -23,7 +29,7 @@ const Seta = ({ abre }: { abre?: boolean }) => (
 );
 
 /**
- * Barra de filtros da tela "Contas a pagar": período de vencimento, pesquisa e "Mais filtros".
+ * Barra de filtros das telas "Contas a pagar" e "Contas a receber" (caminho e itens): período de vencimento, pesquisa e "Mais filtros".
  * Cada filtro aplicado vira uma etiqueta acima dos cartões; a janela fecha ao aplicar.
  */
 export function BarraFiltros({
@@ -31,16 +37,25 @@ export function BarraFiltros({
   periodo,
   hoje,
   busca,
-  opcoes,
-  valores,
+  opcoes: opcoesDadas,
+  valores: valoresDados,
+  caminho = "/pagamentos",
+  itens = PADRAO,
+  dicaBusca = "Favorecido, descrição ou nº",
 }: {
   consulta: string;
   periodo: Periodo;
   hoje: string;
   busca: string;
-  opcoes: Record<Chave, Opcao[]>;
-  valores: Record<Chave, string> & { cancelados: boolean };
+  opcoes: Partial<Record<Chave, Opcao[]>>;
+  valores: Partial<Record<Chave, string> & Record<Booleano, boolean>>;
+  caminho?: string;
+  itens?: (Chave | Booleano)[];
+  dicaBusca?: string;
 }) {
+  const opcoes = opcoesDadas as Record<Chave, Opcao[]>;
+  const valores = { obra: "", categoria: "", fornecedor: "", forma: "", conta: "", cancelados: false, lancados: false, semtransf: false, ...valoresDados } as Record<Chave, string> & Record<Booleano, boolean>;
+  const FILTROS = itens.map((c) => TODOS_FILTROS.find((f) => f.chave === c)!);
   const router = useRouter();
   const [carregando, iniciar] = useTransition();
   const [aberto, setAberto] = useState(""); // "periodo" | "mais" | "filtro:<chave>"
@@ -79,7 +94,7 @@ export function BarraFiltros({
       else q.delete(k);
     }
     fechar();
-    iniciar(() => router.push(`/pagamentos?${q}`));
+    iniciar(() => router.push(`${caminho}?${q}`));
   }
 
   function abrirFiltro(chave: Chave) {
@@ -90,7 +105,7 @@ export function BarraFiltros({
 
   const anterior = deslocarPeriodo(periodo, -1, hoje);
   const seguinte = deslocarPeriodo(periodo, 1, hoje);
-  const ativos = FILTROS.filter((f) => (f.chave === "cancelados" ? valores.cancelados : valores[f.chave]));
+  const ativos = FILTROS.filter((f) => (ehBooleano(f.chave) ? valores[f.chave] : valores[f.chave]));
   const algumFiltro = ativos.length > 0 || Boolean(busca);
   const nomeDe = (chave: Chave, v: string) => opcoes[chave].find((o) => o.v === v)?.r ?? "—";
 
@@ -207,7 +222,7 @@ export function BarraFiltros({
         >
           <div className="mb-1 text-xs text-slate-600">Pesquisar no período</div>
           <div className="flex">
-            <input name="busca" defaultValue={busca} placeholder="Favorecido, descrição ou nº" className="campo rounded-r-none" aria-label="Pesquisar" />
+            <input name="busca" defaultValue={busca} placeholder={dicaBusca} className="campo rounded-r-none" aria-label="Pesquisar" />
             <button type="submit" className="rounded-r-md border border-l-0 border-slate-300 bg-white px-3 text-sky-800 hover:bg-slate-50" aria-label="Pesquisar agora">
               <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden>
                 <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 3.47 9.77l3.13 3.13a.75.75 0 1 0 1.06-1.06l-3.13-3.13A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z" clipRule="evenodd" />
@@ -231,16 +246,17 @@ export function BarraFiltros({
           {aberto === "mais" && (
             <div className="absolute right-0 top-full z-30 mt-1 w-60 rounded-md border border-slate-200 bg-white py-1 shadow-lg sm:left-0 sm:right-auto" role="menu">
               {FILTROS.map((f) => {
-                const ativo = f.chave === "cancelados" ? valores.cancelados : Boolean(valores[f.chave]);
+                const ativo = Boolean(valores[f.chave]);
                 return (
                   <button
                     key={f.chave}
                     type="button"
                     role="menuitem"
                     onClick={() => {
-                      if (f.chave === "cancelados") return ir({ cancelados: valores.cancelados ? "" : "1" });
-                      if (!valores[f.chave]) setEditando(f.chave);
-                      abrirFiltro(f.chave);
+                      const chave = f.chave;
+                      if (ehBooleano(chave)) return ir({ [chave]: valores[chave] ? "" : "1" });
+                      if (!valores[chave]) setEditando(chave);
+                      abrirFiltro(chave);
                     }}
                     className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
                   >
@@ -268,12 +284,13 @@ export function BarraFiltros({
               </span>
             )}
             {FILTROS.map((f) => {
-              if (f.chave === "cancelados") {
+              if (ehBooleano(f.chave)) {
+                const b = f.chave;
                 return (
-                  valores.cancelados && (
-                    <span key={f.chave} className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-white px-3 py-1 text-sm text-sky-900" data-filtro="cancelados">
-                      Mostrando cancelados
-                      <button type="button" onClick={() => ir({ cancelados: "" })} className="ml-1 text-sky-700 hover:text-red-600" aria-label="Remover filtro Mostrar cancelados">
+                  valores[b] && (
+                    <span key={b} className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-white px-3 py-1 text-sm text-sky-900" data-filtro={b}>
+                      {BOOLEANOS[b]}
+                      <button type="button" onClick={() => ir({ [b]: "" })} className="ml-1 text-sky-700 hover:text-red-600" aria-label={`Remover filtro ${f.rotulo}`}>
                         ✕
                       </button>
                     </span>
@@ -300,7 +317,7 @@ export function BarraFiltros({
               );
             })}
             {algumFiltro && (
-              <button type="button" onClick={() => ir({ obra: "", categoria: "", fornecedor: "", forma: "", conta: "", cancelados: "", busca: "" })} className="px-2 py-1 text-sm text-sky-700 hover:underline">
+              <button type="button" onClick={() => ir({ obra: "", categoria: "", fornecedor: "", forma: "", conta: "", cancelados: "", lancados: "", semtransf: "", busca: "" })} className="px-2 py-1 text-sm text-sky-700 hover:underline">
                 Limpar filtros
               </button>
             )}

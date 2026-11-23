@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { JanelaProvisao } from "@/components/janela-provisao";
 import { TabelaPagamentos } from "@/components/pagamentos";
 import { Cabecalho, Cartao, cx } from "@/components/ui";
 import { pagamentosEmAberto, somar, type PagamentoLista } from "@/lib/consultas/pagamentos";
@@ -18,6 +19,8 @@ type ProvisaoAgenda = {
   vencimento: string | null;
   valor_estimado: number | null;
   mes_referencia: string | null;
+  created_by: string;
+  pagamento_origem_id: string | null;
   obra: { nome: string } | null;
 };
 
@@ -51,7 +54,19 @@ function Lista({ id, titulo, itens, cor, baixa }: { id: string; titulo: string; 
   );
 }
 
-function ListaProvisoes({ id, titulo, itens }: { id: string; titulo: string; itens: ProvisaoAgenda[] }) {
+/** Botão "Lançar" da provisão (abre a janela, sem sair da agenda). */
+function LancarProvisao({ pr, perfil, usuario }: { pr: ProvisaoAgenda; perfil: string; usuario: string }) {
+  if (perfil !== "financeiro" && perfil !== "suprimentos") return null;
+  return (
+    <JanelaProvisao
+      rotulo="Lançar"
+      provisao={{ id: pr.id, descricao: pr.descricao, obra: pr.obra?.nome ?? null, vencimento: pr.vencimento, valor: pr.valor_estimado === null ? null : Number(pr.valor_estimado), serie: !!pr.pagamento_origem_id || / \(\d+\/\d+\)$/.test(pr.descricao) }}
+      podeAgir={perfil === "financeiro" || pr.created_by === usuario}
+    />
+  );
+}
+
+function ListaProvisoes({ id, titulo, itens, perfil, usuario }: { id: string; titulo: string; itens: ProvisaoAgenda[]; perfil: string; usuario: string }) {
   return (
     <div id={id} className="scroll-mt-20">
       <Cartao titulo={<span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-violet-500" />{titulo}</span>} semPadding>
@@ -65,7 +80,10 @@ function ListaProvisoes({ id, titulo, itens }: { id: string; titulo: string; ite
                   <span className="font-medium">{pr.descricao}</span>
                   <span className="text-slate-500"> · {pr.obra?.nome}{pr.mes_referencia ? ` · ref. ${pr.mes_referencia}` : ""}</span>
                 </span>
-                <span className="tabular-nums text-slate-600">{pr.valor_estimado === null ? "valor a definir" : moeda(pr.valor_estimado)}</span>
+                <span className="flex items-center gap-3">
+                  <span className="tabular-nums text-slate-600">{pr.valor_estimado === null ? "valor a definir" : moeda(pr.valor_estimado)}</span>
+                  <LancarProvisao pr={pr} perfil={perfil} usuario={usuario} />
+                </span>
               </li>
             ))}
           </ul>
@@ -87,7 +105,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
   const provisoesSupabase = await createClient();
   const { data: provisoes } = await provisoesSupabase
     .from("provisoes")
-    .select("id, descricao, vencimento, valor_estimado, mes_referencia, obra:obras(nome)")
+    .select("id, descricao, vencimento, valor_estimado, mes_referencia, created_by, pagamento_origem_id, obra:obras(nome)")
     .eq("status", "provisionada")
     .order("vencimento", { ascending: true, nullsFirst: false });
   const vencidos = abertos.filter((p) => p.vencimento < hoje);
@@ -208,7 +226,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
       {diaSel && (
         <div id="dia" className="mt-6 scroll-mt-20 space-y-6">
           <Lista id="dia-lista" titulo={`Vencimento em ${data(diaSel)}`} itens={porDia.get(diaSel) ?? []} cor="bg-marca-500" baixa={podeBaixar} />
-          <ListaProvisoes id="dia-provisoes" titulo={`Provisões que vencem em ${data(diaSel)} · não entram nos totais`} itens={provPorDia.get(diaSel) ?? []} />
+          <ListaProvisoes id="dia-provisoes" titulo={`Provisões que vencem em ${data(diaSel)} · não entram nos totais`} itens={provPorDia.get(diaSel) ?? []} perfil={u.perfil} usuario={u.id} />
         </div>
       )}
 
@@ -224,8 +242,11 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
                     <span className="font-medium">{pr.descricao}</span>
                     <span className="text-slate-500"> · {pr.obra?.nome}{pr.mes_referencia ? ` · ref. ${pr.mes_referencia}` : ""}</span>
                   </span>
-                  <span className="tabular-nums text-slate-600">
-                    {data(pr.vencimento)} · {pr.valor_estimado === null ? "valor a definir" : moeda(pr.valor_estimado)}
+                  <span className="flex items-center gap-3">
+                    <span className="tabular-nums text-slate-600">
+                      {data(pr.vencimento)} · {pr.valor_estimado === null ? "valor a definir" : moeda(pr.valor_estimado)}
+                    </span>
+                    <LancarProvisao pr={pr as ProvisaoAgenda} perfil={u.perfil} usuario={u.id} />
                   </span>
                 </li>
               ))}
@@ -237,7 +258,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
       <div className="mt-6 space-y-6">
         <Lista id="vencidos" titulo="Vencidos" itens={vencidos} cor="bg-red-500" baixa={podeBaixar} />
         <Lista id="hoje" titulo="Vencem hoje" itens={deHoje} cor="bg-amber-500" baixa={podeBaixar} />
-        <ListaProvisoes id="hoje-provisoes" titulo="Provisões que vencem hoje · não entram nos totais" itens={provisoesHoje} />
+        <ListaProvisoes id="hoje-provisoes" titulo="Provisões que vencem hoje · não entram nos totais" itens={provisoesHoje} perfil={u.perfil} usuario={u.id} />
         <Lista id="proximos" titulo="Próximos 15 dias" itens={proximos} cor="bg-sky-500" baixa={podeBaixar} />
       </div>
     </>

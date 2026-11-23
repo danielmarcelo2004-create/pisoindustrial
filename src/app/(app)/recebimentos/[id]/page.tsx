@@ -8,7 +8,7 @@ import { recebimento, situacaoReceber } from "@/lib/consultas/contas-a-receber";
 import { categoriasAtivas } from "@/lib/consultas/categorias";
 import { createClient } from "@/lib/supabase/server";
 import { data, hojeISO, moeda } from "@/lib/formato";
-import { editarRecebimento, vincularNota } from "../actions";
+import { editarRecebimento, enviarNotaNoRecebimento, vincularNota } from "../actions";
 
 export const metadata: Metadata = { title: "Recebimento" };
 
@@ -136,20 +136,22 @@ export default async function RecebimentoPage({ params }: PageProps<"/recebiment
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-slate-500">
-                Só aparecem as notas do mesmo centro de custo ainda não anexadas.
-                {u.perfil === "financeiro" && (
-                  <>
-                    {" "}
-                    Nota nova:{" "}
-                    <Link href="/notas-medicao" className="text-sky-700 hover:underline">
-                      anexe em Notas de medição
-                    </Link>
-                    .
-                  </>
-                )}
-              </p>
+              <p className="text-xs text-slate-500">Só aparecem as notas do mesmo centro de custo ainda não anexadas.</p>
             </FormAcao>
+          )}
+          {podeMexer && u.perfil === "financeiro" && !r.nota && (
+            <details className="mt-4 border-t border-slate-100 pt-3" data-enviar-nota>
+              <summary className="cursor-pointer text-sm font-medium text-sky-700">Enviar nota nova</summary>
+              <FormAcao action={enviarNotaNoRecebimento.bind(null, r.id)} enviar="Enviar e anexar" pendente="Enviando…" className="mt-3 space-y-2">
+                <input type="file" name="arquivo" required accept=".pdf,.xml,.png,.jpg,.jpeg" className="campo" aria-label="Arquivo da nota de medição" />
+                <div className="grid grid-cols-2 gap-2">
+                  <input name="valor" required inputMode="decimal" placeholder="Valor total *" className="campo" aria-label="Valor total da nota" />
+                  <input name="valor_liquido" required inputMode="decimal" defaultValue={Number(r.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} placeholder="Valor líquido *" className="campo" aria-label="Valor líquido da nota" />
+                </div>
+                <input name="numero" placeholder="Número da nota (lido do arquivo se for NFS-e)" className="campo" aria-label="Número da nota" maxLength={60} />
+                <p className="text-xs text-slate-500">PDF, XML, PNG ou JPG. A nota também aparece em Notas de medição.</p>
+              </FormAcao>
+            </details>
           )}
         </Cartao>
       </div>

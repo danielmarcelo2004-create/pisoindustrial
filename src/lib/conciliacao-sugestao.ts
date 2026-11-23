@@ -55,7 +55,8 @@ export type Sugestao =
   | { tipo: "conta"; candidato: Candidato; nivel: "encontramos" | "quase"; motivo: string; diferenca: number }
   | { tipo: "classificar"; classificacao: Classificacao }
   | { tipo: "transferencia"; transferencia: TransferenciaAberta }
-  | { tipo: "estorno"; saida: SaidaEstornavel };
+  | { tipo: "estorno"; saida: SaidaEstornavel }
+  | { tipo: "aplicacao" }; // aplicação/resgate automático (BB Rende Fácil) conciliado na própria conta
 
 /** Saída da mesma conta que um estorno pode devolver (pendente, ou já conciliada com uma conta paga). */
 export type SaidaEstornavel = { id: string; data: string; valor: number; descricao: string; situacao: "pendente" | "conciliada"; conciliadaCom: string | null };
@@ -152,7 +153,11 @@ export function sugerir(linhas: LinhaExtrato[], candidatos: Candidato[], contaId
       motivo: `${valor}${p.nome ? ", nome confere" : ""} · ${quando}${p.d ? ` (${p.d} dia${p.d > 1 ? "s" : ""} de diferença)` : " (mesma data)"}${p.outraConta ? ` · lançada em outra conta (${p.c.contaNome}); ao conciliar, passa para esta` : ""}`,
     });
   }
-  // Sem dica de arquivar: aplicação/resgate viram transferência, tarifa/IOF/empréstimo e compra no cartão viram
+  // Aplicação/resgate automático (BB Rende Fácil, poupança): conciliado na própria conta, como no Conta Azul
+  for (const l of linhas) {
+    if (l.situacao === "pendente" && !res.has(l.id) && classificacaoProvavel(l.descricao, l.valor) === "aplicacao") res.set(l.id, { tipo: "aplicacao" });
+  }
+  // Sem dica de arquivar: aplicação/resgate ficam na conta, tarifa/IOF/empréstimo e compra no cartão viram
   // novo lançamento de despesa, entrada vira recebimento (Contas a receber) e estorno se concilia com a saída.
   return res;
 }
@@ -273,12 +278,6 @@ export function sugerirEstornos(linhas: LinhaExtrato[], saidas: SaidaEstornavel[
   return res;
 }
 
-/** Aplicação/resgate (BB Rende Fácil, poupança…): sugere a conta de investimento (pelo nome, ou a única). */
-export function contaDeAplicacao(desc: string, investimentos: { id: string; nome: string }[]) {
-  if (classificacaoProvavel(desc, -1) !== "aplicacao" || !investimentos.length) return null;
-  const porNome = investimentos.find((c) => nomesConferem(desc, [c.nome]));
-  return porNome ?? (investimentos.length === 1 ? investimentos[0] : null);
-}
 
 /** Recebimentos já lançados, para sugerir centro de custo, categoria e cliente de uma nova entrada. */
 export type HistoricoReceita = { memo: string | null; cliente: string; categoriaId: string | null; obraId: string; data: string };

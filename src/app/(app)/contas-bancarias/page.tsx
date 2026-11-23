@@ -6,8 +6,6 @@ import { getUsuario } from "@/lib/auth";
 import {
   CLASSIFICACOES,
   candidatos as buscarCandidatos,
-  contaDeAplicacao,
-  classificacaoProvavel,
   movimentosInvestimento,
   paresDeEstorno,
   saidasEstornaveis,
@@ -53,7 +51,8 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
   const podeAgir = u.perfil === "financeiro";
   const sp = await searchParams;
   const contas = await contasBancarias();
-  const conta = contas.find((c) => c.id === str(sp.conta)) ?? contas[0];
+  // Sem conta escolhida: abre a que tem mais pendências (e não simplesmente a primeira do alfabeto)
+  const conta = contas.find((c) => c.id === str(sp.conta)) ?? [...contas].sort((a, b) => b.pendentes - a.pendentes)[0];
   const situacao = (["pendente", "conciliada", "arquivada"].includes(str(sp.ver)) ? str(sp.ver) : "pendente") as LinhaExtrato["situacao"];
   const importado = str(sp.importado);
 
@@ -175,14 +174,11 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
   // Estorno: a entrada com "estorno/devolução" e a saída de mesmo valor até 10 dias antes
   if (pend) for (const [id, saida] of sugerirEstornos(linhas, saidas)) sugestoes.set(id, { tipo: "estorno", saida });
   const estornosPorLinha = new Map(pend ? linhas.filter((l) => l.valor > 0).map((l) => [l.id, saidasParaEstorno(l, saidas)]) : []);
-  // Aplicação/resgate (BB Rende Fácil): transferência para a conta de investimento
-  const investimentos = contas.filter((c) => c.tipo === "investimento").map((c) => ({ id: c.id, nome: c.nome }));
-  const aplicacoes = new Map(pend ? linhas.filter((l) => classificacaoProvavel(l.descricao, l.valor) === "aplicacao").map((l) => [l.id, contaDeAplicacao(l.descricao, investimentos)]) : []);
   const sugLanc = new Map(
-    pend ? linhas.filter((l) => l.valor < 0 && !["conta", "transferencia"].includes(sugestoes.get(l.id)?.tipo ?? "")).map((l) => [l.id, sugerirLancamento(l.descricao, historico, categorias)]) : [],
+    pend ? linhas.filter((l) => l.valor < 0 && !["conta", "transferencia", "estorno", "aplicacao"].includes(sugestoes.get(l.id)?.tipo ?? "")).map((l) => [l.id, sugerirLancamento(l.descricao, historico, categorias)]) : [],
   );
   const sugRec = new Map(
-    pend ? linhas.filter((l) => l.valor > 0 && !sugestoes.has(l.id) && !aplicacoes.has(l.id)).map((l) => [l.id, sugerirRecebimento(l.descricao, histRec, categoriasReceita)]) : [],
+    pend ? linhas.filter((l) => l.valor > 0 && !sugestoes.has(l.id)).map((l) => [l.id, sugerirRecebimento(l.descricao, histRec, categoriasReceita)]) : [],
   );
   const recLinhas = situacao === "conciliada" ? await recebimentosDasLinhas(linhas.map((l) => l.recebimento_id).filter(Boolean) as string[]) : new Map();
   const itens = situacao === "conciliada" ? await itensConciliados(linhas.map((l) => l.id)) : new Map();
@@ -264,6 +260,12 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
               <div className="text-xs text-slate-500">Saldo no banco{conta.saldo_em ? ` em ${data(conta.saldo_em)}` : ""}</div>
               <div className="font-semibold tabular-nums">{conta.saldo !== null ? moeda(conta.saldo) : "—"}</div>
             </div>
+            {conta.aplicado !== 0 && (
+              <div data-aplicado>
+                <div className="text-xs text-slate-500">Aplicado no Rende Fácil</div>
+                <div className="font-semibold text-violet-800 tabular-nums">{moeda(conta.aplicado)}</div>
+              </div>
+            )}
             <div>
               <div className="text-xs text-slate-500">Valor pendente de conciliação</div>
               <div className="font-semibold tabular-nums" data-valor-pendente>
@@ -357,8 +359,6 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
                     sugestaoLancamento={sugLanc.get(l.id) ?? null}
                     podeAgir={podeAgir}
                     estornos={estornosPorLinha.get(l.id) ?? []}
-                    contaAplicacao={aplicacoes.get(l.id) ?? null}
-                    aplicacaoSemConta={aplicacoes.has(l.id) && !aplicacoes.get(l.id)}
                     sugestaoRecebimento={sugRec.get(l.id) ?? null}
                   />
                 ))}
@@ -394,6 +394,11 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
                         <td className="px-4 py-2">{l.descricao}</td>
                         <td className={cx("px-4 py-2 text-right whitespace-nowrap tabular-nums", l.valor < 0 ? "text-red-600" : "text-emerald-700")}>{moeda(l.valor)}</td>
                         <td className="px-4 py-2">
+                          {l.classificacao === "aplicacao" && (
+                            <div data-aplicacao-conciliada>
+                              <span className="rounded bg-violet-50 px-1.5 text-xs font-medium text-violet-800">{l.valor < 0 ? "Aplicação automática" : "Resgate automático"}</span> BB Rende Fácil · fica na conta
+                            </div>
+                          )}
                           {l.recebimento_id && recLinhas.get(l.recebimento_id) && (
                             <div data-recebimento-conciliado>
                               <Link href={`/recebimentos/${l.recebimento_id}`} className="text-marca-700 hover:underline">
@@ -431,7 +436,7 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
                           ))}
                           {l.encargos !== null && <div className="text-xs text-amber-800" data-encargos>+ {moeda(l.encargos)} de encargos (juros, IOF, anuidade, tarifa)</div>}
                         </td>
-                        <td className="px-4 py-2 text-right">{podeAgir && <Desfazer linhaId={l.id} algumaBaixou={its.some((i: { baixou: boolean }) => i.baixou)} lancado={its.some((i: { lancado: boolean }) => i.lancado)} recebimento={Boolean(l.recebimento_id)} transferencia={Boolean(l.transferencia_id)} estorno={Boolean(l.estorno_linha)} />}</td>
+                        <td className="px-4 py-2 text-right">{podeAgir && <Desfazer linhaId={l.id} algumaBaixou={its.some((i: { baixou: boolean }) => i.baixou)} lancado={its.some((i: { lancado: boolean }) => i.lancado)} recebimento={Boolean(l.recebimento_id)} aplicacao={l.classificacao === "aplicacao"} transferencia={Boolean(l.transferencia_id)} estorno={Boolean(l.estorno_linha)} />}</td>
                       </tr>
                     );
                   })}

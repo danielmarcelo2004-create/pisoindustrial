@@ -1,5 +1,5 @@
-// Conciliação sem "arquivar" para dinheiro de verdade: estorno em pares, BB Rende Fácil como transferência para a
-// conta de investimento, tarifa como novo lançamento com a categoria certa e entrada como recebimento
+// Conciliação sem "arquivar" para dinheiro de verdade: estorno em pares, BB Rende Fácil conciliado na própria conta
+// (aplicação/resgate automático), tarifa como novo lançamento com a categoria certa e entrada como recebimento
 // (Contas a receber, com nota de medição opcional). Extrato OFX fictício gerado aqui.
 const { chromium } = require('playwright');
 const { createClient } = require('@supabase/supabase-js');
@@ -55,6 +55,8 @@ const pendente = async (p, texto) => (await linha(p, texto).count()) > 0;
     ['2026-12-03', -480, 'PIX ENVIADO 03/12 FULANO FICTICIO', 'E1'],
     ['2026-12-04', 480, 'PIX DEVOLVIDO 04/12 FULANO FICTICIO', 'E2'],
     ['2026-12-05', -5000, 'BB RENDE FACIL', 'R1'],
+    ['2026-12-06', 1200, 'BB RENDE FACIL', 'R2'],
+    ['2026-12-06', -3000, 'ENVIO TRANSF INTERNET TEV', 'X1'],
     ['2026-12-06', -8.5, 'TAR PIX', 'T1'],
     ['2026-12-07', 12000, 'TED RECEBIDA CONSTRUTORA FICTICIA', 'C1'],
   ]);
@@ -65,6 +67,8 @@ const pendente = async (p, texto) => (await linha(p, texto).count()) > 0;
     await fin.waitForURL(/importado=/, { timeout: 60000 });
   });
   const conta = (await um(admin.from('contas_bancarias').select('id').eq('banco', '104').eq('agencia', '77').single())).id;
+  const fu0 = (await um(admin.from('profiles').select('id').eq('perfil', 'financeiro').limit(1).single())).id;
+  const outra = (await um(admin.from('contas_bancarias').insert({ nome: 'BB Fictício Destino', banco: '001', agencia: '', conta: '1112223', created_by: fu0 }).select('id').single())).id;
   const abrir = () => ir(fin, `/contas-bancarias?conta=${conta}`);
 
   await passo('nenhuma linha recebe a dica "Arquivar como…" (tarifa, aplicação, entrada e estorno têm destino)', async () => {
@@ -90,36 +94,44 @@ const pendente = async (p, texto) => (await linha(p, texto).count()) > 0;
     await foto(fin, 'estorno-movimentacoes');
   });
 
-  await passo('Rende Fácil sem conta de investimento: aviso com "+ Conta de investimento"; cadastrar volta para a conciliação', async () => {
+  await passo('Rende Fácil fica na própria conta: aplicação e resgate sugeridos como automáticos, sem conta separada', async () => {
     await abrir();
-    const l = linha(fin, 'BB RENDE FACIL');
-    confere(await l.locator('[data-sem-investimento]').count() === 1, 'sem aviso');
-    await l.getByRole('button', { name: '+ Conta de investimento' }).click();
-    const dlg = fin.getByRole('dialog', { name: 'Cadastrar conta bancária' });
-    confere(await dlg.getByRole('radio', { name: /Investimento/ }).isChecked(), 'tipo investimento não marcado');
-    confere((await dlg.locator('input[name=nome]').inputValue()) === 'BB Rende Fácil', 'nome não sugerido');
-    await foto(fin, 'cadastrar-investimento');
-    await Promise.all([fin.waitForURL(new RegExp(`conta=${conta}`)), dlg.getByRole('button', { name: 'Cadastrar' }).click()]);
+    const ap = fin.locator('[data-linha-banco]').filter({ has: fin.locator('[data-descricao-banco]', { hasText: 'BB RENDE FACIL' }) });
+    confere(await ap.count() === 2, `${await ap.count()} linha(s) do Rende Fácil`);
+    const rotulos = await fin.locator('[data-sugestao="aplicacao"]').allInnerTexts();
+    confere(rotulos.includes('Aplicação automática') && rotulos.includes('Resgate automático'), rotulos.join(' | '));
+    confere(/não é despesa nem receita/.test(await ap.first().locator('[data-aplicacao-sugerida]').innerText()), 'explicação ausente');
+    confere(await fin.getByRole('button', { name: '+ Conta de investimento' }).count() === 0, 'ainda oferece conta de investimento');
+    await foto(fin, 'rende-facil');
   });
 
-  await passo('Rende Fácil: "Nova transferência" já com a conta de investimento (⚡); conciliar; saldo aplicado na conta de investimento', async () => {
+  await passo('Rende Fácil: "Selecionar › Aplicações e resgates automáticos" + Conciliar (2); "Aplicado no Rende Fácil" = R$ 3.800,00', async () => {
+    await fin.getByRole('button', { name: /^Selecionar lançamentos/ }).click();
+    await fin.getByRole('menuitem', { name: /Aplicações e resgates automáticos/ }).click();
+    const rot = (await fin.getByRole('button', { name: /^Conciliar \(/ }).innerText()).trim();
+    confere(rot === 'Conciliar (2)', rot);
+    await fin.getByRole('button', { name: /^Conciliar \(/ }).click();
+    await fin.waitForSelector('[data-resultado-lote]', { timeout: 30000 }); await fin.waitForLoadState('networkidle');
     await abrir();
-    const l = linha(fin, 'BB RENDE FACIL');
-    confere(await l.getByRole('tab', { name: 'Nova transferência' }).getAttribute('aria-selected') === 'true', 'aba transferência não aberta');
-    const sel = l.locator('select[aria-label="Conta de destino"]');
-    const escolhido = await sel.locator('option:checked').innerText();
-    confere(escolhido === 'BB Rende Fácil', `destino: ${escolhido}`);
-    confere(await l.getByText('⚡ sugerido').count() >= 1, 'sem ⚡');
-    await foto(fin, 'rende-facil');
+    confere(!(await pendente(fin, 'BB RENDE FACIL')), 'Rende Fácil ainda pendente');
+    const ap = await fin.locator('[data-aplicado]').innerText();
+    confere(/3\.800,00/.test(ap), ap);
+    const contas = await um(admin.from('contas_bancarias').select('id').eq('tipo', 'investimento'));
+    confere(contas.length === 0, 'criou conta de investimento');
+    await ir(fin, `/contas-bancarias?conta=${conta}&ver=conciliada`);
+    confere(await fin.locator('[data-aplicacao-conciliada]').count() === 2, 'Movimentações sem a etiqueta');
+    await foto(fin, 'rende-facil-conciliado');
+    return ap.replace(/\s+/g, ' ');
+  });
+
+  await passo('Nova transferência para outra conta da empresa (aparece em Contas a receber como transferência)', async () => {
+    await abrir();
+    const l = linha(fin, 'ENVIO TRANSF INTERNET TEV');
+    await l.getByRole('tab', { name: 'Nova transferência' }).click();
+    await l.locator('select[aria-label="Conta de destino"]').selectOption(outra);
     await l.locator('[data-conciliar-novo]').click();
     await fin.waitForLoadState('networkidle'); await fin.waitForTimeout(800);
-    const inv = (await um(admin.from('contas_bancarias').select('id').eq('tipo', 'investimento').eq('nome', 'BB Rende Fácil').single())).id;
-    await ir(fin, `/contas-bancarias?conta=${inv}`);
-    const saldo = await fin.locator('[data-saldo-investimento]').innerText();
-    confere(/5\.000,00/.test(saldo), saldo);
-    confere(await fin.locator('[data-movimento-investimento]').count() === 1, 'movimento não listado');
-    await foto(fin, 'investimento');
-    return saldo.replace(/\s+/g, ' ');
+    confere(!(await pendente(fin, 'ENVIO TRANSF INTERNET TEV')), 'ainda pendente');
   });
 
   await passo('tarifa: "Novo lançamento" com a categoria Tarifas bancárias sugerida', async () => {
@@ -127,6 +139,19 @@ const pendente = async (p, texto) => (await linha(p, texto).count()) > 0;
     const l = linha(fin, 'TAR PIX');
     const cat = await l.locator('select[aria-label="Categoria do novo lançamento"] option:checked').innerText();
     confere(cat === 'Tarifas bancárias', `categoria: ${cat}`);
+  });
+
+  await passo('"+ Nova" categoria na conciliação: cadastra sem sair da linha e já seleciona', async () => {
+    await abrir();
+    const l = linha(fin, 'TAR PIX');
+    await l.getByRole('button', { name: '+ Nova' }).first().click();
+    await l.locator('input[aria-label="Nome da nova categoria de despesa"]').fill('Tarifa Pix fictícia');
+    await l.locator('[data-nova-categoria="despesa"]').getByRole('button', { name: 'Salvar' }).click();
+    await l.locator('[data-nova-categoria="despesa"]').waitFor({ state: 'detached' });
+    const cat = await l.locator('select[aria-label="Categoria do novo lançamento"] option:checked').innerText();
+    confere(cat === 'Tarifa Pix fictícia', `categoria: ${cat}`);
+    const c = await um(admin.from('categorias').select('tipo').eq('nome', 'Tarifa Pix fictícia'));
+    confere(c.length === 1 && c[0].tipo === 'despesa', JSON.stringify(c));
   });
 
   await passo('entrada: "Novo lançamento" de receita; o cliente vem do centro de custo; Conciliar cria o recebimento', async () => {
@@ -171,6 +196,22 @@ const pendente = async (p, texto) => (await linha(p, texto).count()) > 0;
   });
 
   const recId = (await um(admin.from('recebimentos').select('id').eq('obra_id', obraA.id).eq('valor', 12000).single())).id;
+  await passo('recebimento: "Enviar nota nova" envia o arquivo aqui mesmo e já anexa (sem ir a Notas de medição)', async () => {
+    await ir(fin, `/recebimentos/${recId}`);
+    const pdf = path.join(DIR, 'medicao-enviada.pdf');
+    fs.writeFileSync(pdf, '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF');
+    await fin.locator('[data-enviar-nota] summary').click();
+    await fin.setInputFiles('input[aria-label="Arquivo da nota de medição"]', pdf);
+    await fin.fill('input[aria-label="Valor total da nota"]', '12.600,00');
+    await fin.fill('input[aria-label="Número da nota"]', '90');
+    await fin.getByRole('button', { name: 'Enviar e anexar' }).click();
+    await fin.locator('[data-nota-anexada]').waitFor({ timeout: 30000 }); // o cartão da nota aparece no lugar do formulário
+    await ir(fin, `/recebimentos/${recId}`);
+    confere(/Nota nº 90/.test(await fin.locator('[data-nota-anexada]').innerText()), 'nota enviada não aparece');
+    const n = await um(admin.from('notas_medicao').select('id, obra_id').eq('numero', '90'));
+    confere(n.length === 1 && n[0].obra_id === obraA.id, JSON.stringify(n));
+  });
+
   await passo('recebimento: anexar nota de medição do mesmo centro de custo (opcional)', async () => {
     const fu = (await um(admin.from('profiles').select('id').eq('perfil', 'financeiro').limit(1).single())).id;
     await um(admin.from('notas_medicao').insert({ obra_id: obraA.id, storage_path: `${obraA.id}/medicoes/e2e-${Date.now()}.pdf`, nome_arquivo: 'medicao-ficticia.pdf', numero: '77', sha256: 'b'.repeat(64), valor: 12800, valor_liquido: 12000, criada_por: fu }));
@@ -179,7 +220,7 @@ const pendente = async (p, texto) => (await linha(p, texto).count()) > 0;
     const opcoes = await fin.locator('select[aria-label="Nota de medição"] option').allInnerTexts();
     confere(opcoes.some((o) => /Nº 77/.test(o)) && !opcoes.some((o) => /Nº 78/.test(o)), opcoes.join(' | '));
     await fin.locator('select[aria-label="Nota de medição"]').selectOption({ label: opcoes.find((o) => /Nº 77/.test(o)) });
-    await fin.getByRole('button', { name: 'Anexar' }).click();
+    await fin.getByRole('button', { name: /^(Anexar|Trocar)$/ }).click();
     await fin.getByText('Nota de medição anexada.').waitFor({ timeout: 15000 });
     await ir(fin, `/recebimentos/${recId}`);
     confere(/Nota nº 77/.test(await fin.locator('[data-nota-anexada]').innerText()), 'nota não aparece');

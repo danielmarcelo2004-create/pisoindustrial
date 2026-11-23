@@ -17,6 +17,15 @@ const EXTENSOES: Record<string, string> = { pdf: "application/pdf", xml: "applic
 /** Anexa uma nota de medição (sem pagamento). Os dados lidos do arquivo completam o que o usuário não preencheu. */
 export async function anexarNotaMedicao(_: Estado, fd: FormData): Promise<Estado> {
   await exigirPerfil("financeiro", "suprimentos");
+  const r = await registrarNotaMedicao(fd);
+  if (r.erro) return { erro: r.erro };
+  revalidatePath("/notas-medicao");
+  return { ok: "Nota de medição anexada." };
+}
+
+/** Envia o arquivo e registra a nota de medição da obra (obra_id no formulário). Devolve o id da nota. */
+export async function registrarNotaMedicao(fd: FormData): Promise<{ id?: string; erro?: string }> {
+  await exigirPerfil("financeiro", "suprimentos");
   const obra = t(fd, "obra_id");
   if (!UUID.test(obra)) return { erro: "Selecione o centro de custo da medição." };
 
@@ -43,7 +52,7 @@ export async function anexarNotaMedicao(_: Estado, fd: FormData): Promise<Estado
   const up = await supabase.storage.from("documentos").upload(caminho, bytes, { contentType: EXTENSOES[ext], upsert: false });
   if (up.error) return { erro: `Falha ao enviar o arquivo: ${mensagemErro(up.error)}` };
 
-  const { error } = await supabase.rpc("registrar_nota_medicao", {
+  const { data: notaId, error } = await supabase.rpc("registrar_nota_medicao", {
     p_obra_id: obra,
     p_storage_path: caminho,
     p_nome: arquivo.name.slice(0, 200),
@@ -59,8 +68,6 @@ export async function anexarNotaMedicao(_: Estado, fd: FormData): Promise<Estado
       descricao: t(fd, "descricao") || undefined,
     },
   });
-  if (error) return { erro: mensagemErro(error) };
-
-  revalidatePath("/notas-medicao");
-  return { ok: "Nota de medição anexada." };
+  if (error || !notaId) return { erro: mensagemErro(error) };
+  return { id: notaId as string };
 }

@@ -6,7 +6,8 @@ import { createContext, useActionState, useContext, useEffect, useMemo, useRef, 
 import { moeda } from "@/lib/formato";
 import type { Candidato, Classificacao, LinhaExtrato, SaidaEstornavel, Sugestao, SugestaoLancamento, SugestaoRecebimento } from "@/lib/consultas/conciliacao";
 import { pareceEstorno } from "@/lib/conciliacao-sugestao";
-import { arquivar, conciliar, conciliarEstorno, conciliarTransferencia, criarContaBancaria, criarContaInvestimento, desfazer, importarExtrato, novaTransferencia, novoLancamento, novoLancamentoCompleto, novoRecebimento, renomearConta, restaurar } from "./actions";
+import { criarCategoriaRapida, criarCategoriaReceitaRapida } from "@/app/(app)/categorias/actions";
+import { arquivar, conciliar, conciliarAplicacao, conciliarEstorno, conciliarTransferencia, criarContaBancaria, desfazer, importarExtrato, novaTransferencia, novoLancamento, novoLancamentoCompleto, novoRecebimento, renomearConta, restaurar } from "./actions";
 
 const br = (iso: string) => iso.split("-").reverse().join("/");
 const botao = "rounded-md px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40";
@@ -156,6 +157,45 @@ export function ProvedorListas({ listas, children }: { listas: ListasConciliacao
   return <ContextoListas.Provider value={listas}>{children}</ContextoListas.Provider>;
 }
 
+/** "+ Nova" categoria ao lado do campo, sem sair da conciliação; a nova já fica escolhida. */
+function NovaCategoria({ tipo, aoCriar }: { tipo: "despesa" | "receita"; aoCriar: (c: Opcao) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [nome, setNome] = useState("");
+  const [erro, setErro] = useState("");
+  const [pend, iniciar] = useTransition();
+  if (!aberto)
+    return (
+      <button type="button" className="ml-2 text-[11px] font-medium text-sky-700 hover:underline" onClick={() => (setAberto(true), setErro(""))}>
+        + Nova
+      </button>
+    );
+  return (
+    <span className="mt-1 flex items-center gap-1" data-nova-categoria={tipo}>
+      <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} placeholder={tipo === "receita" ? "Ex.: Medição de obra" : "Ex.: Tarifas bancárias"} className="campo py-1 text-sm" aria-label={`Nome da nova categoria de ${tipo}`} maxLength={120} />
+      <button
+        type="button"
+        disabled={pend || !nome.trim()}
+        className="rounded bg-sky-700 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+        onClick={() =>
+          iniciar(async () => {
+            const r = tipo === "receita" ? await criarCategoriaReceitaRapida(nome) : await criarCategoriaRapida(nome);
+            if (r.erro || !r.id) return setErro(r.erro ?? "Não foi possível cadastrar.");
+            aoCriar({ id: r.id, nome: r.nome ?? nome.trim() });
+            setAberto(false);
+            setNome("");
+          })
+        }
+      >
+        Salvar
+      </button>
+      <button type="button" className="text-xs text-slate-500" onClick={() => setAberto(false)}>
+        ✕
+      </button>
+      {erro && <span className="text-xs text-red-700">{erro}</span>}
+    </span>
+  );
+}
+
 const raio = <span className="ml-1 rounded bg-sky-100 px-1 text-[10px] font-semibold text-sky-700" title="Sugerido a partir dos lançamentos anteriores">⚡ sugerido</span>;
 
 /**
@@ -170,8 +210,6 @@ export function LinhaPendente({
   sugestaoLancamento,
   podeAgir,
   estornos = [],
-  contaAplicacao = null,
-  aplicacaoSemConta = false,
   sugestaoRecebimento = null,
 }: {
   linha: LinhaExtrato;
@@ -179,11 +217,13 @@ export function LinhaPendente({
   sugestaoLancamento: SugestaoLancamento | null;
   podeAgir: boolean;
   estornos?: SaidaEstornavel[]; // saídas que esta entrada pode devolver
-  contaAplicacao?: Opcao | null; // aplicação/resgate: a conta de investimento sugerida
-  aplicacaoSemConta?: boolean; // aplicação/resgate sem conta de investimento cadastrada
   sugestaoRecebimento?: SugestaoRecebimento | null; // entrada: sugestão do "Novo lançamento" de receita
 }) {
-  const { candidatos, categorias, categoriasReceita, obras, fornecedores, contas, contaAtual } = useContext(ContextoListas);
+  const { candidatos, categorias: catDespesa, categoriasReceita: catReceita, obras, fornecedores, contas } = useContext(ContextoListas);
+  // Categorias criadas aqui mesmo ("+ Nova") entram na lista desta linha
+  const [novasCat, setNovasCat] = useState<{ despesa: Opcao[]; receita: Opcao[] }>({ despesa: [], receita: [] });
+  const categorias = [...catDespesa, ...novasCat.despesa];
+  const categoriasReceita = [...catReceita, ...novasCat.receita];
   const router = useRouter();
   const [erro, setErro] = useState("");
   const [buscar, setBuscar] = useState(false);
@@ -192,7 +232,7 @@ export function LinhaPendente({
   const [pend, iniciar] = useTransition();
   const saida = linha.valor < 0;
   const [aba, setAba] = useState<"lancamento" | "transferencia" | "estorno">(
-    contaAplicacao || aplicacaoSemConta ? "transferencia" : saida ? "lancamento" : estornos.length && pareceEstorno(linha.descricao) ? "estorno" : "lancamento",
+    saida ? "lancamento" : estornos.length && pareceEstorno(linha.descricao) ? "estorno" : "lancamento",
   );
   const [estSel, setEstSel] = useState(estornos.length === 1 ? estornos[0].id : "");
   const [completar, setCompletar] = useState(false);
@@ -208,26 +248,28 @@ export function LinhaPendente({
     obra: sugestaoRecebimento?.obraId ?? "",
     cliente: sugestaoRecebimento?.cliente ?? "",
   });
-  const [transf, setTransf] = useState({ descricao: linha.descricao, conta: contaAplicacao?.id ?? "" });
+  const [transf, setTransf] = useState({ descricao: linha.descricao, conta: "" });
   const fim = (e?: string) => (e ? setErro(e) : (setErro(""), router.refresh()));
   const sug = descartada ? null : sugestao;
   const conta = sug?.tipo === "conta" ? sug : null;
   const classe = sug?.tipo === "classificar" ? sug.classificacao : null;
   const transfSug = sug?.tipo === "transferencia" ? sug.transferencia : null;
   const estornoSug = sug?.tipo === "estorno" ? sug.saida : null;
+  const aplicSug = sug?.tipo === "aplicacao";
   const abrirBusca = (pre: string[] = []) => (setInicial(pre), setBuscar(true));
   const conciliarAgora = () => conta && iniciar(async () => fim((await conciliar(linha.id, [{ tipo: conta.candidato.tipo, id: conta.candidato.id }], null)).erro));
-  const semConta = !conta && !transfSug && !estornoSug;
+  const semConta = !conta && !transfSug && !estornoSug && !aplicSug;
   const podeLancar = Boolean(lanc.categoria && lanc.obra && lanc.descricao.trim());
   const acaoMeio = () => {
     if (transfSug) return iniciar(async () => fim((await conciliarTransferencia(linha.id, transfSug.id)).erro));
     if (estornoSug) return iniciar(async () => fim((await conciliarEstorno(linha.id, estornoSug.id)).erro));
+    if (aplicSug) return iniciar(async () => fim((await conciliarAplicacao([linha.id])).erro));
     if (aba === "estorno") return iniciar(async () => fim((await conciliarEstorno(linha.id, estSel)).erro));
     if (aba === "lancamento" && !saida) return iniciar(async () => fim((await novoRecebimento(linha.id, { obra: rec.obra, categoria: rec.categoria, cliente: rec.cliente, descricao: rec.descricao })).erro));
     if (aba === "lancamento") return iniciar(async () => fim((await novoLancamento(linha.id, { obra: lanc.obra, categoria: lanc.categoria, descricao: lanc.descricao, fornecedor: lanc.fornecedor })).erro));
     return iniciar(async () => fim((await novaTransferencia(linha.id, transf.conta, transf.descricao)).erro));
   };
-  const meioHabilitado = transfSug || estornoSug ? true : aba === "lancamento" ? (saida ? podeLancar : Boolean(rec.categoria && rec.obra && rec.cliente.trim() && rec.descricao.trim())) : aba === "estorno" ? Boolean(estSel) : Boolean(transf.conta);
+  const meioHabilitado = transfSug || estornoSug || aplicSug ? true : aba === "lancamento" ? (saida ? podeLancar : Boolean(rec.categoria && rec.obra && rec.cliente.trim() && rec.descricao.trim())) : aba === "estorno" ? Boolean(estSel) : Boolean(transf.conta);
   const sugerido = (campo: "categoria" | "obra" | "fornecedor", valor: string) =>
     sugestaoLancamento && valor && valor === (campo === "categoria" ? sugestaoLancamento.categoriaId : campo === "obra" ? sugestaoLancamento.obraId : sugestaoLancamento.fornecedorId);
 
@@ -245,6 +287,7 @@ export function LinhaPendente({
                 data-conc={conta && conta.diferenca === 0 ? `${conta.candidato.tipo}:${conta.candidato.id}` : ""}
                 data-nivel={conta?.nivel ?? ""}
                 data-classe={classe ?? ""}
+                data-aplic={aplicSug ? "1" : ""}
                 aria-label={`Selecionar ${linha.descricao} ${moeda(linha.valor)}`}
               />
             )}
@@ -283,7 +326,11 @@ export function LinhaPendente({
           </>
         ) : (
           <>
-            {transfSug || estornoSug ? (
+            {aplicSug ? (
+              <span className="rounded bg-violet-100 px-2 py-0.5 text-center text-xs font-semibold text-violet-800" data-sugestao="aplicacao">
+                {saida ? "Aplicação automática" : "Resgate automático"}
+              </span>
+            ) : transfSug || estornoSug ? (
               <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800" data-sugestao={transfSug ? "transferencia" : "estorno"}>
                 Encontramos
               </span>
@@ -378,6 +425,18 @@ export function LinhaPendente({
               </button>
             )}
           </div>
+        ) : aplicSug ? (
+          <div className="flex-1 space-y-1 px-3 py-3 text-sm" data-aplicacao-sugerida>
+            <div className="font-medium text-slate-800">{saida ? "Aplicação automática (BB Rende Fácil)" : "Resgate automático (BB Rende Fácil)"}</div>
+            <div className="text-xs text-slate-600">
+              O dinheiro continua na conta, {saida ? "aplicado" : "de volta ao saldo"}: não é despesa nem receita. Ao conciliar, o valor aplicado da conta {saida ? "aumenta" : "diminui"} em {moeda(Math.abs(linha.valor))}.
+            </div>
+            {podeAgir && (
+              <button type="button" className="mt-1 text-xs text-sky-700 hover:underline" onClick={() => setDescartada(true)}>
+                Não é aplicação/resgate
+              </button>
+            )}
+          </div>
         ) : estornoSug ? (
           <div className="flex-1 space-y-1 px-3 py-3 text-sm" data-estorno-sugerido>
             <div className="font-medium text-slate-800">
@@ -434,8 +493,9 @@ export function LinhaPendente({
                   Descrição *
                   <input value={lanc.descricao} onChange={(e) => setLanc({ ...lanc, descricao: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Descrição do novo lançamento" />
                 </label>
-                <label>
+                <div>
                   Categoria *{sugerido("categoria", lanc.categoria) && raio}
+                  <NovaCategoria tipo="despesa" aoCriar={(c) => (setNovasCat((x) => ({ ...x, despesa: [...x.despesa, c] })), setLanc((l) => ({ ...l, categoria: c.id })))} />
                   <select value={lanc.categoria} onChange={(e) => setLanc({ ...lanc, categoria: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Categoria do novo lançamento">
                     <option value="">Escolha…</option>
                     {categorias.map((c) => (
@@ -444,7 +504,7 @@ export function LinhaPendente({
                       </option>
                     ))}
                   </select>
-                </label>
+                </div>
                 <label>
                   Centro de custo *{sugerido("obra", lanc.obra) && raio}
                   <select value={lanc.obra} onChange={(e) => setLanc({ ...lanc, obra: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Centro de custo do novo lançamento">
@@ -480,17 +540,18 @@ export function LinhaPendente({
                   Descrição *
                   <input value={rec.descricao} onChange={(e) => setRec({ ...rec, descricao: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Descrição do recebimento" />
                 </label>
-                <label>
+                <div>
                   Categoria de receita *{sugestaoRecebimento?.categoriaId && rec.categoria === sugestaoRecebimento.categoriaId && raio}
+                  <NovaCategoria tipo="receita" aoCriar={(c) => (setNovasCat((x) => ({ ...x, receita: [...x.receita, c] })), setRec((r) => ({ ...r, categoria: c.id })))} />
                   <select value={rec.categoria} onChange={(e) => setRec({ ...rec, categoria: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label="Categoria do recebimento">
-                    <option value="">{categoriasReceita.length ? "Escolha…" : "Cadastre em Categorias › Receitas"}</option>
+                    <option value="">{categoriasReceita.length ? "Escolha…" : "Nenhuma: use “+ Nova”"}</option>
                     {categoriasReceita.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.nome}
                       </option>
                     ))}
                   </select>
-                </label>
+                </div>
                 <label>
                   Centro de custo *{sugestaoRecebimento?.obraId && rec.obra === sugestaoRecebimento.obraId && raio}
                   <select
@@ -537,7 +598,6 @@ export function LinhaPendente({
                 </label>
                 <label>
                   {saida ? "Destino *" : "Origem *"}
-                  {contaAplicacao && transf.conta === contaAplicacao.id && raio}
                   <select value={transf.conta} onChange={(e) => setTransf({ ...transf, conta: e.target.value })} className="campo mt-0.5 py-1 text-sm" aria-label={saida ? "Conta de destino" : "Conta de origem"}>
                     <option value="">Escolha a conta…</option>
                     {contas.map((c) => (
@@ -547,12 +607,6 @@ export function LinhaPendente({
                     ))}
                   </select>
                 </label>
-                {aplicacaoSemConta && (
-                  <span className="flex flex-wrap items-center gap-2 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-900" data-sem-investimento>
-                    Parece {saida ? "aplicação" : "resgate"}: cadastre a conta de investimento (ex.: BB Rende Fácil) para lançar como transferência.
-                    <CadastrarConta investimentoInicial voltar={contaAtual} rotulo="+ Conta de investimento" />
-                  </span>
-                )}
                 <span className="text-[11px] text-slate-500">Transferência entre contas da empresa: não é despesa. {saida ? "A entrada" : "A saída"} na outra conta aparece sugerida quando o extrato dela for importado.</span>
               </div>
             )}
@@ -851,7 +905,7 @@ function BuscarConta({ linha, candidatos, inicial = [], aoFechar, aoConciliar }:
   );
 }
 
-export function Desfazer({ linhaId, algumaBaixou, lancado = false, transferencia = false, estorno = false, recebimento = false }: { linhaId: string; algumaBaixou: boolean; lancado?: boolean; transferencia?: boolean; estorno?: boolean; recebimento?: boolean }) {
+export function Desfazer({ linhaId, algumaBaixou, lancado = false, transferencia = false, estorno = false, recebimento = false, aplicacao = false }: { linhaId: string; algumaBaixou: boolean; lancado?: boolean; transferencia?: boolean; estorno?: boolean; recebimento?: boolean; aplicacao?: boolean }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
   const [voltar, setVoltar] = useState(false);
@@ -869,7 +923,9 @@ export function Desfazer({ linhaId, algumaBaixou, lancado = false, transferencia
             <h3 className="text-base font-semibold text-slate-800">Desfazer conciliação</h3>
             <p className="mt-1 text-sm text-slate-600">O lançamento do banco volta para as pendentes.</p>
             <div className="mt-3 space-y-2 text-sm">
-              {recebimento ? (
+              {aplicacao ? (
+                <p className="text-slate-700">A aplicação/resgate automático volta para as pendentes e sai do valor aplicado da conta.</p>
+              ) : recebimento ? (
                 <>
                   <label className="flex items-start gap-2">
                     <input type="radio" name="voltar" checked={!voltar} onChange={() => setVoltar(false)} /> <span>Apenas desfazer: o recebimento continua lançado</span>
@@ -947,7 +1003,7 @@ export function Restaurar({ id }: { id: string }) {
  */
 export function BarraLancamentos({ ordem, linkOrdem }: { ordem: string; linkOrdem: Record<string, string> }) {
   const router = useRouter();
-  const [sel, setSel] = useState({ total: 0, conc: 0, classe: 0 });
+  const [sel, setSel] = useState({ total: 0, conc: 0, classe: 0, aplic: 0 });
   const [menu, setMenu] = useState<"" | "selecionar" | "ordenar">("");
   const [pend, iniciar] = useTransition();
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
@@ -956,7 +1012,7 @@ export function BarraLancamentos({ ordem, linkOrdem }: { ordem: string; linkOrde
   useEffect(() => {
     const contar = () => {
       const m = caixas().filter((c) => c.checked);
-      setSel({ total: m.length, conc: m.filter((c) => c.dataset.conc).length, classe: m.filter((c) => c.dataset.classe).length });
+      setSel({ total: m.length, conc: m.filter((c) => c.dataset.conc).length, classe: m.filter((c) => c.dataset.classe).length, aplic: m.filter((c) => c.dataset.aplic).length });
     };
     document.addEventListener("change", contar);
     contar();
@@ -987,19 +1043,26 @@ export function BarraLancamentos({ ordem, linkOrdem }: { ordem: string; linkOrde
             <button role="menuitem" type="button" className={item} onClick={() => marcar(() => true)}>Todos desta página</button>
             <button role="menuitem" type="button" className={item} onClick={() => marcar((c) => c.dataset.nivel === "encontramos" && Boolean(c.dataset.conc))}>Com sugestão “Encontramos”</button>
             <button role="menuitem" type="button" className={item} onClick={() => marcar((c) => Boolean(c.dataset.conc))}>Com sugestão de valor igual</button>
+            <button role="menuitem" type="button" className={item} onClick={() => marcar((c) => Boolean(c.dataset.aplic))}>Aplicações e resgates automáticos (Rende Fácil)</button>
             <button role="menuitem" type="button" className={`${item} border-t border-slate-100`} onClick={() => marcar(() => false)}>Nenhum</button>
           </div>
         )}
       </div>
       <button
         type="button"
-        disabled={!sel.conc || pend}
-        title={sel.total && !sel.conc ? "Nenhuma das marcadas tem sugestão com valor igual" : undefined}
+        disabled={!(sel.conc + sel.aplic) || pend}
+        title={sel.total && !(sel.conc + sel.aplic) ? "Nenhuma das marcadas tem sugestão com valor igual" : undefined}
         className={`${botao} bg-emerald-600 text-white hover:bg-emerald-700`}
         onClick={() =>
           iniciar(async () => {
             let ok = 0;
             const erros: string[] = [];
+            const aplic = marcadas().filter((x) => x.dataset.aplic).map((x) => x.dataset.linha!);
+            if (aplic.length) {
+              const r = await conciliarAplicacao(aplic);
+              if (r.erro) erros.push(r.erro);
+              else ok += r.n ?? 0;
+            }
             for (const c of marcadas().filter((x) => x.dataset.conc)) {
               const [tipo, id] = c.dataset.conc!.split(":");
               const r = await conciliar(c.dataset.linha!, [{ tipo: tipo as "pagamento" | "parcela", id }], null);
@@ -1011,7 +1074,7 @@ export function BarraLancamentos({ ordem, linkOrdem }: { ordem: string; linkOrde
           })
         }
       >
-        {pend ? "Aguarde…" : `Conciliar${sel.conc ? ` (${sel.conc})` : ""}`}
+        {pend ? "Aguarde…" : `Conciliar${sel.conc + sel.aplic ? ` (${sel.conc + sel.aplic})` : ""}`}
       </button>
       <IgnorarMarcadas habilitado={sel.total > 0} aoTerminar={(r) => (setMsg(r), router.refresh())} />
       <div className="relative ml-auto">
@@ -1143,35 +1206,23 @@ export function SeletorConta({ contas, atual }: { contas: { id: string; nome: st
 
 
 /** "Cadastrar conta": nome, banco, agência e conta (o extrato importado depois cai nela). */
-export function CadastrarConta({ abertoInicial = false, investimentoInicial = false, voltar, rotulo = "+ Cadastrar conta" }: { abertoInicial?: boolean; investimentoInicial?: boolean; voltar?: string; rotulo?: string }) {
+export function CadastrarConta({ abertoInicial = false }: { abertoInicial?: boolean }) {
   const [aberto, setAberto] = useState(abertoInicial);
   const [estado, acao, enviando] = useActionState(criarContaBancaria, null);
-  const [estadoInv, acaoInv, enviandoInv] = useActionState(criarContaInvestimento, null);
   const [banco, setBanco] = useState("001");
-  const [investimento, setInvestimento] = useState(investimentoInicial);
   if (!aberto)
     return (
       <button type="button" onClick={() => setAberto(true)} className={`${botao} border border-sky-300 bg-white text-sky-800 hover:bg-sky-50`}>
-        {rotulo}
+        + Cadastrar conta
       </button>
     );
-  const erro = investimento ? estadoInv?.erro : estado?.erro;
   return (
     <div role="dialog" aria-label="Cadastrar conta bancária" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4">
-      <form action={investimento ? acaoInv : acao} className="w-full max-w-md space-y-3 rounded-lg bg-white p-5 shadow-xl">
+      <form action={acao} className="w-full max-w-md space-y-3 rounded-lg bg-white p-5 shadow-xl">
         <h3 className="text-base font-semibold text-slate-800">Cadastrar conta bancária</h3>
-        <div className="flex gap-4 text-sm" role="radiogroup" aria-label="Tipo da conta">
-          <label className="flex items-center gap-1.5">
-            <input type="radio" name="tipo_conta" checked={!investimento} onChange={() => setInvestimento(false)} /> Conta corrente
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input type="radio" name="tipo_conta" checked={investimento} onChange={() => setInvestimento(true)} /> Investimento (ex.: BB Rende Fácil)
-          </label>
-        </div>
-        {voltar && <input type="hidden" name="voltar" value={voltar} />}
         <label className="block text-sm">
           Nome
-          <input name="nome" required maxLength={80} placeholder={investimento ? "Ex.: BB Rende Fácil" : "Ex.: Caixa Matriz, BB Parceria"} defaultValue={investimento && investimentoInicial ? "BB Rende Fácil" : undefined} className="campo mt-1" />
+          <input name="nome" required maxLength={80} placeholder="Ex.: Caixa Matriz, BB Parceria" className="campo mt-1" />
         </label>
         <label className="block text-sm">
           Banco
@@ -1183,41 +1234,33 @@ export function CadastrarConta({ abertoInicial = false, investimentoInicial = fa
             <option value="033">033 — Santander</option>
             <option value="756">756 — Sicoob</option>
             <option value="748">748 — Sicredi</option>
-            {!investimento && <option value="outro">Outro (informar o código)</option>}
+            <option value="outro">Outro (informar o código)</option>
           </select>
         </label>
-        {!investimento && banco === "outro" && (
+        {banco === "outro" && (
           <label className="block text-sm">
             Código do banco
             <input name="banco_outro" required inputMode="numeric" maxLength={3} className="campo mt-1" />
           </label>
         )}
-        {investimento ? (
-          <p className="text-xs text-slate-500">
-            Não tem extrato próprio: a aplicação aparece no extrato da conta corrente e é conciliada como <strong>transferência</strong> para esta conta (o resgate, como transferência de volta). O saldo aplicado é a soma dessas transferências.
-          </p>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm">
-                Agência
-                <input name="agencia" inputMode="numeric" maxLength={10} className="campo mt-1" />
-              </label>
-              <label className="block text-sm">
-                Conta (com dígito)
-                <input name="conta" required maxLength={20} placeholder="Ex.: 13970-X" className="campo mt-1" />
-              </label>
-            </div>
-            <p className="text-xs text-slate-500">O extrato OFX importado depois é reconhecido por banco, agência e conta.</p>
-          </>
-        )}
-        {erro && <Mensagem erro={erro} />}
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-sm">
+            Agência
+            <input name="agencia" inputMode="numeric" maxLength={10} className="campo mt-1" />
+          </label>
+          <label className="block text-sm">
+            Conta (com dígito)
+            <input name="conta" required maxLength={20} placeholder="Ex.: 13970-X" className="campo mt-1" />
+          </label>
+        </div>
+        <p className="text-xs text-slate-500">O extrato OFX importado depois é reconhecido por banco, agência e conta.</p>
+        {estado?.erro && <Mensagem erro={estado.erro} />}
         <div className="flex justify-end gap-2">
           <button type="button" className={`${botao} border border-slate-300`} onClick={() => setAberto(false)}>
             Voltar
           </button>
-          <button type="submit" disabled={enviando || enviandoInv} className={`${botao} bg-marca-700 text-white hover:bg-marca-800`}>
-            {enviando || enviandoInv ? "Salvando…" : "Cadastrar"}
+          <button type="submit" disabled={enviando} className={`${botao} bg-marca-700 text-white hover:bg-marca-800`}>
+            {enviando ? "Salvando…" : "Cadastrar"}
           </button>
         </div>
       </form>

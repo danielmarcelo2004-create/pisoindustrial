@@ -45,7 +45,13 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
         .eq("id", clonarId)
         .maybeSingle()
     : { data: null };
-  const obraPadrao = origem?.obra_id ?? (typeof sp.obra === "string" ? sp.obra : "");
+  // "Lançar despesa" de uma provisão: abre preenchido; ao salvar, a provisão é marcada como lançada.
+  const provisaoId = /^[0-9a-f-]{36}$/i.test(texto("provisao")) ? texto("provisao") : "";
+  const { data: prov } = provisaoId
+    ? await (await createClient()).from("provisoes").select("id, descricao, obra_id, vencimento, valor_estimado, categoria_id, status, obra:obras(nome)").eq("id", provisaoId).maybeSingle()
+    : { data: null };
+  const provAberta = prov && prov.status === "provisionada" ? prov : null;
+  const obraPadrao = origem?.obra_id ?? provAberta?.obra_id ?? (typeof sp.obra === "string" ? sp.obra : "");
   const padraoCampos = origem
     ? {
         fornecedor_id: origem.fornecedor_id,
@@ -57,16 +63,35 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
         observacoes: origem.observacoes,
         vencimento: null,
       }
-    : {
-        descricao: texto("descricao"),
-        vencimento: texto("vencimento") || null,
-        valor: texto("valor") || null,
-        categoria_id: texto("categoria") || null,
-      };
+    : provAberta
+      ? {
+          descricao: provAberta.descricao,
+          vencimento: provAberta.vencimento,
+          valor: provAberta.valor_estimado === null ? null : String(provAberta.valor_estimado),
+          categoria_id: provAberta.categoria_id,
+        }
+      : {
+          descricao: texto("descricao"),
+          vencimento: texto("vencimento") || null,
+          valor: texto("valor") || null,
+          categoria_id: texto("categoria") || null,
+        };
 
   return (
     <>
       <Cabecalho titulo={origem ? `Nova despesa (cópia do nº ${origem.numero})` : "Nova despesa"} voltar={{ href: "/pagamentos", rotulo: "Contas a pagar" }} />
+      {prov && !provAberta && (
+        <div className="mb-4">
+          <Aviso tipo="alerta">A provisão “{prov.descricao}” já foi lançada ou cancelada. Esta despesa será cadastrada sem ligação com ela.</Aviso>
+        </div>
+      )}
+      {provAberta && (
+        <div className="mb-4" data-lancando-provisao>
+          <Aviso tipo="info">
+            Lançando a provisão <strong>{provAberta.descricao}</strong> ({provAberta.obra?.nome}). Informe o fornecedor ou favorecido, confira o valor real, anexe o boleto ou a nota (ou preencha a Ordem de Pagamento) e salve: a provisão é marcada como lançada sozinha.
+          </Aviso>
+        </div>
+      )}
       {origem && (
         <div className="mb-4">
           <Aviso tipo="info">Dados copiados do pagamento nº {origem.numero}. Informe o vencimento e anexe o boleto ou a nota fiscal desta nova despesa.</Aviso>
@@ -85,6 +110,7 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
               pendente="Enviando…"
               limparErroAoMudar={{ campos: ["boleto", "nota_fiscal"], trecho: "Anexe um boleto ou nota fiscal" }}
             >
+              {provAberta && <input type="hidden" name="provisao_id" value={provAberta.id} />}
               <Cartao titulo="Centro de custo">
                 <Campo rotulo="Centro de custo" obrigatorio ajuda="O pagamento seguirá o fluxo de aprovação configurado para a obra.">
                   <select name="obra_id" required defaultValue={obraPadrao} className="campo">
@@ -98,7 +124,7 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
                 </Campo>
               </Cartao>
               <Cartao titulo="Dados do pagamento">
-                <CamposPagamento fornecedores={fornecedores} padrao={padraoCampos} parcelar formaFixa="boleto" categorias={categorias} podeAdicionarCategoria={podeAdicionarCategoria} contasBancarias={contasBancarias} podeCadastrarConta={u.perfil === "financeiro"} />
+                <CamposPagamento podeAdicionarFornecedor={u.perfil === "financeiro" || u.perfil === "suprimentos"} fornecedores={fornecedores} padrao={padraoCampos} parcelar formaFixa="boleto" categorias={categorias} podeAdicionarCategoria={podeAdicionarCategoria} contasBancarias={contasBancarias} podeCadastrarConta={u.perfil === "financeiro"} />
               </Cartao>
               <Cartao titulo="Repetição">
                 <RepeticaoDespesa />
@@ -132,6 +158,10 @@ export default async function NovoPagamentoPage({ searchParams }: PageProps<"/pa
           podeAdicionarCategoria,
           contasBancarias,
           podeCadastrarConta: u.perfil === "financeiro",
+          provisaoId: provAberta?.id,
+          padrao: provAberta
+            ? { obra_id: provAberta.obra_id, descricao: provAberta.descricao, vencimento: provAberta.vencimento ?? undefined, categoria_id: provAberta.categoria_id ?? undefined }
+            : undefined,
         }}
       />
     </>

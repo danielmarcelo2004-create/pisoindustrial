@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { decodificarOfx, lerOfx, normalizarBanco, normalizarConta } from "../src/lib/ofx.ts";
-import { chaveMemo, classificacaoProvavel, contaDeAplicacao, sugerirRecebimento, pareceEstorno, saidasParaEstorno, sugerir, sugerirEstornos, sugerirLancamento, sugerirTransferencias, tolerancia, type Candidato, type Historico, type LinhaExtrato, type SaidaEstornavel, type TransferenciaAberta } from "../src/lib/conciliacao-sugestao.ts";
+import { chaveMemo, classificacaoProvavel, sugerirRecebimento, pareceEstorno, saidasParaEstorno, sugerir, sugerirEstornos, sugerirLancamento, sugerirTransferencias, tolerancia, type Candidato, type Historico, type LinhaExtrato, type SaidaEstornavel, type TransferenciaAberta } from "../src/lib/conciliacao-sugestao.ts";
 
 // ---------- OFX ----------
 const cab = "OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\nCHARSET:1252\nCOMPRESSION:NONE\nOLDFILEUID:NONE\nNEWFILEUID:NONE\n";
@@ -195,7 +195,7 @@ test("nenhuma dica de arquivar: tarifa, aplicação, empréstimo, entrada e esto
     linha("x", "2026-11-05", 500, "PIX DEVOLVIDO FULANO"),
   ];
   const m = sugerir(ls, []);
-  assert.deepEqual([...m.keys()], []);
+  assert.deepEqual([...m.entries()].map(([k, v]) => `${k}:${v.tipo}`), ["a:aplicacao", "r:aplicacao"], "só aplicação/resgate ganham sugestão própria (conciliar na conta)");
 });
 
 test("tarifa e IOF sugerem a categoria de tarifas bancárias cadastrada (Novo lançamento)", () => {
@@ -205,15 +205,13 @@ test("tarifa e IOF sugerem a categoria de tarifas bancárias cadastrada (Novo la
   assert.equal(sugerirLancamento("IOF", [], cats).categoriaId, "c-tar");
 });
 
-// ---------- Aplicação / resgate → transferência para a conta de investimento ----------
-test("Rende Fácil: sugere a conta de investimento pelo nome, ou a única; sem conta, nenhuma", () => {
-  const inv = [{ id: "i1", nome: "BB Rende Fácil" }, { id: "i2", nome: "Caixa Poupança" }];
-  assert.equal(contaDeAplicacao("BB RENDE FÁCIL", inv)?.id, "i1");
-  assert.equal(contaDeAplicacao("RESGATE POUPANCA", inv)?.id, "i2");
-  assert.equal(contaDeAplicacao("APLICACAO FUNDO X", inv), null, "duas contas e o nome não confere: não chuta");
-  assert.equal(contaDeAplicacao("APLICACAO FUNDO X", [inv[0]])?.id, "i1", "só uma conta de investimento");
-  assert.equal(contaDeAplicacao("BB RENDE FÁCIL", []), null);
-  assert.equal(contaDeAplicacao("PIX ENVIADO FULANO", inv), null, "não é aplicação");
+// ---------- Aplicação / resgate automático (BB Rende Fácil) na própria conta ----------
+test("Rende Fácil: aplicação e resgate são sugeridos para conciliar na própria conta; pagamento ou PIX comum não", () => {
+  const ls = [linha("ap", "2026-11-03", -4814.71, "BB RENDE FÁCIL"), linha("rs", "2026-11-04", 1000, "BB RENDE FACIL"), linha("po", "2026-11-04", -50, "APLICACAO POUPANCA"), linha("px", "2026-11-04", -50, "PIX ENVIADO FULANO")];
+  const m = sugerir(ls, []);
+  assert.deepEqual([m.get("ap")?.tipo, m.get("rs")?.tipo, m.get("po")?.tipo, m.get("px")], ["aplicacao", "aplicacao", "aplicacao", undefined]);
+  const cand = { chave: "pag:1", tipo: "pagamento", id: "1", pagamentoId: "1", numero: 1, parcela: null, favorecido: "X", fornecedor: null, documento: null, descricao: "", obra: "", categoria: null, forma: "pix", contaId: null, contaNome: null, valor: 4814.71, data: "2026-11-03", pago: false } as Candidato;
+  assert.equal(sugerir([ls[0]], [cand]).get("ap")?.tipo, "conta", "conta a pagar de mesmo valor tem prioridade");
 });
 
 // ---------- Estorno em pares ----------

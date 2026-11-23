@@ -292,3 +292,14 @@ export async function novoRecebimento(linhaId: string, d: DadosRecebimento): Pro
   revalidatePath("/", "layout");
   return { ok: "Recebimento lançado." };
 }
+
+/** Aplicação/resgate automático (BB Rende Fácil): conciliado na própria conta, sem despesa nem receita. */
+export async function conciliarAplicacao(ids: string[]): Promise<Resultado & { n?: number }> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro faz a conciliação." };
+  if (!ids.length || ids.some((i) => !UUID.test(i))) return { erro: "Seleção inválida." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("conciliar_aplicacao", { p_ids: ids });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/contas-bancarias");
+  return { ok: "Conciliado.", n: data ?? 0 };
+}

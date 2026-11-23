@@ -35,6 +35,8 @@ export type LinhaConta = {
   temAnexo: boolean;
   baixavel: boolean;
   criadoPor: string | null;
+  /** Provisão (para a janela "Lançar despesa"). */
+  provisao?: { id: string; descricao: string; obra: string | null; vencimento: string | null; valor: number | null; serie: boolean };
   /** Grupo do cartão de totais (mutuamente exclusivos). */
   grupo: "pagos" | "vencidos" | "hoje" | "aprovacao" | "avencer" | "cancelado" | "provisao";
 };
@@ -124,7 +126,7 @@ export async function listarContas(f: FiltrosContas) {
   const consultaParcs = qc.order("vencimento").limit(2000);
 
   // 3) Provisões do período (não entram nos totais)
-  let qv = supabase.from("provisoes").select("id, descricao, vencimento, valor_estimado, obra_id, obra:obras(nome), categoria:categorias(nome)").eq("status", "provisionada");
+  let qv = supabase.from("provisoes").select("id, descricao, vencimento, valor_estimado, obra_id, created_by, pagamento_origem_id, obra:obras(nome), categoria:categorias(nome)").eq("status", "provisionada");
   if (de) qv = qv.gte("vencimento", de);
   if (ate) qv = qv.lte("vencimento", ate);
   if (f.obra) qv = qv.eq("obra_id", f.obra);
@@ -135,7 +137,7 @@ export async function listarContas(f: FiltrosContas) {
   const [{ data: pags }, { data: pcs }, { data: provs }] = await Promise.all([
     consultaPags,
     consultaParcs,
-    semProvisoes ? Promise.resolve({ data: [] as { id: string; descricao: string; vencimento: string | null; valor_estimado: number | null; obra: { nome: string } | null; categoria: { nome: string } | null }[] }) : qv.order("vencimento").limit(500),
+    semProvisoes ? Promise.resolve({ data: [] as { id: string; descricao: string; vencimento: string | null; valor_estimado: number | null; created_by: string; pagamento_origem_id: string | null; obra: { nome: string } | null; categoria: { nome: string } | null }[] }) : qv.order("vencimento").limit(500),
   ]);
 
   const linhas: LinhaConta[] = [];
@@ -231,7 +233,8 @@ export async function listarContas(f: FiltrosContas) {
       repeticao: m ? m[1] : null,
       temAnexo: false,
       baixavel: false,
-      criadoPor: null,
+      criadoPor: v.created_by,
+      provisao: { id: v.id, descricao: v.descricao, obra: v.obra?.nome ?? null, vencimento: v.vencimento, valor: v.valor_estimado === null ? null : Number(v.valor_estimado), serie: !!v.pagamento_origem_id || Boolean(m) },
       grupo: "provisao",
     });
   }

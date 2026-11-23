@@ -771,6 +771,39 @@ test('repetição: só quem cadastrou; cria N-1 provisões com datas e categoria
   assert.deepEqual([op.repetir_intervalo, op.repetir_vezes], [2, 4])
 })
 
+test('regressão: despesa lançada a partir da provisão marca a provisão como lançada (antes ficava "provisionada" ao lado da despesa)', async () => {
+  const prov = async (chave, descricao, obra = obraA.id) => (await u[chave].client.from('provisoes').insert({ obra_id: obra, descricao, vencimento: '2027-04-10', valor_estimado: 200 }).select().single()).data
+  const p1 = await prov('fin', 'Provisão lançar 1')
+  const pag = await novoPagamento('fin', obraA.id, 210)
+  await rpcFalha('eng', 'lancar_provisao', { p_provisao_id: p1.id, p_pagamento_id: pag }, /Somente o Financeiro/)
+  const pagOutraObra = await novoPagamento('fin', obraC.id, 210)
+  await rpcFalha('fin', 'lancar_provisao', { p_provisao_id: p1.id, p_pagamento_id: pagOutraObra }, /outro centro de custo/)
+  await rpc('fin', 'lancar_provisao', { p_provisao_id: p1.id, p_pagamento_id: pag })
+  const { data: d1 } = await admin.from('provisoes').select('status, pagamento_id').eq('id', p1.id).single()
+  assert.deepEqual([d1.status, d1.pagamento_id], ['convertida', pag])
+  await rpcFalha('fin', 'lancar_provisao', { p_provisao_id: p1.id, p_pagamento_id: pag }, /já foi lançada ou cancelada/)
+  // Suprimentos: só a provisão que cadastrou
+  const pf = await prov('fin', 'Provisão do financeiro 2')
+  const pagSup = await novoPagamento('sup', obraA.id, 50)
+  await rpcFalha('sup', 'lancar_provisao', { p_provisao_id: pf.id, p_pagamento_id: pagSup }, /Somente o Financeiro/)
+  const ps = await prov('sup', 'Provisão do suprimentos 2')
+  await rpc('sup', 'lancar_provisao', { p_provisao_id: ps.id, p_pagamento_id: pagSup })
+  assert.equal((await admin.from('provisoes').select('status').eq('id', ps.id).single()).data.status, 'convertida')
+  // OP: a provisão guardada no rascunho é lançada quando a OP é enviada
+  const p3 = await prov('sup', 'Provisão via OP')
+  const op = await salvarOP('sup', obraA.id)
+  await rpcFalha('fin', 'definir_provisao_op', { p_ordem_id: op, p_provisao_id: p3.id }, /não encontrada/)
+  const pOutra = await prov('fin', 'Provisão outra obra', obraC.id)
+  await rpcFalha('sup', 'definir_provisao_op', { p_ordem_id: op, p_provisao_id: pOutra.id }, /não pode lançar|outro centro de custo/)
+  await rpc('sup', 'definir_provisao_op', { p_ordem_id: op, p_provisao_id: p3.id })
+  assert.equal((await admin.from('provisoes').select('status').eq('id', p3.id).single()).data.status, 'provisionada', 'rascunho não lança')
+  const pagOp = await rpc('sup', 'enviar_op', { p_id: op })
+  const { data: d3 } = await admin.from('provisoes').select('status, pagamento_id').eq('id', p3.id).single()
+  assert.deepEqual([d3.status, d3.pagamento_id], ['convertida', pagOp])
+  const { data: aud } = await admin.from('auditoria').select('acao').eq('entidade', 'provisao').eq('entidade_id', p3.id)
+  assert.ok(aud.some((a) => a.acao === 'lancou'))
+})
+
 test('provisões: suprimentos cria em obra sem acesso; altera só as que criou; não exclui', async () => {
   const { data: obra } = await u.fin.client.from('obras').insert({ nome: `Obra prov ${sufixo}`, cidade: 'Salvador', uf: 'BA', fluxo: 'C' }).select().single()
   const { data: minha, error: e1 } = await u.sup.client.from('provisoes').insert({ obra_id: obra.id, descricao: 'Provisão do suprimentos', vencimento: '2027-03-10', valor_estimado: 300 }).select().single()
@@ -1322,6 +1355,25 @@ describe('conciliação bancária', () => {
     // Extrato importado com conta vazia/igual não cai na conta de investimento
     const r = await importar('fin', [L('2026-12-29', -1, 'Z1', 'Z1')])
     assert.equal(r.conta_id, conta)
+  })
+
+  test('Rende Fácil na própria conta: aplicação e resgate conciliados sem despesa/receita; valor aplicado; só Financeiro; desfazer volta para pendente', async () => {
+    await importar('fin', [L('2026-12-27', -4000, 'BB RENDE FACIL AP2', 'RF1'), L('2026-12-28', 1500, 'BB RENDE FACIL RS2', 'RF2')])
+    const [ap] = await linhaPor(conta, 'BB RENDE FACIL AP2'); const [rs] = await linhaPor(conta, 'BB RENDE FACIL RS2')
+    for (const k of ['sup', 'eng', mst]) await falha(k, 'conciliar_aplicacao', { p_ids: [ap.id] }, 'Somente o Financeiro')
+    const antes = (await admin.from('pagamentos').select('id', { count: 'exact', head: true })).count
+    assert.equal(await rpc('fin', 'conciliar_aplicacao', { p_ids: [ap.id, rs.id] }), 2)
+    assert.equal(await rpc('fin', 'conciliar_aplicacao', { p_ids: [ap.id] }), 0, 'já conciliada não conta de novo')
+    const [ap2] = await linhaPor(conta, 'BB RENDE FACIL AP2')
+    assert.deepEqual([ap2.situacao, ap2.classificacao, ap2.transferencia_id], ['conciliada', 'aplicacao', null])
+    assert.equal((await admin.from('pagamentos').select('id', { count: 'exact', head: true })).count, antes, 'não vira despesa')
+    const aplicado = async (k) => (await u[k].client.rpc('aplicado_nas_contas')).data.find((x) => x.conta_id === conta)
+    assert.equal(Number((await aplicado('fin')).aplicado), 2500, 'aplicado − resgatado')
+    assert.equal(await aplicado('eng'), undefined, 'engenheiro não vê')
+    await rpc('fin', 'desfazer_conciliacao', { p_linha_id: rs.id, p_voltar_aberto: false, p_motivo: 'teste' })
+    const [rs2] = await linhaPor(conta, 'BB RENDE FACIL RS2')
+    assert.deepEqual([rs2.situacao, rs2.classificacao], ['pendente', null])
+    assert.equal(Number((await aplicado(mst)).aplicado), 4000)
   })
 
   test('contas a receber: entrada vira recebimento já recebido (só Financeiro); categoria de receita; todos veem as obras que podem ver; Financeiro/master editam e anexam nota; desfazer cancela', async () => {

@@ -30,6 +30,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { href: "/", rotulo: "Painel", icone: Icones.painel },
     { href: "/agenda", rotulo: "Agenda de pagamentos", icone: Icones.agenda },
     { href: "/pagamentos", rotulo: "Contas a pagar", icone: Icones.pagamentos },
+    { href: "/recebimentos", rotulo: "Contas a receber", icone: Icones.pagamentos },
     ...(assinante ? [{ href: "/aprovacoes", rotulo: "Aprovações e assinaturas", icone: Icones.aprovacoes, contador: pend.count ?? 0 }] : []),
     ...(assinante ? [{ href: "/perfil", rotulo: "Minha assinatura", icone: Icones.usuarios }] : []),
     ...(fin || u.perfil === "administrador_master" ? [{ href: "/contas-bancarias", rotulo: "Contas bancárias", icone: Icones.banco }] : []),

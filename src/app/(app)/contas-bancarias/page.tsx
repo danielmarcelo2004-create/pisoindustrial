@@ -6,17 +6,35 @@ import { getUsuario } from "@/lib/auth";
 import {
   CLASSIFICACOES,
   candidatos as buscarCandidatos,
+  contaDeAplicacao,
+  classificacaoProvavel,
+  movimentosInvestimento,
+  paresDeEstorno,
+  saidasEstornaveis,
+  saidasParaEstorno,
+  sugerirEstornos,
   contagemPorSituacao,
   contasBancarias,
   datasDaConta,
+  historicoLancamentos,
+  historicoRecebimentos,
+  recebimentosDasLinhas,
+  sugerirRecebimento,
   itensConciliados,
   linhasDaConta,
   sugerir,
+  sugerirLancamento,
+  sugerirTransferencias,
+  transferenciasAbertas,
+  transferenciasDasLinhas,
   type FiltroLinhas,
   type LinhaExtrato,
 } from "@/lib/consultas/conciliacao";
 import { data, dataHora, moeda } from "@/lib/formato";
-import { AcoesDaConta, BarraLancamentos, CadastrarConta, Desfazer, ImportarExtrato, LinhaPendente, Restaurar, SeletorConta } from "./interativo";
+import { categoriasAtivas } from "@/lib/consultas/categorias";
+import { fornecedoresAtivos } from "@/lib/consultas/cadastros";
+import { createClient } from "@/lib/supabase/server";
+import { AcoesDaConta, BarraLancamentos, CadastrarConta, Desfazer, ImportarExtrato, LinhaPendente, ProvedorListas, Restaurar, SeletorConta } from "./interativo";
 
 export const metadata: Metadata = { title: "Contas bancárias" };
 
@@ -38,6 +56,63 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
   const conta = contas.find((c) => c.id === str(sp.conta)) ?? contas[0];
   const situacao = (["pendente", "conciliada", "arquivada"].includes(str(sp.ver)) ? str(sp.ver) : "pendente") as LinhaExtrato["situacao"];
   const importado = str(sp.importado);
+
+  if (conta?.tipo === "investimento") {
+    const movs = await movimentosInvestimento(conta.id);
+    return (
+      <>
+        <Cabecalho titulo="Contas bancárias" subtitulo="Conta de investimento: aplicações e resgates conciliados como transferência no extrato da conta corrente." acoes={podeAgir ? <CadastrarConta /> : undefined} />
+        {typeof sp.criada === "string" && (
+          <div className="mb-4">
+            <Aviso tipo="sucesso">Conta de investimento cadastrada. Na conciliação da conta corrente, a aplicação (ex.: BB Rende Fácil) já aparece sugerida como transferência para ela.</Aviso>
+          </div>
+        )}
+        <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <SeletorConta contas={contas.map((c) => ({ id: c.id, nome: c.nome, pendentes: c.pendentes }))} atual={conta.id} />
+              {podeAgir && <AcoesDaConta contaId={conta.id} nome={conta.nome} />}
+              <span className="rounded bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-800">Investimento</span>
+            </div>
+            <div className="text-right" data-saldo-investimento>
+              <div className="text-xs text-slate-500">Saldo aplicado (pelas transferências){conta.saldo_em ? ` até ${data(conta.saldo_em)}` : ""}</div>
+              <div className="text-lg font-semibold tabular-nums">{moeda(conta.saldo ?? 0)}</div>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">Não tem extrato próprio. Rendimentos que o banco credita direto aqui não aparecem; o saldo é o total aplicado menos o resgatado.</p>
+        </div>
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs text-slate-500 uppercase">
+              <tr>
+                <th className="px-4 py-2">Data</th>
+                <th className="px-4 py-2">Movimento</th>
+                <th className="px-4 py-2">Descrição</th>
+                <th className="px-4 py-2 text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movs.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="p-6 text-center text-slate-500">
+                    Nenhuma aplicação ou resgate ainda. Concilie no extrato da conta corrente com &quot;Nova transferência&quot;.
+                  </td>
+                </tr>
+              )}
+              {movs.map((m) => (
+                <tr key={m.id} className="border-t border-slate-100" data-movimento-investimento>
+                  <td className="px-4 py-2 whitespace-nowrap tabular-nums">{data(m.data)}</td>
+                  <td className="px-4 py-2">{m.aplicacao ? `Aplicação vinda de ${m.outraConta}` : `Resgate para ${m.outraConta}`}</td>
+                  <td className="px-4 py-2">{m.descricao}</td>
+                  <td className={cx("px-4 py-2 text-right whitespace-nowrap tabular-nums", m.valor < 0 ? "text-red-600" : "text-emerald-700")}>{moeda(m.valor)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>
+    );
+  }
 
   if (!conta) {
     return (
@@ -75,9 +150,44 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
   const [todasLinhas, cont, datas] = await Promise.all([linhasDaConta(conta.id, situacao, filtro), contagemPorSituacao(conta.id), datasDaConta(conta.id)]);
   const linhas = todasLinhas.filter((l) => (tipo === "entradas" ? l.valor > 0 : tipo === "saidas" ? l.valor < 0 : true));
   const periodo = linhas.length ? { de: linhas.reduce((m, l) => (l.data < m ? l.data : m), linhas[0].data), ate: linhas.reduce((m, l) => (l.data > m ? l.data : m), linhas[0].data) } : null;
-  const cands = situacao === "pendente" ? await buscarCandidatos(periodo) : [];
-  const sugestoes = situacao === "pendente" ? sugerir(linhas, cands, conta.id) : new Map();
+  const pend = situacao === "pendente";
+  const [cands, historico, abertas, categorias, fornecedores, obras, saidas, histRec, categoriasReceita] = pend
+    ? await Promise.all([
+        buscarCandidatos(periodo),
+        historicoLancamentos(),
+        transferenciasAbertas(conta.id),
+        categoriasAtivas(),
+        fornecedoresAtivos(),
+        (async () => (await (await createClient()).from("obras").select("id, nome, cliente").order("nome")).data ?? [])(),
+        saidasEstornaveis(conta.id, periodo),
+        historicoRecebimentos(),
+        categoriasAtivas("receita"),
+      ])
+    : [[], [], [], [], [], [], [], [], []];
+  const sugestoes = pend ? sugerir(linhas, cands, conta.id) : new Map();
+  // Transferência registrada na outra conta: vale quando não há conta a pagar "Encontramos"
+  if (pend) {
+    for (const [id, t] of sugerirTransferencias(linhas, abertas, conta.id)) {
+      const atual = sugestoes.get(id);
+      if (!(atual?.tipo === "conta" && atual.nivel === "encontramos")) sugestoes.set(id, { tipo: "transferencia", transferencia: t });
+    }
+  }
+  // Estorno: a entrada com "estorno/devolução" e a saída de mesmo valor até 10 dias antes
+  if (pend) for (const [id, saida] of sugerirEstornos(linhas, saidas)) sugestoes.set(id, { tipo: "estorno", saida });
+  const estornosPorLinha = new Map(pend ? linhas.filter((l) => l.valor > 0).map((l) => [l.id, saidasParaEstorno(l, saidas)]) : []);
+  // Aplicação/resgate (BB Rende Fácil): transferência para a conta de investimento
+  const investimentos = contas.filter((c) => c.tipo === "investimento").map((c) => ({ id: c.id, nome: c.nome }));
+  const aplicacoes = new Map(pend ? linhas.filter((l) => classificacaoProvavel(l.descricao, l.valor) === "aplicacao").map((l) => [l.id, contaDeAplicacao(l.descricao, investimentos)]) : []);
+  const sugLanc = new Map(
+    pend ? linhas.filter((l) => l.valor < 0 && !["conta", "transferencia"].includes(sugestoes.get(l.id)?.tipo ?? "")).map((l) => [l.id, sugerirLancamento(l.descricao, historico, categorias)]) : [],
+  );
+  const sugRec = new Map(
+    pend ? linhas.filter((l) => l.valor > 0 && !sugestoes.has(l.id) && !aplicacoes.has(l.id)).map((l) => [l.id, sugerirRecebimento(l.descricao, histRec, categoriasReceita)]) : [],
+  );
+  const recLinhas = situacao === "conciliada" ? await recebimentosDasLinhas(linhas.map((l) => l.recebimento_id).filter(Boolean) as string[]) : new Map();
   const itens = situacao === "conciliada" ? await itensConciliados(linhas.map((l) => l.id)) : new Map();
+  const pares = situacao === "conciliada" ? await paresDeEstorno(linhas.map((l) => l.estorno_linha).filter(Boolean) as string[]) : new Map();
+  const transfLinhas = situacao === "conciliada" ? await transferenciasDasLinhas(linhas.map((l) => l.transferencia_id).filter(Boolean) as string[], conta.id) : new Map();
 
   const base = { conta: conta.id, ...(filtro.mes !== "todos" ? { mes: filtro.mes } : {}), ...(filtro.busca ? { busca: filtro.busca } : {}), ...(tipo ? { tipo } : {}), ...(filtro.ordem !== "antigas" ? { ordem: filtro.ordem } : {}), ...(situacao !== "pendente" ? { ver: situacao } : {}) };
   const link = (mud: Record<string, string>) => {
@@ -228,9 +338,31 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
                 <span>📋 Lançamentos do sistema</span>
               </div>
               {linhas.length === 0 && <div className="p-6 text-center text-sm text-emerald-700">Nenhuma conciliação pendente{filtro.busca || tipo || filtro.mes !== "todos" ? " com estes filtros" : " nesta conta"}.</div>}
-              {linhas.map((l) => (
-                <LinhaPendente key={l.id} linha={l} sugestao={sugestoes.get(l.id) ?? null} candidatos={cands} podeAgir={podeAgir} />
-              ))}
+              <ProvedorListas
+                listas={{
+                  candidatos: cands,
+                  categorias: categorias.map((c) => ({ id: c.id, nome: c.nome })),
+                  categoriasReceita: categoriasReceita.map((c) => ({ id: c.id, nome: c.nome })),
+                  obras: obras.map((o) => ({ id: o.id, nome: o.nome, cliente: o.cliente })),
+                  fornecedores: fornecedores.map((f) => ({ id: f.id, nome: f.nome })),
+                  contas: contas.filter((c) => c.id !== conta.id).map((c) => ({ id: c.id, nome: c.nome })),
+                  contaAtual: conta.id,
+                }}
+              >
+                {linhas.map((l) => (
+                  <LinhaPendente
+                    key={l.id}
+                    linha={l}
+                    sugestao={sugestoes.get(l.id) ?? null}
+                    sugestaoLancamento={sugLanc.get(l.id) ?? null}
+                    podeAgir={podeAgir}
+                    estornos={estornosPorLinha.get(l.id) ?? []}
+                    contaAplicacao={aplicacoes.get(l.id) ?? null}
+                    aplicacaoSemConta={aplicacoes.has(l.id) && !aplicacoes.get(l.id)}
+                    sugestaoRecebimento={sugRec.get(l.id) ?? null}
+                  />
+                ))}
+              </ProvedorListas>
             </>
           )}
 
@@ -260,9 +392,33 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
                       <tr key={l.id} className="border-t border-slate-100 align-top" data-conciliada={l.id}>
                         <td className="px-4 py-2 whitespace-nowrap tabular-nums">{data(l.data)}</td>
                         <td className="px-4 py-2">{l.descricao}</td>
-                        <td className="px-4 py-2 text-right whitespace-nowrap text-red-600 tabular-nums">{moeda(l.valor)}</td>
+                        <td className={cx("px-4 py-2 text-right whitespace-nowrap tabular-nums", l.valor < 0 ? "text-red-600" : "text-emerald-700")}>{moeda(l.valor)}</td>
                         <td className="px-4 py-2">
-                          {its.map((i: { pagamentoId: string; numero: number; favorecido: string; parcela: number | null; valor: number; baixou: boolean }) => (
+                          {l.recebimento_id && recLinhas.get(l.recebimento_id) && (
+                            <div data-recebimento-conciliado>
+                              <Link href={`/recebimentos/${l.recebimento_id}`} className="text-marca-700 hover:underline">
+                                Recebimento nº {recLinhas.get(l.recebimento_id)!.numero}
+                              </Link>{" "}
+                              · {recLinhas.get(l.recebimento_id)!.cliente}
+                              {recLinhas.get(l.recebimento_id)!.lancado && <span className="ml-1 rounded bg-sky-50 px-1.5 text-xs text-sky-800">Lançado pela conciliação</span>}
+                            </div>
+                          )}
+                          {l.estorno_linha && pares.get(l.estorno_linha) && (
+                            <div data-estorno-par>
+                              <span className="rounded bg-violet-50 px-1.5 text-xs font-medium text-violet-800">Estorno ↔</span>{" "}
+                              {l.valor > 0 ? "devolve a saída de " : "devolvida em "}
+                              <strong className="tabular-nums">{data(pares.get(l.estorno_linha)!.data)}</strong> · {pares.get(l.estorno_linha)!.descricao}
+                            </div>
+                          )}
+                          {l.transferencia_id && transfLinhas.get(l.transferencia_id) && (
+                            <div data-transferencia>
+                              Transferência {transfLinhas.get(l.transferencia_id)!.sentido} <strong>{transfLinhas.get(l.transferencia_id)!.conta}</strong>
+                              <span className="ml-1 text-xs text-slate-500">
+                                ({transfLinhas.get(l.transferencia_id)!.investimento ? "conta de investimento" : transfLinhas.get(l.transferencia_id)!.outroLadoConciliado ? "as duas pontas conciliadas" : "aguardando o extrato da outra conta"})
+                              </span>
+                            </div>
+                          )}
+                          {its.map((i: { pagamentoId: string; numero: number; favorecido: string; parcela: number | null; valor: number; baixou: boolean; lancado: boolean }) => (
                             <div key={i.pagamentoId + (i.parcela ?? "")}>
                               <Link href={`/pagamentos/${i.pagamentoId}`} className="text-marca-700 hover:underline">
                                 nº {i.numero}
@@ -270,11 +426,12 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
                               </Link>{" "}
                               · {i.favorecido} · <span className="tabular-nums">{moeda(i.valor)}</span>
                               {i.baixou && <span className="ml-1 text-xs text-slate-500">(baixa pela conciliação)</span>}
+                              {i.lancado && <span className="ml-1 rounded bg-sky-50 px-1.5 text-xs text-sky-800">Lançado pela conciliação</span>}
                             </div>
                           ))}
                           {l.encargos !== null && <div className="text-xs text-amber-800" data-encargos>+ {moeda(l.encargos)} de encargos (juros, IOF, anuidade, tarifa)</div>}
                         </td>
-                        <td className="px-4 py-2 text-right">{podeAgir && <Desfazer linhaId={l.id} algumaBaixou={its.some((i: { baixou: boolean }) => i.baixou)} />}</td>
+                        <td className="px-4 py-2 text-right">{podeAgir && <Desfazer linhaId={l.id} algumaBaixou={its.some((i: { baixou: boolean }) => i.baixou)} lancado={its.some((i: { lancado: boolean }) => i.lancado)} recebimento={Boolean(l.recebimento_id)} transferencia={Boolean(l.transferencia_id)} estorno={Boolean(l.estorno_linha)} />}</td>
                       </tr>
                     );
                   })}

@@ -70,7 +70,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
     dadosRelatorio(f),
     supabase.from("obras").select("id, nome").order("nome"),
     supabase.from("fornecedores").select("id, nome").order("nome"),
-    supabase.from("categorias").select("id, nome").order("nome"),
+    supabase.from("categorias").select("id, nome").eq("tipo", "despesa").order("nome"),
   ]);
   const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v) as [string, string][]);
   const comFiltro = (k: string, v: string) => {

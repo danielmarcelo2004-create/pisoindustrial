@@ -22,6 +22,7 @@ export default async function EditarPagamentoPage({ params }: PageProps<"/pagame
   const { data: categorias } = await supabase
     .from("categorias")
     .select("id, nome")
+    .eq("tipo", "despesa")
     .or(p.categoria_id ? `ativo.eq.true,id.eq.${p.categoria_id}` : "ativo.eq.true")
     .order("nome");
   const { data: pode } = await supabase.rpc("pode_atuar_obra", { p_obra_id: p.obra_id });

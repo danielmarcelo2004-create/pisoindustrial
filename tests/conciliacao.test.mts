@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { decodificarOfx, lerOfx, normalizarBanco, normalizarConta } from "../src/lib/ofx.ts";
-import { classificacaoProvavel, sugerir, tolerancia, type Candidato, type LinhaExtrato } from "../src/lib/conciliacao-sugestao.ts";
+import { chaveMemo, classificacaoProvavel, contaDeAplicacao, sugerirRecebimento, pareceEstorno, saidasParaEstorno, sugerir, sugerirEstornos, sugerirLancamento, sugerirTransferencias, tolerancia, type Candidato, type Historico, type LinhaExtrato, type SaidaEstornavel, type TransferenciaAberta } from "../src/lib/conciliacao-sugestao.ts";
 
 // ---------- OFX ----------
 const cab = "OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\nCHARSET:1252\nCOMPRESSION:NONE\nOLDFILEUID:NONE\nNEWFILEUID:NONE\n";
@@ -139,4 +139,108 @@ test("nada é conciliado pela sugestão: ela só devolve propostas (sem efeito n
   sugerir([l], [cand("1", 2420, "2025-12-04")]);
   assert.equal(JSON.stringify(l), antes);
   assert.equal(l.situacao, "pendente");
+});
+
+// ---------- Novo lançamento (sugestão de descrição, categoria, centro de custo e fornecedor) ----------
+const hist = (memo: string | null, favorecido: string, categoriaId: string, obraId: string, data: string, extra: Partial<Historico> = {}): Historico => ({ memo, favorecido, fornecedorId: null, fornecedor: null, documento: null, categoriaId, obraId, data, ...extra });
+const categorias = [{ id: "c-imp", nome: "Impostos e taxas" }, { id: "c-sal", nome: "Salários" }, { id: "c-mat", nome: "Material para obra" }];
+
+test("chave do texto do banco ignora data, hora e números (repete de um mês para outro)", () => {
+  assert.equal(chaveMemo("SAQUE DIN ATM 06/11 10:16 SOP-MARIA QUITERIA"), chaveMemo("SAQUE DIN ATM 03/12 08:02 SOP-MARIA QUITERIA"));
+  assert.notEqual(chaveMemo("SAQUE DIN ATM 06/11 SOP-MARIA"), chaveMemo("PIX ENVIADO 06/11 SOP-MARIA"));
+});
+
+test("novo lançamento: mesma descrição do banco já conciliada antes → repete categoria, centro de custo e fornecedor (a mais recente)", () => {
+  const s = sugerirLancamento("SAQUE DIN ATM 06/11 10:16 SOP-MARIA QUITERIA", [
+    hist("SAQUE DIN ATM 03/10 09:00 SOP-MARIA QUITERIA", "x", "c-mat", "obra-velha", "2026-10-03"),
+    hist("SAQUE DIN ATM 03/11 09:00 SOP-MARIA QUITERIA", "x", "c-sal", "obra-1", "2026-11-03", { fornecedorId: "f-1" }),
+  ], categorias);
+  assert.deepEqual(s, { descricao: "SAQUE DIN ATM 06/11 10:16 SOP-MARIA QUITERIA", categoriaId: "c-sal", obraId: "obra-1", fornecedorId: "f-1", origem: "extrato" });
+});
+
+test("novo lançamento: nome do fornecedor na descrição do banco → usa o último lançamento dele", () => {
+  const s = sugerirLancamento("PIX - ENVIADO - 07/11 14:21 VINICIUS EMPLACADORA", [hist(null, "Vinicius Emplacadora Ltda", "c-mat", "obra-2", "2026-10-01", { fornecedorId: "f-v" })], categorias);
+  assert.deepEqual([s.categoriaId, s.obraId, s.fornecedorId, s.origem], ["c-mat", "obra-2", "f-v", "nome"]);
+});
+
+test("novo lançamento: sem histórico, palavras do banco apontam a categoria cadastrada (DARF → Impostos); sem nada, não inventa", () => {
+  assert.deepEqual(sugerirLancamento("IMPOSTOS - RFB-DARF CODIGO 1234", [], categorias), { descricao: "IMPOSTOS - RFB-DARF CODIGO 1234", categoriaId: "c-imp", obraId: null, fornecedorId: null, origem: "palavra" });
+  assert.deepEqual(sugerirLancamento("DEB PIX CHAVE", [], categorias), { descricao: "DEB PIX CHAVE", categoriaId: null, obraId: null, fornecedorId: null, origem: null });
+  assert.equal(sugerirLancamento("DARF", [], [{ id: "x", nome: "Material" }]).categoriaId, null, "não sugere categoria que não existe");
+});
+
+// ---------- Transferência entre contas da empresa ----------
+const transf = (id: string, contaOrigem: string, contaDestino: string, valor: number, data: string): TransferenciaAberta => ({ id, contaOrigem, contaDestino, outraConta: "", valor, data, descricao: "" });
+
+test("transferência registrada numa conta é sugerida na outra: entrada no destino / saída na origem, mesmo valor, até 5 dias", () => {
+  const entradas = [linha("e1", "2025-12-05", 2700, "CRED TRANSF"), linha("e2", "2025-12-20", 2700, "CRED TRANSF"), linha("s1", "2025-12-05", -2700, "ENVIO TRANSF")];
+  const m = sugerirTransferencias(entradas, [transf("t1", "CAIXA", "BB", 2700, "2025-12-04")], "BB");
+  assert.equal(m.get("e1")?.id, "t1", "entrada no destino, 1 dia depois");
+  assert.equal(m.get("e2"), undefined, "16 dias depois não");
+  assert.equal(m.get("s1"), undefined, "saída na conta de destino não é a mesma transferência");
+  const m2 = sugerirTransferencias([linha("s", "2025-12-04", -2700, "ENVIO")], [transf("t1", "CAIXA", "BB", 2700, "2025-12-05")], "CAIXA");
+  assert.equal(m2.get("s")?.id, "t1", "registrada a partir do destino: a saída na origem é sugerida");
+  const m3 = sugerirTransferencias([linha("a", "2025-12-05", 2700, "X"), linha("b", "2025-12-05", 2700, "Y")], [transf("t1", "CAIXA", "BB", 2700, "2025-12-05")], "BB");
+  assert.equal([m3.get("a"), m3.get("b")].filter(Boolean).length, 1, "uma transferência para uma linha só");
+});
+
+// ---------- Sem "arquivar" para o que é dinheiro de verdade ----------
+test("nenhuma dica de arquivar: tarifa, aplicação, empréstimo, entrada e estorno têm destino (lançamento, transferência, recebimento, estorno)", () => {
+  const ls = [
+    linha("t", "2026-11-03", -8.5, "TAR PIX"),
+    linha("a", "2026-11-03", -4814.71, "BB RENDE FÁCIL"),
+    linha("r", "2026-11-04", 1000, "BB RENDE FACIL"),
+    linha("e", "2026-11-04", -263.82, "DEBITO CAPITALIZACAO"),
+    linha("c", "2026-11-05", 708.33, "CRED PIX CHAVE"),
+    linha("x", "2026-11-05", 500, "PIX DEVOLVIDO FULANO"),
+  ];
+  const m = sugerir(ls, []);
+  assert.deepEqual([...m.keys()], []);
+});
+
+test("tarifa e IOF sugerem a categoria de tarifas bancárias cadastrada (Novo lançamento)", () => {
+  const cats = [...categorias, { id: "c-tar", nome: "Tarifas bancárias" }];
+  assert.equal(sugerirLancamento("TAR PIX", [], cats).categoriaId, "c-tar");
+  assert.equal(sugerirLancamento("MENSALIDADE CESTA SERVICO", [], cats).categoriaId, "c-tar");
+  assert.equal(sugerirLancamento("IOF", [], cats).categoriaId, "c-tar");
+});
+
+// ---------- Aplicação / resgate → transferência para a conta de investimento ----------
+test("Rende Fácil: sugere a conta de investimento pelo nome, ou a única; sem conta, nenhuma", () => {
+  const inv = [{ id: "i1", nome: "BB Rende Fácil" }, { id: "i2", nome: "Caixa Poupança" }];
+  assert.equal(contaDeAplicacao("BB RENDE FÁCIL", inv)?.id, "i1");
+  assert.equal(contaDeAplicacao("RESGATE POUPANCA", inv)?.id, "i2");
+  assert.equal(contaDeAplicacao("APLICACAO FUNDO X", inv), null, "duas contas e o nome não confere: não chuta");
+  assert.equal(contaDeAplicacao("APLICACAO FUNDO X", [inv[0]])?.id, "i1", "só uma conta de investimento");
+  assert.equal(contaDeAplicacao("BB RENDE FÁCIL", []), null);
+  assert.equal(contaDeAplicacao("PIX ENVIADO FULANO", inv), null, "não é aplicação");
+});
+
+// ---------- Estorno em pares ----------
+const saida = (id: string, data: string, valor: number, descricao: string, conciliadaCom: string | null = null): SaidaEstornavel => ({ id, data, valor, descricao, situacao: conciliadaCom ? "conciliada" : "pendente", conciliadaCom });
+
+test("estorno: palavras de devolução/estorno", () => {
+  for (const d of ["PIX DEVOLVIDO", "ESTORNO DE DEBITO", "TED DEVOLUCAO", "PAGAMENTO REJEITADO", "EST PIX", "Devolução PIX"]) assert.ok(pareceEstorno(d), d);
+  for (const d of ["PIX RECEBIDO", "BB RENDE FACIL", "TRANSFERENCIA RECEBIDA", "DESTINO"]) assert.ok(!pareceEstorno(d), d);
+});
+
+test("estorno: a saída de mesmo valor até 10 dias antes (a mais próxima), uma por estorno; manual até 30 dias", () => {
+  const ls = [linha("c1", "2026-11-10", 500, "PIX DEVOLVIDO"), linha("c2", "2026-11-10", 500, "PIX DEVOLVIDO"), linha("c3", "2026-11-10", 700, "CRED PIX")];
+  const ss = [saida("s1", "2026-11-09", -500, "PIX ENVIADO A"), saida("s2", "2026-11-02", -500, "PIX ENVIADO B", "nº 7 · B"), saida("s3", "2026-11-11", -500, "DEPOIS"), saida("s4", "2026-10-15", -700, "VELHA")];
+  const m = sugerirEstornos(ls, ss);
+  assert.equal(m.get("c1")?.id, "s1", "a mais próxima");
+  assert.equal(m.get("c2")?.id, "s2", "a outra saída (já conciliada) vai para o segundo estorno");
+  assert.equal(m.get("c3"), undefined, "sem palavra de estorno não sugere sozinho");
+  assert.deepEqual(saidasParaEstorno(ls[2], ss).map((s) => s.id), ["s4"], "manual: mesmo valor até 30 dias antes");
+  assert.deepEqual(saidasParaEstorno(ls[0], ss).map((s) => s.id), ["s1", "s2"], "saída depois do estorno não entra");
+  assert.deepEqual(saidasParaEstorno(linha("d", "2026-11-10", -500, "X"), ss), [], "saída não é estorno");
+});
+
+test("novo recebimento: mesma descrição do banco → centro de custo, categoria e cliente; cliente na descrição; medição", () => {
+  const cats = [{ id: "r-med", nome: "Medição de obra" }, { id: "r-ap", nome: "Aporte" }];
+  const h = [{ memo: "PIX RECEBIDO 05/11 14:28 CONSTRUTORA ALFA", cliente: "Construtora Alfa", categoriaId: "r-med", obraId: "o1", data: "2026-10-05" }];
+  assert.deepEqual(sugerirRecebimento("PIX RECEBIDO 05/12 09:00 CONSTRUTORA ALFA", h, cats), { descricao: "PIX RECEBIDO 05/12 09:00 CONSTRUTORA ALFA", categoriaId: "r-med", obraId: "o1", cliente: "Construtora Alfa", origem: "extrato" });
+  assert.equal(sugerirRecebimento("TED CONSTRUTORA ALFA SA", h, cats).origem, "nome");
+  assert.equal(sugerirRecebimento("CRED MEDICAO 03", [], cats).categoriaId, "r-med");
+  assert.deepEqual(sugerirRecebimento("CRED PIX CHAVE", [], cats), { descricao: "CRED PIX CHAVE", categoriaId: null, obraId: null, cliente: "", origem: null });
 });

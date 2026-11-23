@@ -23,6 +23,7 @@ export type LinhaConta = {
   forma: FormaPagamento | null;
   /** Conta bancária de onde sai o pagamento. */
   conta: string | null;
+  lancadoConciliacao: boolean;
   vencimento: string | null;
   pagoEm: string | null;
   valor: number;
@@ -50,10 +51,12 @@ export type FiltrosContas = {
   fornecedor?: string;
   cartao?: FiltroCartao;
   cancelados?: boolean;
+  /** Só as despesas lançadas direto pela conciliação bancária. */
+  lancados?: boolean;
 };
 
 const SEL_PAG =
-  "id, numero, favorecido, descricao, valor, vencimento, status, forma_pagamento, pago_em, valor_pago, ordem_id, created_by, obra_id, categoria_id, fornecedor_id, conta_bancaria_id, categoria:categorias(nome), obra:obras(nome), conta_bancaria:contas_bancarias(nome), documentos(ativo), parcelas:pagamento_parcelas(id)";
+  "id, numero, favorecido, descricao, valor, vencimento, status, forma_pagamento, pago_em, valor_pago, ordem_id, created_by, obra_id, categoria_id, fornecedor_id, conta_bancaria_id, lancado_conciliacao, categoria:categorias(nome), obra:obras(nome), conta_bancaria:contas_bancarias(nome), documentos(ativo), parcelas:pagamento_parcelas(id)";
 
 function intervalo(f: FiltrosContas): [string | null, string | null] {
   if (f.de || f.ate) return [f.de || null, f.ate || null];
@@ -97,6 +100,7 @@ export async function listarContas(f: FiltrosContas) {
   if (f.forma) qp = qp.eq("forma_pagamento", f.forma as FormaPagamento);
   if (f.categoria) qp = qp.eq("categoria_id", f.categoria);
   if (f.conta) qp = qp.eq("conta_bancaria_id", f.conta);
+  if (f.lancados) qp = qp.eq("lancado_conciliacao", true);
   if (f.fornecedor) qp = qp.eq("fornecedor_id", f.fornecedor);
   if (busca) qp = qp.or(numBusca !== null ? `numero.eq.${numBusca},favorecido.ilike.%${busca}%,descricao.ilike.%${busca}%` : `favorecido.ilike.%${busca}%,descricao.ilike.%${busca}%`);
   const consultaPags = qp.order("vencimento").limit(2000);
@@ -105,7 +109,7 @@ export async function listarContas(f: FiltrosContas) {
   let qc = supabase
     .from("pagamento_parcelas")
     .select(
-      "id, numero, vencimento, valor_base, multa, juros, desconto, status, pago_em, valor_pago, pagamento:pagamentos!inner(id, numero, favorecido, descricao, status, forma_pagamento, ordem_id, created_by, obra_id, categoria_id, fornecedor_id, conta_bancaria_id, categoria:categorias(nome), obra:obras(nome), conta_bancaria:contas_bancarias(nome), documentos(ativo), parcelas:pagamento_parcelas(id))",
+      "id, numero, vencimento, valor_base, multa, juros, desconto, status, pago_em, valor_pago, pagamento:pagamentos!inner(id, numero, favorecido, descricao, status, forma_pagamento, ordem_id, created_by, obra_id, categoria_id, fornecedor_id, conta_bancaria_id, lancado_conciliacao, categoria:categorias(nome), obra:obras(nome), conta_bancaria:contas_bancarias(nome), documentos(ativo), parcelas:pagamento_parcelas(id))",
     );
   if (!f.cancelados) qc = qc.neq("pagamento.status", "cancelado");
   if (de) qc = qc.gte("vencimento", de);
@@ -114,6 +118,7 @@ export async function listarContas(f: FiltrosContas) {
   if (f.forma) qc = qc.eq("pagamento.forma_pagamento", f.forma as FormaPagamento);
   if (f.categoria) qc = qc.eq("pagamento.categoria_id", f.categoria);
   if (f.conta) qc = qc.eq("pagamento.conta_bancaria_id", f.conta);
+  if (f.lancados) qc = qc.eq("pagamento.lancado_conciliacao", true);
   if (f.fornecedor) qc = qc.eq("pagamento.fornecedor_id", f.fornecedor);
   if (busca) qc = qc.or(numBusca !== null ? `numero.eq.${numBusca},favorecido.ilike.%${busca}%,descricao.ilike.%${busca}%` : `favorecido.ilike.%${busca}%,descricao.ilike.%${busca}%`, { referencedTable: "pagamentos" });
   const consultaParcs = qc.order("vencimento").limit(2000);
@@ -125,7 +130,7 @@ export async function listarContas(f: FiltrosContas) {
   if (f.obra) qv = qv.eq("obra_id", f.obra);
   if (f.categoria) qv = qv.eq("categoria_id", f.categoria);
   if (busca) qv = qv.ilike("descricao", `%${busca}%`);
-  const semProvisoes = Boolean(f.forma || f.fornecedor || f.conta || f.mes === "todos");
+  const semProvisoes = Boolean(f.forma || f.fornecedor || f.conta || f.lancados || f.mes === "todos");
   // As três consultas rodam em paralelo
   const [{ data: pags }, { data: pcs }, { data: provs }] = await Promise.all([
     consultaPags,
@@ -150,6 +155,7 @@ export async function listarContas(f: FiltrosContas) {
       obra: p.obra?.nome ?? null,
       forma: p.forma_pagamento,
       conta: (p as unknown as { conta_bancaria: { nome: string } | null }).conta_bancaria?.nome ?? null,
+      lancadoConciliacao: Boolean((p as unknown as { lancado_conciliacao: boolean }).lancado_conciliacao),
       vencimento: p.vencimento,
       pagoEm: p.pago_em,
       valor: Number(p.valor),
@@ -167,7 +173,7 @@ export async function listarContas(f: FiltrosContas) {
   for (const pc of pcs ?? []) {
     const p = pc.pagamento as unknown as {
       id: string; numero: number; favorecido: string; descricao: string; status: StatusPagamento; forma_pagamento: FormaPagamento; ordem_id: string | null; created_by: string;
-      categoria: { nome: string } | null; obra: { nome: string } | null; conta_bancaria: { nome: string } | null; documentos: { ativo: boolean }[] | null; parcelas: { id: string }[] | null;
+      categoria: { nome: string } | null; obra: { nome: string } | null; conta_bancaria: { nome: string } | null; lancado_conciliacao: boolean; documentos: { ativo: boolean }[] | null; parcelas: { id: string }[] | null;
     };
     const valor = Math.round((Number(pc.valor_base) + Number(pc.multa) + Number(pc.juros) - Number(pc.desconto)) * 100) / 100;
     const situacao: Situacao = pc.status === "pago" ? "pago" : situacaoAberta(p.status === "pago" ? "aguardando_pagamento" : p.status, pc.vencimento, hoje);
@@ -184,6 +190,7 @@ export async function listarContas(f: FiltrosContas) {
       obra: p.obra?.nome ?? null,
       forma: p.forma_pagamento,
       conta: p.conta_bancaria?.nome ?? null,
+      lancadoConciliacao: Boolean(p.lancado_conciliacao),
       vencimento: pc.vencimento,
       pagoEm: pc.pago_em,
       valor: pc.status === "pago" ? Number(pc.valor_pago ?? valor) : valor,
@@ -213,6 +220,7 @@ export async function listarContas(f: FiltrosContas) {
       obra: v.obra?.nome ?? null,
       forma: null,
       conta: null,
+      lancadoConciliacao: false,
       vencimento: v.vencimento,
       pagoEm: null,
       valor: Number(v.valor_estimado ?? 0),

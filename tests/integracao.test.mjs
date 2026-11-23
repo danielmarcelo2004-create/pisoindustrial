@@ -1186,6 +1186,201 @@ describe('conciliação bancária', () => {
     assert.equal(aud2.length, 1)
   })
 
+  test('novo lançamento pela conciliação: despesa já paga, sem aprovação, marcada, aviso a quem aprova; valores conferem; desfazer cancela', async () => {
+    const cat = (await admin.from('categorias').select('id').eq('ativo', true).limit(1).single()).data.id
+    await importar('fin', [L('2026-12-16', -3000, 'SAQUE DIN ATM 16/12 10:16 SOP-FULANA', 'N1'), L('2026-12-16', 500, 'CRED NL', 'N2'), L('2026-12-16', -1012, 'BOLETO NL', 'N3')])
+    const [ls] = await linhaPor(conta, 'SAQUE DIN ATM 16/12 10:16 SOP-FULANA'); const [lc] = await linhaPor(conta, 'CRED NL'); const [lj] = await linhaPor(conta, 'BOLETO NL')
+    const args = { p_linha_id: ls.id, p_obra_id: obraA.id, p_categoria_id: cat, p_descricao: 'Saque para diárias' }
+    for (const k of ['sup', 'eng', mst]) await falha(k, 'criar_lancamento_conciliacao', args, 'Somente o Financeiro')
+    await falha('fin', 'criar_lancamento_conciliacao', { ...args, p_obra_id: null }, 'centro de custo')
+    await falha('fin', 'criar_lancamento_conciliacao', { ...args, p_categoria_id: null }, 'categoria')
+    await falha('fin', 'criar_lancamento_conciliacao', { ...args, p_linha_id: lc.id }, 'Entradas no banco não viram despesa')
+    const id = await rpc('fin', 'criar_lancamento_conciliacao', args)
+    const p = await pagamento(id)
+    assert.deepEqual([p.status, p.pago_em, Number(p.valor), Number(p.valor_pago), p.lancado_conciliacao, p.conta_bancaria_id, p.obra_id], ['pago', '2026-12-16', 3000, 3000, true, conta, obraA.id])
+    const { count: assin } = await admin.from('assinaturas').select('id', { count: 'exact', head: true }).eq('pagamento_id', id)
+    assert.equal(assin, 0, 'não passou por aprovação')
+    assert.equal((await linhaPor(conta, 'SAQUE DIN ATM 16/12 10:16 SOP-FULANA'))[0].situacao, 'conciliada')
+    const avisos = async (k) => (await u[k].client.from('notificacoes').select('titulo').eq('pagamento_id', id).eq('titulo', 'Despesa lançada pela conciliação')).data.length
+    assert.deepEqual([await avisos('eng'), await avisos('adm'), await avisos('fin')], [1, 1, 0], 'engenheiro e administrador do centro de custo avisados')
+    const { data: aud } = await admin.from('auditoria').select('descricao').eq('pagamento_id', id).ilike('descricao', 'Lançado pela conciliação%')
+    assert.equal(aud.length, 1)
+    // juros/multa/desconto: valor + juros + multa − desconto = banco
+    await falha('fin', 'criar_lancamento_conciliacao', { p_linha_id: lj.id, p_obra_id: obraC.id, p_categoria_id: cat, p_descricao: 'X', p_valor: 1000, p_juros: 5 }, 'precisa dar o valor que saiu do banco')
+    const id2 = await rpc('fin', 'criar_lancamento_conciliacao', { p_linha_id: lj.id, p_obra_id: obraC.id, p_categoria_id: cat, p_descricao: 'Boleto com juros', p_valor: 1000, p_juros: 7, p_multa: 5 })
+    const p2 = await pagamento(id2); assert.deepEqual([Number(p2.valor), Number(p2.valor_pago)], [1000, 1012]); assert.match(p2.observacoes, /Juros: R\$ 7,00/)
+    // desfazer "voltar para em aberto" num lançamento criado pela conciliação = cancelar
+    await rpc('fin', 'desfazer_conciliacao', { p_linha_id: ls.id, p_voltar_aberto: true, p_motivo: 'lançado errado' })
+    assert.equal((await pagamento(id)).status, 'cancelado')
+    assert.equal((await linhaPor(conta, 'SAQUE DIN ATM 16/12 10:16 SOP-FULANA'))[0].situacao, 'pendente')
+  })
+
+  test('nova transferência: da origem ou do destino; a outra ponta concilia com a transferência; validações; desfazer solta e apaga quando ninguém ficou', async () => {
+    const outra = await rpc('fin', 'criar_conta_bancaria', { p_nome: 'Conta destino', p_banco: '341', p_agencia: '1', p_conta: String(Date.now()).slice(-8) })
+    await importar('fin', [L('2026-12-17', -2700, 'ENVIO TRANSF TEV', 'T1')])
+    const [ls] = await linhaPor(conta, 'ENVIO TRANSF TEV')
+    await falha('sup', 'criar_transferencia', { p_linha_id: ls.id, p_outra_conta: outra }, 'Somente o Financeiro')
+    await falha('fin', 'criar_transferencia', { p_linha_id: ls.id, p_outra_conta: conta }, 'outra conta')
+    const t = await rpc('fin', 'criar_transferencia', { p_linha_id: ls.id, p_outra_conta: outra, p_descricao: 'Reforço de caixa' })
+    const { data: tr } = await admin.from('transferencias').select('*').eq('id', t).single()
+    assert.deepEqual([tr.conta_origem, tr.conta_destino, Number(tr.valor), tr.linha_origem, tr.linha_destino], [conta, outra, 2700, ls.id, null])
+    assert.equal((await linhaPor(conta, 'ENVIO TRANSF TEV'))[0].situacao, 'conciliada')
+    const { count: despesas } = await admin.from('pagamentos').select('id', { count: 'exact', head: true }).eq('descricao', 'Reforço de caixa')
+    assert.equal(despesas, 0, 'transferência não vira despesa')
+    // Extrato da conta destino: a entrada concilia com a transferência
+    const r = await rpc('fin', 'importar_extrato', { p_banco: '341', p_agencia: '1', p_conta: tr.conta_destino ? (await admin.from('contas_bancarias').select('conta').eq('id', outra).single()).data.conta : '', p_arquivo: 'dest.ofx', p_inicio: null, p_fim: null, p_saldo: null, p_saldo_em: null, p_linhas: [L('2026-12-18', 2700, 'CRED TRANSF', 'D1'), L('2026-12-18', 999, 'CRED OUTRA', 'D2')] })
+    assert.equal(r.conta_id, outra)
+    const [le] = await linhaPor(outra, 'CRED TRANSF'); const [lo] = await linhaPor(outra, 'CRED OUTRA')
+    await falha('fin', 'conciliar_transferencia', { p_linha_id: lo.id, p_transferencia_id: t }, 'diferente da transferência')
+    await falha('fin', 'conciliar_transferencia', { p_linha_id: ls.id, p_transferencia_id: t }, 'já foi conciliado')
+    await rpc('fin', 'conciliar_transferencia', { p_linha_id: le.id, p_transferencia_id: t })
+    assert.equal((await admin.from('transferencias').select('linha_destino').eq('id', t).single()).data.linha_destino, le.id)
+    await falha('fin', 'conciliar_transferencia', { p_linha_id: lo.id, p_transferencia_id: t }, 'diferente')
+    // Desfazer numa ponta: solta só ela; desfazer a outra: transferência apagada
+    await rpc('fin', 'desfazer_conciliacao', { p_linha_id: le.id, p_voltar_aberto: false, p_motivo: 'teste' })
+    assert.equal((await admin.from('transferencias').select('linha_destino, linha_origem').eq('id', t).single()).data.linha_destino, null)
+    await rpc('fin', 'desfazer_conciliacao', { p_linha_id: ls.id, p_voltar_aberto: false, p_motivo: 'teste' })
+    assert.equal((await admin.from('transferencias').select('id').eq('id', t)).data.length, 0, 'sem pontas ligadas: transferência apagada')
+    // Começando pelo destino: entrada registrada como vinda de outra conta
+    const t2 = await rpc('fin', 'criar_transferencia', { p_linha_id: lo.id, p_outra_conta: conta })
+    const { data: tr2 } = await admin.from('transferencias').select('conta_origem, conta_destino, linha_destino').eq('id', t2).single()
+    assert.deepEqual([tr2.conta_origem, tr2.conta_destino, tr2.linha_destino], [conta, outra, lo.id])
+  })
+
+  test('estorno em pares: saída pendente + estorno conciliam juntos; saída já conciliada com conta paga reabre a conta e avisa; validações; desfazer separa', async () => {
+    await importar('fin', [L('2026-12-20', -480, 'PIX ENVIADO EST A', 'E1'), L('2026-12-21', 480, 'PIX DEVOLVIDO EST A', 'E2'), L('2026-12-21', 481, 'PIX DEVOLVIDO EST X', 'E3'), L('2026-12-19', 480, 'CRED ANTES', 'E4')])
+    const [sa] = await linhaPor(conta, 'PIX ENVIADO EST A'); const [ea] = await linhaPor(conta, 'PIX DEVOLVIDO EST A'); const [ex] = await linhaPor(conta, 'PIX DEVOLVIDO EST X'); const [eb] = await linhaPor(conta, 'CRED ANTES')
+    for (const k of ['sup', 'eng', mst]) await falha(k, 'conciliar_estorno', { p_credito: ea.id, p_debito: sa.id }, 'Somente o Financeiro')
+    await falha('fin', 'conciliar_estorno', { p_credito: ex.id, p_debito: sa.id }, 'diferente da saída')
+    await falha('fin', 'conciliar_estorno', { p_credito: sa.id, p_debito: ea.id }, 'precisa ser uma entrada')
+    await falha('fin', 'conciliar_estorno', { p_credito: eb.id, p_debito: sa.id }, 'anterior ao estorno')
+    await rpc('fin', 'conciliar_estorno', { p_credito: ea.id, p_debito: sa.id })
+    const [sa2] = await linhaPor(conta, 'PIX ENVIADO EST A'); const [ea2] = await linhaPor(conta, 'PIX DEVOLVIDO EST A')
+    assert.deepEqual([sa2.situacao, ea2.situacao, sa2.estorno_linha, ea2.estorno_linha], ['conciliada', 'conciliada', ea.id, sa.id])
+    await falha('fin', 'conciliar_estorno', { p_credito: ea.id, p_debito: sa.id }, 'já foi conciliado')
+    // Desfazer em qualquer ponta separa as duas
+    await rpc('fin', 'desfazer_conciliacao', { p_linha_id: sa.id, p_voltar_aberto: false, p_motivo: 'teste' })
+    assert.deepEqual([(await linhaPor(conta, 'PIX ENVIADO EST A'))[0].situacao, (await linhaPor(conta, 'PIX DEVOLVIDO EST A'))[0].situacao], ['pendente', 'pendente'])
+
+    // Saída conciliada com conta liberada (baixa pela conciliação): o estorno reabre a conta e avisa
+    const p = await liberada(1350, '2026-12-22')
+    await importar('fin', [L('2026-12-22', -1350, 'PIX ENVIADO EST B', 'E5'), L('2026-12-23', 1350, 'ESTORNO PIX EST B', 'E6')])
+    const [sb] = await linhaPor(conta, 'PIX ENVIADO EST B'); const [eb2] = await linhaPor(conta, 'ESTORNO PIX EST B')
+    await rpc('fin', 'conciliar_linha', { p_linha_id: sb.id, p_itens: [{ tipo: 'pagamento', id: p.id }] })
+    assert.equal((await pagamento(p.id)).status, 'pago')
+    await rpc('fin', 'conciliar_estorno', { p_credito: eb2.id, p_debito: sb.id })
+    const pr = await pagamento(p.id)
+    assert.equal(pr.status, 'aguardando_pagamento', 'a conta volta para em aberto')
+    assert.equal((await admin.from('conciliacao_itens').select('id').eq('linha_id', sb.id)).data.length, 0)
+    assert.equal((await linhaPor(conta, 'PIX ENVIADO EST B'))[0].estorno_linha, eb2.id)
+    const { data: aud } = await admin.from('auditoria').select('descricao').eq('pagamento_id', p.id).eq('acao', 'desconciliou')
+    assert.ok(aud.some((a) => /Estorno do banco em 23\/12\/2026/.test(a.descricao)), 'auditoria registra o motivo')
+    // Desfazer o par: a conta reaberta continua em aberto
+    await rpc('fin', 'desfazer_conciliacao', { p_linha_id: eb2.id, p_voltar_aberto: false, p_motivo: 'teste' })
+    assert.equal((await pagamento(p.id)).status, 'aguardando_pagamento')
+
+    // Conta baixada à mão e depois conciliada (baixou = false): o estorno também reabre
+    const p3 = await liberada(777, '2026-12-24')
+    await rpc('fin', 'conciliar_linha', { p_linha_id: (await importar('fin', [L('2026-12-24', -777, 'PIX ENVIADO EST C', 'E7')]), (await linhaPor(conta, 'PIX ENVIADO EST C'))[0].id), p_itens: [{ tipo: 'pagamento', id: p3.id }] })
+    const [sc] = await linhaPor(conta, 'PIX ENVIADO EST C')
+    await admin.from('conciliacao_itens').update({ baixou: false }).eq('linha_id', sc.id) // como se a baixa tivesse sido manual
+    await importar('fin', [L('2026-12-26', 777, 'DEVOLUCAO PIX EST C', 'E8')])
+    const [ec] = await linhaPor(conta, 'DEVOLUCAO PIX EST C')
+    await rpc('fin', 'conciliar_estorno', { p_credito: ec.id, p_debito: sc.id })
+    assert.equal((await pagamento(p3.id)).status, 'aguardando_pagamento')
+
+    // Lançamento criado pela conciliação (obra com engenheiro e administrador): o estorno cancela e avisa os dois
+    const cat = (await admin.from('categorias').select('id').eq('ativo', true).limit(1).single()).data.id
+    await importar('fin', [L('2026-12-27', -260, 'PIX ENVIADO EST D', 'E9'), L('2026-12-28', 260, 'PIX DEVOLVIDO EST D', 'E10')])
+    const [sd] = await linhaPor(conta, 'PIX ENVIADO EST D'); const [ed] = await linhaPor(conta, 'PIX DEVOLVIDO EST D')
+    const pd = await rpc('fin', 'criar_lancamento_conciliacao', { p_linha_id: sd.id, p_obra_id: obraA.id, p_categoria_id: cat, p_descricao: 'Diária' })
+    await rpc('fin', 'conciliar_estorno', { p_credito: ed.id, p_debito: sd.id })
+    assert.equal((await pagamento(pd)).status, 'cancelado')
+    const avisos = async (k) => (await u[k].client.from('notificacoes').select('titulo, mensagem').eq('pagamento_id', pd).eq('titulo', 'Pagamento estornado pelo banco')).data
+    const [ae, aa, af] = [await avisos('eng'), await avisos('adm'), await avisos('fin')]
+    assert.deepEqual([ae.length, aa.length, af.length], [1, 1, 0], 'engenheiro e administrador avisados')
+    assert.match(ae[0].mensagem, /R\$ 260,00 .* voltou em 28\/12\/2026\. O lançamento criado pela conciliação foi cancelado/)
+  })
+
+  test('conta de investimento (Rende Fácil): só Financeiro cadastra, sem agência/conta; aplicação/resgate como transferência; saldo pelas transferências; não paga despesa', async () => {
+    const nome = 'BB Rende Fácil ' + contaNum
+    for (const k of ['sup', 'eng', mst]) await falha(k, 'criar_conta_investimento', { p_nome: nome, p_banco: '001' }, 'Somente o Financeiro')
+    const inv = await rpc('fin', 'criar_conta_investimento', { p_nome: nome, p_banco: '001' })
+    await falha('fin', 'criar_conta_investimento', { p_nome: nome.toUpperCase() }, 'Já existe')
+    const inv2 = await rpc('fin', 'criar_conta_investimento', { p_nome: 'Poupança ' + contaNum, p_banco: '001' })
+    assert.notEqual(inv, inv2, 'duas contas de investimento do mesmo banco (sem número) convivem')
+    const { data: c } = await admin.from('contas_bancarias').select('tipo, agencia, conta').eq('id', inv).single()
+    assert.deepEqual([c.tipo, c.agencia, c.conta], ['investimento', '', ''])
+    await importar('fin', [L('2026-12-27', -4814.71, 'BB RENDE FACIL APL', 'R1'), L('2026-12-28', 1000, 'BB RENDE FACIL RES', 'R2')])
+    const [ap] = await linhaPor(conta, 'BB RENDE FACIL APL'); const [rs] = await linhaPor(conta, 'BB RENDE FACIL RES')
+    await rpc('fin', 'criar_transferencia', { p_linha_id: ap.id, p_outra_conta: inv })
+    await rpc('fin', 'criar_transferencia', { p_linha_id: rs.id, p_outra_conta: inv })
+    const saldo = async (k) => (await u[k].client.rpc('saldos_contas_bancarias')).data.find((x) => x.id === inv)
+    const s = await saldo('fin')
+    assert.deepEqual([Number(s.saldo), s.saldo_em], [3814.71, '2026-12-28'], 'aplicado − resgatado')
+    assert.equal(await saldo('eng'), undefined, 'engenheiro não vê saldo')
+    // Extrato importado com conta vazia/igual não cai na conta de investimento
+    const r = await importar('fin', [L('2026-12-29', -1, 'Z1', 'Z1')])
+    assert.equal(r.conta_id, conta)
+  })
+
+  test('contas a receber: entrada vira recebimento já recebido (só Financeiro); categoria de receita; todos veem as obras que podem ver; Financeiro/master editam e anexam nota; desfazer cancela', async () => {
+    const catRec = await rpc('fin', 'criar_categoria_receita', { p_nome: 'Medição ' + contaNum })
+    const catDesp = (await admin.from('categorias').select('id').eq('tipo', 'despesa').eq('ativo', true).limit(1).single()).data.id
+    await falha('sup', 'criar_categoria_receita', { p_nome: 'X' }, 'Somente o Financeiro')
+    assert.equal(await rpc(mst, 'criar_categoria_receita', { p_nome: 'Medição ' + contaNum }), catRec, 'mesmo nome devolve a existente')
+    assert.notEqual(await rpc('fin', 'criar_categoria', { p_nome: 'Medição ' + contaNum }), catRec, 'despesa e receita com o mesmo nome convivem')
+    await importar('fin', [L('2026-12-14', 15000, 'TED RECEBIDA CLIENTE REC', 'RC1'), L('2026-12-14', -50, 'SAIDA REC', 'RC2')])
+    const [le] = await linhaPor(conta, 'TED RECEBIDA CLIENTE REC'); const [ls] = await linhaPor(conta, 'SAIDA REC')
+    const args = { p_linha_id: le.id, p_obra_id: obraA.id, p_categoria_id: catRec, p_cliente: 'Cliente Rec', p_descricao: '1ª medição' }
+    for (const k of ['sup', 'eng', 'adm', mst]) await falha(k, 'criar_recebimento_conciliacao', args, 'Somente o Financeiro')
+    await falha('fin', 'criar_recebimento_conciliacao', { ...args, p_categoria_id: catDesp }, 'categoria de receita')
+    await falha('fin', 'criar_recebimento_conciliacao', { ...args, p_cliente: ' ' }, 'cliente')
+    await falha('fin', 'criar_recebimento_conciliacao', { ...args, p_linha_id: ls.id }, 'Saídas do banco não viram recebimento')
+    const id = await rpc('fin', 'criar_recebimento_conciliacao', args)
+    const { data: r } = await admin.from('recebimentos').select('*').eq('id', id).single()
+    assert.deepEqual([r.status, r.recebido_em, Number(r.valor), Number(r.valor_recebido), r.vencimento, r.conta_bancaria_id, r.lancado_conciliacao], ['recebido', '2026-12-14', 15000, 15000, '2026-12-14', conta, true])
+    const [le2] = await linhaPor(conta, 'TED RECEBIDA CLIENTE REC'); assert.deepEqual([le2.situacao, le2.recebimento_id], ['conciliada', id])
+    await falha('fin', 'criar_recebimento_conciliacao', args, 'já foi conciliado')
+    // Visibilidade: engenheiro e administrador da obra A veem; quem não atua nela não
+    const ve = async (k) => (await u[k].client.from('recebimentos').select('id').eq('id', id)).data.length
+    assert.deepEqual([await ve('eng'), await ve('adm'), await ve('fin'), await ve(mst), await ve('sup')], [1, 1, 1, 1, 1])
+    await importar('fin', [L('2026-12-15', 900, 'PIX RECEBIDO OBRA C REC', 'RC3')])
+    const idC = await rpc('fin', 'criar_recebimento_conciliacao', { ...args, p_linha_id: (await linhaPor(conta, 'PIX RECEBIDO OBRA C REC'))[0].id, p_obra_id: obraC.id })
+    assert.equal((await u.eng.client.from('recebimentos').select('id').eq('id', idC)).data.length, 0, 'engenheiro não vê recebimento de obra em que não atua')
+    // Escrita direta recusada
+    await u.fin.client.from('recebimentos').update({ valor: 1 }).eq('id', id)
+    assert.equal(Number((await admin.from('recebimentos').select('valor').eq('id', id).single()).data.valor), 15000)
+    // Editar: Financeiro e master; não engenheiro
+    await falha('eng', 'editar_recebimento', { p_id: id, p_obra_id: obraA.id, p_categoria_id: catRec, p_cliente: 'X', p_descricao: 'X', p_competencia: null, p_observacoes: null }, 'Somente o Financeiro e o administrador master')
+    await rpc(mst, 'editar_recebimento', { p_id: id, p_obra_id: obraA.id, p_categoria_id: catRec, p_cliente: 'Cliente Rec SA', p_descricao: '1ª medição de dezembro', p_competencia: '2026-11-30', p_observacoes: 'ok' })
+    const { data: r2 } = await admin.from('recebimentos').select('cliente, descricao, data_competencia, valor').eq('id', id).single()
+    assert.deepEqual([r2.cliente, r2.descricao, r2.data_competencia, Number(r2.valor)], ['Cliente Rec SA', '1ª medição de dezembro', '2026-11-30', 15000])
+    await falha('fin', 'editar_recebimento', { p_id: id, p_obra_id: obraA.id, p_categoria_id: catDesp, p_cliente: 'X', p_descricao: 'X', p_competencia: null, p_observacoes: null }, 'categoria de receita')
+    // Nota de medição: só do mesmo centro de custo, uma por recebimento
+    const nota = (obra) => admin.from('notas_medicao').insert({ obra_id: obra, storage_path: `${obra}/medicoes/${randomUUID()}.pdf`, nome_arquivo: 'med.pdf', sha256: 'a'.repeat(64), valor: 16000, valor_liquido: 15000, criada_por: u.fin.id }).select('id').single()
+    const nA = (await nota(obraA.id)).data.id; const nB = (await nota(obraB.id)).data.id
+    await falha('fin', 'vincular_nota_medicao', { p_recebimento_id: id, p_nota_id: nB }, 'outro centro de custo')
+    await falha('eng', 'vincular_nota_medicao', { p_recebimento_id: id, p_nota_id: nA }, 'Somente o Financeiro')
+    await rpc(mst, 'vincular_nota_medicao', { p_recebimento_id: id, p_nota_id: nA })
+    assert.equal((await admin.from('recebimentos').select('nota_medicao_id').eq('id', id).single()).data.nota_medicao_id, nA)
+    const { data: vn } = await u.eng.client.from('notas_medicao').select('id').eq('id', nA)
+    assert.equal(vn.length, 1, 'engenheiro vê a nota anexada ao recebimento da obra dele')
+    await falha('fin', 'editar_recebimento', { p_id: id, p_obra_id: obraB.id, p_categoria_id: catRec, p_cliente: 'X', p_descricao: 'X', p_competencia: null, p_observacoes: null }, 'retire a nota')
+    // Categoria de receita não entra em despesa
+    const pag = await rpc('fin', 'criar_pagamento', { p_obra_id: obraC.id, p_fornecedor_id: null, p_favorecido: 'F', p_descricao: 'Cat', p_valor: 10, p_vencimento: '2026-12-30', p_forma_pagamento: 'pix' })
+    await falha('fin', 'definir_categoria', { p_pagamento_id: pag, p_categoria_id: catRec }, 'Categoria de receita não pode ser usada em despesa')
+    // Desfazer: "apenas" mantém o recebimento; "cancelar" cancela
+    await rpc('fin', 'desfazer_conciliacao', { p_linha_id: le.id, p_voltar_aberto: false, p_motivo: 'teste' })
+    assert.equal((await admin.from('recebimentos').select('status').eq('id', id).single()).data.status, 'recebido')
+    assert.deepEqual([(await linhaPor(conta, 'TED RECEBIDA CLIENTE REC'))[0].situacao, (await linhaPor(conta, 'TED RECEBIDA CLIENTE REC'))[0].recebimento_id], ['pendente', null])
+    const id2 = await rpc('fin', 'criar_recebimento_conciliacao', { ...args, p_descricao: 'de novo' })
+    await rpc('fin', 'desfazer_conciliacao', { p_linha_id: le.id, p_voltar_aberto: true, p_motivo: 'lançado errado' })
+    assert.equal((await admin.from('recebimentos').select('status').eq('id', id2).single()).data.status, 'cancelado')
+    const { data: aud } = await admin.from('auditoria').select('acao').eq('entidade', 'recebimento').eq('entidade_id', id)
+    assert.ok(['criou', 'editou', 'anexou_nota', 'desconciliou'].every((a) => aud.some((x) => x.acao === a)), 'auditoria completa')
+  })
+
   test('arquivar com tipo, não mexe em conciliadas, restaurar; tipo inválido recusado', async () => {
     await importar('fin', [L('2026-12-12', -8.5, 'TAR X', 'J1'), L('2026-12-12', 1000, 'CRED X', 'J2')])
     const [t] = await linhaPor(conta, 'TAR X'); const [c] = await linhaPor(conta, 'CRED X'); const [conc] = await linhaPor(conta, 'DEB PIX CHAVE 2420')

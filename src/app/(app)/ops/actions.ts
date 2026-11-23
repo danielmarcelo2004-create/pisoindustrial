@@ -132,6 +132,13 @@ async function gravarRascunho(id: string | null, fd: FormData, paraEnviar = fals
   const { error: erroParcelas } = await supabase.rpc("definir_parcelas_op", { p_id: data as string, p_parcelas: parcelas });
   if (erroParcelas) return { erro: mensagemErro(erroParcelas) };
 
+  // OP criada a partir de uma provisão: ao enviar, a provisão vira lançada (gatilho no banco)
+  const provisao = t(fd, "provisao_id");
+  if (UUID.test(provisao)) {
+    const { error: erroProv } = await supabase.rpc("definir_provisao_op", { p_ordem_id: data as string, p_provisao_id: provisao });
+    if (erroProv) return { erro: mensagemErro(erroProv) };
+  }
+
   // Data de competência (vem com a data do lançamento; pode ser alterada)
   const competencia = t(fd, "data_competencia");
   if (/^\d{4}-\d{2}-\d{2}$/.test(competencia)) {

@@ -3,17 +3,19 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 
 import type { Candidato, Historico, HistoricoReceita, LinhaExtrato, SaidaEstornavel, TransferenciaAberta } from "@/lib/conciliacao-sugestao";
-export { CLASSIFICACOES, classificacaoProvavel, contaDeAplicacao, pareceEstorno, saidasParaEstorno, sugerir, sugerirEstornos, sugerirLancamento, sugerirRecebimento, sugerirTransferencias, tolerancia } from "@/lib/conciliacao-sugestao";
+export { CLASSIFICACOES, classificacaoProvavel, pareceEstorno, saidasParaEstorno, sugerir, sugerirEstornos, sugerirLancamento, sugerirRecebimento, sugerirTransferencias, tolerancia } from "@/lib/conciliacao-sugestao";
 export type { Candidato, Classificacao, Historico, HistoricoReceita, LinhaExtrato, SaidaEstornavel, Sugestao, SugestaoLancamento, SugestaoRecebimento, TransferenciaAberta } from "@/lib/conciliacao-sugestao";
 
 export async function contasBancarias() {
   const supabase = await createClient();
-  const [{ data: contas }, { data: saldos }, { data: pend }] = await Promise.all([
+  const [{ data: contas }, { data: saldos }, { data: aplic }, { data: pend }] = await Promise.all([
     supabase.from("contas_bancarias").select("id, nome, banco, agencia, conta, tipo").eq("ativa", true).order("nome"),
     supabase.rpc("saldos_contas_bancarias"), // saldo: só Financeiro/master
+    supabase.rpc("aplicado_nas_contas"), // aplicado no Rende Fácil (aplicações − resgates conciliados)
     supabase.from("extrato_linhas").select("conta_id, valor").eq("situacao", "pendente").limit(50000),
   ]);
   const saldo = new Map((saldos ?? []).map((x) => [x.id, x]));
+  const aplicado = new Map((aplic ?? []).map((x) => [x.conta_id, Number(x.aplicado)]));
   const qtd = new Map<string, number>();
   const soma = new Map<string, number>();
   for (const l of pend ?? []) {
@@ -27,6 +29,7 @@ export async function contasBancarias() {
       saldo: s?.saldo === null || s?.saldo === undefined ? null : Number(s.saldo),
       saldo_em: s?.saldo_em ?? null,
       pendentes: qtd.get(c.id) ?? 0,
+      aplicado: aplicado.get(c.id) ?? 0,
       valorPendente: Math.round((soma.get(c.id) ?? 0) * 100) / 100,
     };
   });

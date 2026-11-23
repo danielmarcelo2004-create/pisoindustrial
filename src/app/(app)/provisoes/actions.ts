@@ -141,3 +141,15 @@ export async function adicionarParcelasProvisao(id: string, _: Estado, fd: FormD
   revalidatePath("/");
   redirect(`/provisoes?aviso=estendida&qtd=${qtd}`);
 }
+
+/** Janela "Lançar despesa" (Contas a pagar e Agenda): marca como lançada ou cancela sem sair da tela. */
+export async function marcarProvisao(id: string, status: "convertida" | "cancelada"): Promise<Estado> {
+  await exigirPerfil("financeiro", "suprimentos");
+  if (!UUID.test(id) || !["convertida", "cancelada"].includes(status)) return { erro: "Provisão não encontrada." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("provisoes").update({ status }).eq("id", id).eq("status", "provisionada").select("id");
+  if (error) return { erro: mensagemErro(error) };
+  if (!data?.length) return { erro: "Você só pode alterar as provisões que cadastrou (ou ela já foi lançada/cancelada)." };
+  revalidatePath("/", "layout");
+  return { ok: status === "convertida" ? "Provisão marcada como lançada." : "Provisão cancelada." };
+}

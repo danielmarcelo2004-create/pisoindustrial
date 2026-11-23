@@ -45,3 +45,21 @@ export async function salvarFornecedor(id: string | null, _: Estado, fd: FormDat
   revalidatePath("/fornecedores");
   redirect(`/fornecedores/${data.id}?criado=1`);
 }
+
+/** Cadastro rápido (janelinha da Nova despesa): devolve o fornecedor criado para já ficar selecionado. */
+export async function criarFornecedorRapido(nome: string, cpfCnpj: string): Promise<{ id?: string; nome?: string; erro?: string }> {
+  await exigirPerfil("financeiro", "suprimentos");
+  const n = nome.trim();
+  const doc = soDigitos(cpfCnpj.trim());
+  if (!n) return { erro: "Informe o nome / razão social." };
+  if (doc && doc.length !== 11 && doc.length !== 14) return { erro: "CPF deve ter 11 dígitos e CNPJ 14 dígitos." };
+  const supabase = await createClient();
+  if (doc) {
+    const { data: existe } = await supabase.from("fornecedores").select("id, nome").eq("cpf_cnpj", doc).maybeSingle();
+    if (existe) return { id: existe.id, nome: existe.nome };
+  }
+  const { data, error } = await supabase.from("fornecedores").insert({ nome: n.slice(0, 200), cpf_cnpj: doc || null, ativo: true }).select("id, nome").single();
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/fornecedores");
+  return { id: data.id, nome: data.nome };
+}

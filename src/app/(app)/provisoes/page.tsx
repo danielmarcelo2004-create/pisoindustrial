@@ -33,7 +33,7 @@ export default async function ProvisoesPage({ searchParams }: PageProps<"/provis
   const u = await getUsuario();
   const supabase = await createClient();
   const [{ data: provisoes }, { data: obras }] = await Promise.all([
-    supabase.from("provisoes").select("id, descricao, mes_referencia, vencimento, valor_estimado, status, categoria_id, created_by, pagamento_origem_id, obra:obras(id, nome)").order("vencimento", { ascending: true, nullsFirst: false }).limit(300),
+    supabase.from("provisoes").select("id, descricao, mes_referencia, vencimento, valor_estimado, status, categoria_id, created_by, pagamento_origem_id, pagamento_id, pagamento:pagamentos!provisoes_pagamento_id_fkey(numero), obra:obras(id, nome)").order("vencimento", { ascending: true, nullsFirst: false }).limit(300),
     supabase.from("obras").select("id, nome").order("nome"),
   ]);
   const fin = u.perfil === "financeiro";
@@ -170,7 +170,7 @@ export default async function ProvisoesPage({ searchParams }: PageProps<"/provis
                   </thead>
                   <tbody>
                     {lista.map((p) => (
-                      <tr key={p.id} className={vencida(p) ? "bg-red-50" : undefined}>
+                      <tr key={p.id} id={`prov-${p.id}`} data-provisao={p.id} className={sp.prov === p.id ? "scroll-mt-24 bg-sky-50 outline outline-2 outline-sky-400" : vencida(p) ? "bg-red-50" : undefined}>
                         <td className="min-w-48 font-medium">
                           {p.descricao}
                           {ultimas.has(p.id) && p.status === "provisionada" && (
@@ -189,13 +189,18 @@ export default async function ProvisoesPage({ searchParams }: PageProps<"/provis
                           ) : (
                             <Selo cor={SITUACAO[p.status as keyof typeof SITUACAO].cor}>{SITUACAO[p.status as keyof typeof SITUACAO].rotulo}</Selo>
                           )}
+                          {p.status === "convertida" && p.pagamento_id && (
+                            <Link href={`/pagamentos/${p.pagamento_id}`} className="mt-1 block text-xs text-marca-700 hover:underline" data-despesa-da-provisao>
+                              Despesa nº {(Array.isArray(p.pagamento) ? p.pagamento[0] : p.pagamento)?.numero}
+                            </Link>
+                          )}
                         </td>
                         {(fin || sup) && (
                           <td className="whitespace-nowrap">
                             {p.status === "provisionada" && podeAgir(p.created_by) && (
                               <div className="flex flex-col gap-1 text-xs">
                                 <Link
-                                  href={`/pagamentos/novo?obra=${p.obra?.id ?? ""}&descricao=${encodeURIComponent(p.descricao)}&vencimento=${p.vencimento ?? ""}${p.valor_estimado !== null ? `&valor=${p.valor_estimado}` : ""}${p.categoria_id ? `&categoria=${p.categoria_id}` : ""}`}
+                                  href={`/pagamentos/novo?provisao=${p.id}`}
                                   className="text-marca-700 hover:underline"
                                 >
                                   Lançar pagamento

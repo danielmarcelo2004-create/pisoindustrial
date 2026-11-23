@@ -30,6 +30,8 @@ export function TipoPagamento({
     contasBancarias: { id: string; nome: string }[];
     podeCadastrarConta: boolean;
     podeAdicionarCategoria: boolean;
+    provisaoId?: string;
+    padrao?: { obra_id?: string; descricao?: string; vencimento?: string; categoria_id?: string };
   };
 }) {
   const [forma, setForma] = useState<FormaPagamento>(formaInicial);
@@ -69,7 +71,8 @@ export function TipoPagamento({
           contasBancarias={op.contasBancarias}
           podeCadastrarConta={op.podeCadastrarConta}
           podeAdicionarCategoria={op.podeAdicionarCategoria}
-          padrao={{ forma_pagamento: forma }}
+          padrao={{ ...op.padrao, forma_pagamento: forma }}
+          provisaoId={op.provisaoId}
         />
       )}
     </div>

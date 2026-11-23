@@ -135,6 +135,13 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
     if (r.aviso) falhas.push(r.aviso);
   }
 
+  // Despesa lançada a partir de uma provisão: a provisão é marcada como lançada e fica ligada a ela
+  const provisao = texto(fd, "provisao_id");
+  if (UUID.test(provisao)) {
+    const { error: erroProv } = await supabase.rpc("lancar_provisao", { p_provisao_id: provisao, p_pagamento_id: id as string });
+    if (erroProv) falhas.push("A provisão não foi marcada como lançada: " + mensagemErro(erroProv));
+  }
+
   revalidatePath("/", "layout");
   redirect(`/pagamentos/${id}?${falhas.length ? "aviso=" + encodeURIComponent(falhas.join(" ")) : "criado=1"}`);
 }

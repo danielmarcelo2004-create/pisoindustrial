@@ -102,6 +102,7 @@ export function FormOP({
   podeAdicionarCategoria = false,
   contasBancarias = [],
   podeCadastrarConta = false,
+  provisaoId,
 }: {
   action: (e: Estado, fd: FormData) => Promise<Estado>;
   obras: { id: string; nome: string; cidade: string; uf: string; temAdministrador: boolean }[];
@@ -117,6 +118,8 @@ export function FormOP({
   podeAdicionarCategoria?: boolean;
   contasBancarias?: { id: string; nome: string }[];
   podeCadastrarConta?: boolean;
+  /** OP criada a partir de uma provisão: ao enviar, a provisão é marcada como lançada. */
+  provisaoId?: string;
 }) {
   // Rascunho: na criação ele nasce ao clicar em "Salvar rascunho para anexar", sem sair da tela.
   const [ordemId, setOrdemId] = useState<string | null>(ordemIdInicial);
@@ -416,6 +419,7 @@ export function FormOP({
 
       <input type="hidden" name="parcelas_json" value={parcelasJson} />
       <input type="hidden" name="ordem_id" value={ordemId ?? ""} />
+      {provisaoId && <input type="hidden" name="provisao_id" value={provisaoId} />}
       {ehEngenheiro && (
         <Cartao titulo="Assinatura do engenheiro">
           {ordemId ? (

@@ -3,6 +3,7 @@ import { hojeISO, valorParaCampo } from "@/lib/formato";
 import { FORMAS_PAGAMENTO } from "@/lib/rotulos";
 import { ParcelasPagamento } from "./parcelas-pagamento";
 import { SeletorCategoria } from "@/components/seletor-categoria";
+import { SeletorFornecedor } from "@/components/seletor-fornecedor";
 import { AvisosLancamento } from "@/components/avisos-lancamento";
 import { SeletorContaBancaria } from "@/components/seletor-conta-bancaria";
 
@@ -27,6 +28,7 @@ export function CamposPagamento({
   formaFixa,
   categorias,
   podeAdicionarCategoria = false,
+  podeAdicionarFornecedor = false,
   pagamentoId,
   contasBancarias,
   podeCadastrarConta = false,
@@ -38,6 +40,8 @@ export function CamposPagamento({
   formaFixa?: string;
   categorias?: { id: string; nome: string }[];
   podeAdicionarCategoria?: boolean;
+  /** Financeiro/Suprimentos cadastram um fornecedor novo sem sair do formulário. */
+  podeAdicionarFornecedor?: boolean;
   /** Na edição: o próprio pagamento não conta como duplicado. */
   pagamentoId?: string;
   /** Contas bancárias (de onde sai o pagamento). */
@@ -46,15 +50,8 @@ export function CamposPagamento({
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <Campo rotulo="Fornecedor" ajuda="Não está na lista? Cadastre em Fornecedores ou informe só o favorecido.">
-        <select name="fornecedor_id" defaultValue={padrao.fornecedor_id ?? ""} className="campo">
-          <option value="">— Sem fornecedor cadastrado —</option>
-          {fornecedores.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.nome}
-            </option>
-          ))}
-        </select>
+      <Campo rotulo="Fornecedor" ajuda={podeAdicionarFornecedor ? "Não está na lista? Use “+ Novo” ou informe só o favorecido." : "Não está na lista? Informe só o favorecido."}>
+        <SeletorFornecedor fornecedores={fornecedores} valorInicial={padrao.fornecedor_id} podeAdicionar={podeAdicionarFornecedor} />
       </Campo>
       <Campo rotulo="Favorecido" ajuda="Preenchido automaticamente com o fornecedor, se deixado em branco.">
         <input name="favorecido" defaultValue={padrao.favorecido ?? ""} className="campo" maxLength={200} />

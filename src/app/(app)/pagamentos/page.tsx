@@ -10,6 +10,7 @@ import { FORMAS_PAGAMENTO, STATUS_PAGAMENTO } from "@/lib/rotulos";
 import { createClient } from "@/lib/supabase/server";
 import { lerPeriodo } from "@/lib/periodo";
 import { BarraFiltros } from "./filtros-contas";
+import { JanelaProvisao } from "@/components/janela-provisao";
 import { AcoesLinha, BarraSelecao, MarcarTodas, MemoriaSelecao } from "./lista-interativa";
 
 export const metadata: Metadata = { title: "Contas a pagar" };
@@ -275,9 +276,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
                         </span>
                       )}
                       {l.tipo === "provisao" ? (
-                        <Link href="/provisoes" className="rounded-md border border-sky-300 px-2.5 py-1 text-xs font-medium text-sky-800 hover:bg-sky-50">
-                          Lançar despesa
-                        </Link>
+                        <JanelaProvisao provisao={l.provisao!} podeAgir={u.perfil === "financeiro" || (u.perfil === "suprimentos" && l.criadoPor === u.id)} />
                       ) : (
                         <AcoesLinha
                           pagamentoId={l.pagamentoId!}

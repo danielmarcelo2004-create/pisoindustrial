@@ -76,7 +76,7 @@ export default async function EditarPagamentoPage({ params }: PageProps<"/pagame
           </Campo>
         </Cartao>
         <Cartao titulo="Dados do pagamento">
-          <CamposPagamento fornecedores={fornecedores} padrao={p} pagamentoId={id} categorias={categorias ?? []} podeAdicionarCategoria={u.perfil === "financeiro" || u.perfil === "administrador_master"} contasBancarias={await contasBancariasAtivas()} podeCadastrarConta={u.perfil === "financeiro"} />
+          <CamposPagamento podeAdicionarFornecedor={u.perfil === "financeiro" || u.perfil === "suprimentos"} fornecedores={fornecedores} padrao={p} pagamentoId={id} categorias={categorias ?? []} podeAdicionarCategoria={u.perfil === "financeiro" || u.perfil === "administrador_master"} contasBancarias={await contasBancariasAtivas()} podeCadastrarConta={u.perfil === "financeiro"} />
         </Cartao>
         {(parcelas?.length ?? 0) > 1 && (
           <Cartao titulo={`Parcelas (${parcelas!.length})`}>

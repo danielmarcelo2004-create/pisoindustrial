@@ -1238,7 +1238,7 @@ isOneToOne: false
 { Args: { "p_data": string,"p_descricao": string,"p_fundo_id": string,"p_valor": number }; Returns: string
                            },
 "lancar_medicao":
-{ Args: { "p_aliquota"?: number,"p_categoria_imposto": string,"p_categoria_receita": string,"p_cliente": string,"p_conta_id": string,"p_nota_id": string,"p_vencimento": string }; Returns: string
+{ Args: { "p_aliquota"?: number,"p_categoria_imposto": string,"p_categoria_receita": string,"p_cliente": string,"p_conta_id": string,"p_devido"?: number,"p_nota_id": string,"p_retido"?: number,"p_vencimento": string }; Returns: string
                            },
 "lancar_provisao":
 { Args: { "p_pagamento_id": string,"p_provisao_id": string }; Returns: undefined

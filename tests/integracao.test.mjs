@@ -1493,6 +1493,12 @@ describe('conciliação bancária', () => {
     const aviso = (await u.eng.client.from('notificacoes').select('titulo').eq('titulo', 'Medição lançada com impostos')).data.length
     assert.ok(aviso >= 1, 'engenheiro avisado')
     await falha('fin', 'lancar_medicao', args, 'já foi lançada')
+    // Valores editáveis: o Financeiro corrige o retido e o devido calculados
+    const { data: nota2 } = await admin.from('notas_medicao').insert({ obra_id: obraA.id, storage_path: `${obraA.id}/medicoes/${randomUUID()}.pdf`, nome_arquivo: 'med2.pdf', numero: '13', sha256: 'f'.repeat(64), valor: 20000, valor_liquido: 18800, criada_por: u.fin.id }).select('id').single()
+    const rec2 = await rpc('fin', 'lancar_medicao', { ...args, p_nota_id: nota2.id, p_retido: 1150, p_devido: 1630.5 })
+    const { data: imp2b } = await admin.from('pagamentos').select('imposto_medicao, valor').eq('recebimento_id', rec2)
+    assert.deepEqual(imp2b.map((i) => `${i.imposto_medicao}:${Number(i.valor)}`).sort(), ['devido:1630.5', 'retido:1150'])
+    await falha('fin', 'lancar_medicao', { ...args, p_nota_id: (await admin.from('notas_medicao').insert({ obra_id: obraA.id, storage_path: `${obraA.id}/medicoes/${randomUUID()}.pdf`, nome_arquivo: 'm3.pdf', sha256: '1'.repeat(64), valor: 100, valor_liquido: 90, criada_por: u.fin.id }).select('id').single()).data.id, p_retido: 100 }, 'Imposto retido inválido')
     // Conciliação: entra o líquido (9.400)
     await importar('fin', [L('2026-12-22', 9400, 'TED RECEBIDA MEDICAO 12', 'MD1'), L('2026-12-22', 9999, 'TED OUTRA', 'MD2')])
     const [lm] = await linhaPor(conta, 'TED RECEBIDA MEDICAO 12'); const [lo] = await linhaPor(conta, 'TED OUTRA')

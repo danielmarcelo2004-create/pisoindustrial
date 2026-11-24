@@ -58,3 +58,10 @@ test('texto sem itens não é confiável', () => {
   assert.equal(r.confiavel, false);
   assert.ok(r.motivos.some((m) => /nenhum item/.test(m)));
 });
+
+test("regressão: DANFE em PDF com texto ('EMITENTE <nome> CNPJ') traz o nome do emitente (sem ele a nota não era gravada na Inteligência de Compras)", () => {
+  const r = lerNotaTexto(["DANFE", "NF-e Nº 000.012.345 Série 1 EMISSÃO 03/11/2026", "EMITENTE Aço Forte Distribuidora LTDA CNPJ 12.345.678/0001-90", "PRODUTOS / SERVIÇOS", "Vergalhão CA-50 12mm NCM 72142000 UN 100,00 10,00 1.000,00", "VALOR TOTAL DOS PRODUTOS R$ 1.000,00", "VALOR TOTAL DA NOTA R$ 1.000,00"].join("\n"));
+  assert.equal(r.nota.emitente_nome, "Aço Forte Distribuidora LTDA");
+  assert.equal(r.itens[0].descricao, "Vergalhão CA-50 12mm", "sem o rótulo NCM na descrição");
+  assert.ok(r.confiavel);
+});

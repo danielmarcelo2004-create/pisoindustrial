@@ -5,6 +5,7 @@ import type { Database } from "@/lib/database.types";
 import { mensagemErro } from "@/lib/erros";
 import type { TipoDocumento } from "@/lib/rotulos";
 import { lerNFe } from "@/lib/nfe";
+import { lerNotaTexto } from "@/lib/ocr/nota-fiscal";
 import { classificarNota, lerNfseTexto, lerNfseXml, type DadosNota } from "@/lib/notas-contabeis";
 import { extrairTextoPdf } from "@/lib/pdf-texto";
 import { SISTEMA } from "@/lib/sistema";
@@ -86,9 +87,20 @@ export async function enviarDocumento(
     return { id, aviso: await registrarNotaContabil(supabase, id, nfse) };
   }
 
-  // PDF de NFS-e com texto: identificado para a contabilidade.
   if (tipo === "nota_fiscal" && ext === "pdf") {
-    const nfse = lerNfseTexto(await extrairTextoPdf(bytes));
+    const texto = await extrairTextoPdf(bytes);
+    // DANFE (NF-e de produtos) em PDF com texto: alimenta a Inteligência de Compras na hora,
+    // só quando todas as linhas de item fecham a conta (senão fica para "Ler notas").
+    const danfe = texto ? lerNotaTexto(texto) : null;
+    if (danfe?.confiavel && danfe.itens.length) {
+      // Sem a razão social no texto, usa o favorecido da despesa
+      if (!danfe.nota.emitente_nome) danfe.nota.emitente_nome = (await supabase.from("pagamentos").select("favorecido").eq("id", pagamento.id).maybeSingle()).data?.favorecido ?? "Fornecedor";
+      const r = await supabase.rpc("registrar_nf", { p_documento_id: id, p_nota: danfe.nota as never, p_itens: danfe.itens as never, p_origem: "ocr" });
+      if (r.error) return { id, aviso: `Itens da NF não registrados: ${mensagemErro(r.error)}` };
+      return { id };
+    }
+    // PDF de NFS-e com texto: identificado para a contabilidade.
+    const nfse = texto ? lerNfseTexto(texto) : null;
     if (nfse) return { id, aviso: await registrarNotaContabil(supabase, id, nfse) };
   }
   return { id };

@@ -292,6 +292,8 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
                           podeEditarParcelas={u.perfil === "financeiro" || l.criadoPor === u.id}
                           podeClonar={l.ordemId ? podeCadastrar : u.perfil === "financeiro" || u.perfil === "suprimentos"}
                           podeCancelar={podeEditar}
+                          cancelado={l.situacao === "cancelado"}
+                          serie={l.serie}
                           contas={contasBanc}
                           podeAlterarConta={l.situacao !== "cancelado" && (u.perfil === "financeiro" || (l.situacao !== "pago" && (l.criadoPor === u.id || podeEditar)))}
                         />

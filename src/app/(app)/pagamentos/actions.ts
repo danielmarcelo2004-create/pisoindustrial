@@ -283,20 +283,21 @@ export async function substituirDocumento(id: string, documentoId: string, _: Es
   return { ok: "Documento substituído. A versão anterior foi preservada no histórico." };
 }
 
-export async function cancelarPagamento(id: string, _: Estado, fd: FormData): Promise<Estado> {
+const ESCOPOS = ["atual", "nao_vencidos", "em_aberto", "todos"] as const;
+
+/** "Excluir lançamento": só o atual, ou também os irmãos (parcelas ou repetições) conforme o escopo. */
+export async function excluirLancamento(pagamentoId: string, parcelaId: string | null, _: Estado, fd: FormData): Promise<Estado> {
   await getUsuario();
+  if (!UUID.test(pagamentoId) || (parcelaId && !UUID.test(parcelaId))) return { erro: "Lançamento não encontrado." };
+  const escopo = texto(fd, "escopo");
+  if (!(ESCOPOS as readonly string[]).includes(escopo)) return { erro: "Escolha quais lançamentos excluir." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("cancelar_pagamento", { p_id: id, p_motivo: texto(fd, "motivo") });
+  const { data, error } = await supabase.rpc("excluir_lancamentos", { p_pagamento_id: pagamentoId, p_parcela_id: parcelaId as string /* null = sem parcelas */, p_escopo: escopo, p_motivo: texto(fd, "motivo") });
   if (error) return { erro: mensagemErro(error) };
-  // "Cancelar também as próximas": provisões em aberto da repetição deste pagamento
-  let extra = "";
-  if (fd.get("cancelar_serie") === "on") {
-    const { data: qtd, error: erroSerie } = await supabase.rpc("cancelar_serie", { p_pagamento_id: id });
-    if (erroSerie) return { erro: "Pagamento cancelado, mas as repetições não foram canceladas: " + mensagemErro(erroSerie) };
-    if (qtd) extra = ` ${qtd} repetição(ões) futura(s) também cancelada(s).`;
-  }
+  const r = (data ?? {}) as { pagamentos?: number; parcelas?: number; provisoes?: number };
+  const partes = [r.pagamentos ? `${r.pagamentos} despesa(s)` : "", r.parcelas ? `${r.parcelas} parcela(s)` : "", r.provisoes ? `${r.provisoes} provisão(ões)` : ""].filter(Boolean);
   revalidatePath("/", "layout");
-  return { ok: "Pagamento cancelado." + extra };
+  return { ok: `Excluído: ${partes.join(", ") || "nada a excluir"}.` };
 }
 
 /** Estorno de baixa do pagamento (sem parcelas): volta para "a pagar". */

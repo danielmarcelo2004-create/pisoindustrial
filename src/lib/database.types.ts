@@ -1028,6 +1028,12 @@ isOneToOne: false
 "_email_elegivel":
 { Args: { "p_perfil": Database["public"]['Enums']["perfil_usuario"],"p_titulo": string }; Returns: boolean
                            },
+"_excluir_pagamento":
+{ Args: { "p_id": string,"p_motivo": string }; Returns: undefined
+                           },
+"_excluir_parcela":
+{ Args: { "p_motivo": string,"p_parcela_id": string }; Returns: undefined
+                           },
 "_exigir_financeiro_conciliacao":
 { Args: Record<PropertyKey, never>; Returns: undefined
                            },
@@ -1218,6 +1224,9 @@ isOneToOne: false
                            },
 "excluir_gasto_fundo":
 { Args: { "p_gasto_id": string }; Returns: undefined
+                           },
+"excluir_lancamentos":
+{ Args: { "p_escopo": string,"p_motivo": string,"p_pagamento_id": string,"p_parcela_id": string }; Returns: Json
                            },
 "excluir_op":
 { Args: { "p_id": string }; Returns: undefined

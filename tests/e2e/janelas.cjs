@@ -64,6 +64,27 @@ const PROIBIDO = /^(sair|excluir|cancelar|desfazer e|rejeitar|remover|apagar|res
           }
           if (r.length || new URL(p.url()).pathname + new URL(p.url()).search !== rota) { await p.goto(BASE + rota); await p.waitForLoadState('networkidle').catch(() => {}); }
         }
+        // Janelas que abrem pelo menu "Ações" da linha (abrir não altera nada; a ação só roda no botão da janela)
+        for (const item of rota === '/pagamentos' ? ['Excluir lançamento', 'Voltar para em aberto', 'Alterar conta bancária'] : []) {
+          const acoes = p.locator('main button[aria-haspopup="menu"]:visible');
+          for (let i = 0; i < Math.min(await acoes.count(), 6); i++) {
+            await acoes.nth(i).click({ timeout: 3000 }).catch(() => {});
+            const mi = p.getByRole('menuitem', { name: item, exact: true });
+            if (!(await mi.count())) { await p.keyboard.press('Escape'); await p.mouse.click(1, 1); continue; }
+            await mi.click();
+            await p.waitForTimeout(150);
+            const r = await p.evaluate((vw) => [...document.querySelectorAll('[role="dialog"]')].map((d) => {
+              const c = d.firstElementChild || d; const box = c.getBoundingClientRect();
+              return { nome: d.getAttribute('aria-label') || '(sem nome)', corta: c.scrollWidth > c.clientWidth + 1, fora: box.left < -1 || box.right > vw + 1 || box.top < -1 || box.bottom > innerHeight + 1 };
+            }), w);
+            for (const d of r) {
+              janelas++; vistas.add(d.nome);
+              if (d.corta || d.fora) problemas.push(`[${disp}] [${perfil}] ${rota} › Ações › "${item}" abre "${d.nome}": ${d.corta ? 'conteúdo cortado' : 'passa da tela'}`);
+            }
+            await p.goto(BASE + rota); await p.waitForLoadState('networkidle').catch(() => {});
+            break;
+          }
+        }
       }
       await p.close();
     }

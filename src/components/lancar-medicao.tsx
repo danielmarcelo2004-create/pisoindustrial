@@ -46,8 +46,8 @@ export function LancarMedicao({
       </button>
     );
   return (
-    <div role="dialog" aria-label="Lançar receita e impostos" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4 text-left">
-      <form action={acao} className="max-h-[92vh] w-full max-w-xl space-y-3 overflow-y-auto rounded-lg bg-white p-5 text-sm shadow-xl">
+    <div role="dialog" aria-label="Lançar receita e impostos" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4 text-left whitespace-normal">
+      <form action={acao} className="max-h-[92vh] w-full max-w-2xl space-y-3 overflow-x-hidden overflow-y-auto rounded-lg bg-white p-5 text-sm shadow-xl">
         <h3 className="text-base font-semibold text-slate-800">
           Lançar receita e impostos — nota {nota.numero ? `nº ${nota.numero}` : ""} · {nota.obra}
         </h3>
@@ -98,40 +98,46 @@ export function LancarMedicao({
             <input name="aliquota" value={aliq} onChange={(e) => setAliq(e.target.value)} inputMode="decimal" className="campo mt-1" aria-label="Alíquota" />
           </label>
         </div>
-        <table className="w-full text-sm" data-calculo-medicao>
+        <table className="w-full table-fixed text-sm" data-calculo-medicao>
+          <colgroup>
+            <col />
+            <col className="w-28 sm:w-40" />
+          </colgroup>
           <tbody className="divide-y divide-slate-100">
             <tr>
-              <td className="py-1.5">Receita (valor total da nota)</td>
+              <td className="py-1.5 pr-3">Receita (valor total da nota)</td>
               <td className="text-right font-medium tabular-nums">{moeda(nota.valor)}</td>
             </tr>
             <tr>
-              <td className="py-1.5">
-                Imposto retido (total − líquido) · entra em Contas a pagar, baixa na conciliação
+              <td className="py-1.5 pr-3 break-words">
+                Imposto retido <span className="text-slate-500">(total − líquido)</span>
+                <span className="block text-xs text-slate-500">Entra em Contas a pagar; é baixado na conciliação.</span>
                 {retidoTxt !== null && (
-                  <button type="button" className="ml-2 text-xs text-sky-700 hover:underline" onClick={() => setRetidoTxt(null)}>
+                  <button type="button" className="text-xs text-sky-700 hover:underline" onClick={() => setRetidoTxt(null)}>
                     voltar ao cálculo ({moeda(retidoCalc)})
                   </button>
                 )}
               </td>
-              <td className="w-36 text-right">
+              <td className="text-right align-top">
                 <input name="retido" value={retidoTxt ?? fmt(retidoCalc)} onChange={(e) => setRetidoTxt(e.target.value)} inputMode="decimal" className="campo py-1 text-right tabular-nums" aria-label="Imposto retido" />
               </td>
             </tr>
             <tr>
-              <td className="py-1.5">
-                Imposto devido ({aliq}% × total − retido) · entra em Contas a pagar já pago, na “Baixa manual”
+              <td className="py-1.5 pr-3 break-words">
+                Imposto devido <span className="text-slate-500">({aliq}% × total − retido)</span>
+                <span className="block text-xs text-slate-500">Entra em Contas a pagar já pago, na “Baixa manual”.</span>
                 {devidoTxt !== null && (
-                  <button type="button" className="ml-2 text-xs text-sky-700 hover:underline" onClick={() => setDevidoTxt(null)}>
+                  <button type="button" className="text-xs text-sky-700 hover:underline" onClick={() => setDevidoTxt(null)}>
                     voltar ao cálculo ({Number.isFinite(devidoCalc) ? moeda(devidoCalc) : "—"})
                   </button>
                 )}
               </td>
-              <td className="w-36 text-right">
+              <td className="text-right align-top">
                 <input name="devido" value={devidoTxt ?? fmt(devidoCalc)} onChange={(e) => setDevidoTxt(e.target.value)} inputMode="decimal" className={`campo py-1 text-right tabular-nums ${devido < 0 ? "text-red-600" : ""}`} aria-label="Imposto devido" />
               </td>
             </tr>
             <tr>
-              <td className="py-1.5 text-slate-600">O banco deve creditar (receita − retido)</td>
+              <td className="py-1.5 pr-3 text-slate-600">O banco deve creditar (receita − retido)</td>
               <td className="text-right tabular-nums text-slate-600">{Number.isFinite(retido) ? moeda(r2(nota.valor - retido)) : "—"}</td>
             </tr>
           </tbody>

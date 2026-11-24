@@ -12,6 +12,11 @@
 - Dados de teste são fictícios. Arquivos reais do usuário (extratos, comprovantes) não entram no repositório.
 - Para testar um fluxo, siga a skill `testes-cenarios-completos` (todos os perfis, estados, valores e permissões).
 
+## Telas
+
+- **Nenhuma janela (`role="dialog"`) pode cortar conteúdo ou passar da tela**, no computador nem no celular. Toda janela nova ou alterada passa por `tests/e2e/janelas.cjs` (abre as janelas em cada perfil, em 1440px e 390px). Se a janela nova não aparece no teste, acrescente os dados para ela aparecer.
+- Nada de rolagem lateral para ver informação: tabelas e cartões cabem na largura (conferir em 1280px e 390px).
+
 ## Fluxo de trabalho
 
 - Commit, push, mudanças no banco de teste/produção e publicação só depois da aprovação do usuário.

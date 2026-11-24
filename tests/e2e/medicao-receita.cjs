@@ -64,6 +64,9 @@ const ir = async (p, url) => { await p.goto(BASE + url); await p.waitForLoadStat
     confere(/10\.000,00/.test(calc) && ret === '600,00' && dev === '800,00' && /9\.400,00/.test(calc), `${ret} / ${dev} / ${calc.replace(/\s+/g, ' ')}`);
     await d.locator('select[name=conta_id]').selectOption(bb);
     await d.locator('input[aria-label="Imposto devido"]').fill('750,00'); // valores editáveis
+    // Regressão: a janela abria dentro de uma célula sem quebra de linha e o conteúdo passava da borda (cortado)
+    const corta = await d.evaluate((el) => { const f = el.querySelector('form'); return f.scrollWidth > f.clientWidth + 1; });
+    confere(!corta, 'regressão: a janela "Lançar receita e impostos" está cortando o conteúdo');
     await p.screenshot({ path: path.join(DIR, 'med-lancar.png'), fullPage: false });
     await d.getByRole('button', { name: 'Lançar receita e impostos' }).click();
     await p.waitForURL(/\/recebimentos\/[0-9a-f-]{36}\?criada=1/, { timeout: 20000 }).catch(async () => { throw new Error('ficou na janela: ' + (await d.innerText()).slice(-200).replace(/\s+/g, ' ')); });

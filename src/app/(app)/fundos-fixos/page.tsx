@@ -26,7 +26,7 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
   const [{ data: fundos }, { data: aprovados }, { data: pendentes }, { data: obras }, { data: pessoas }] = await Promise.all([
     supabase
       .from("fundos_fixos")
-      .select("id, valor, status, fechado_em, reposicao, reembolso, saldo_repassado, obra:obras(id, nome), pessoa:profiles!fundos_fixos_pessoa_id_fkey(id, nome)")
+      .select("id, valor, status, reposicao_pedida_em, fechado_em, reposicao, reembolso, saldo_repassado, obra:obras(id, nome), pessoa:profiles!fundos_fixos_pessoa_id_fkey(id, nome)")
       .order("created_at", { ascending: false })
       .limit(300),
     supabase.from("fundo_gastos").select("fundo_id, valor").eq("status", "aprovado"),
@@ -55,6 +55,16 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
     return true;
   });
   const filtroAtivo = !!(fObra || fPessoa || fSit || fBusca);
+  // Um bloco por centro de custo (em ordem alfabética); dentro dele, os abertos primeiro
+  const grupos = new Map<string, { nome: string; lista: typeof filtrados }>();
+  for (const f of filtrados) {
+    const g = grupos.get(f.obra?.id ?? "") ?? { nome: f.obra?.nome ?? "Sem centro de custo", lista: [] };
+    g.lista.push(f);
+    grupos.set(f.obra?.id ?? "", g);
+  }
+  const porCentro = [...grupos.entries()]
+    .map(([id, g]) => [id, g.nome, [...g.lista].sort((a, b) => Number(a.status === "fechado") - Number(b.status === "fechado"))] as const)
+    .sort((a, b) => a[1].localeCompare(b[1]));
 
   const gastosPorFundo = new Map<string, number[]>();
   for (const g of aprovados ?? []) gastosPorFundo.set(g.fundo_id, [...(gastosPorFundo.get(g.fundo_id) ?? []), g.valor]);
@@ -70,13 +80,14 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
         <div className="mb-6">
           <Aviso tipo="sucesso">
             {sp.fechado === "reposto"
-              ? "Fundo reposto: os gastos viraram um pagamento (reposição e reembolso) e um novo fundo do mesmo valor já está aberto."
+              ? "Fundo reposto: os gastos viraram um pagamento (reposição e reembolso) e um novo fundo do mesmo valor já está aberto. A OP em PDF está anexada ao pagamento em Contas a pagar."
               : sp.fechado === "pagamento"
-              ? "Fundo encerrado. O reembolso virou um pagamento e o saldo que sobrou, se houver, está em Contas a receber para a devolução."
+              ? "Fundo encerrado. O reembolso virou um pagamento (com a OP em PDF anexada) e o saldo que sobrou, se houver, está em Contas a receber para a devolução."
               : "Fundo fechado. Não havia reposição nem reembolso; o saldo fica registrado para repasse à empresa."}
           </Aviso>
         </div>
       )}
+      {sp.aviso && <Aviso tipo="alerta">{str(sp.aviso)}</Aviso>}
       {sp.decidido && (
         <div className="mb-6">
           <Aviso tipo="sucesso">
@@ -89,7 +100,7 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
           <Cartao titulo="Novo fundo fixo" className="xl:col-span-1">
             <FormAcao action={criarFundo} enviar="Criar fundo">
               <Campo rotulo="Centro de custo" obrigatorio>
-                <select name="obra_id" required className="campo" defaultValue={sp.obra ?? ""}>
+                <select name="obra_id" required className="campo">
                   <option value="">Selecione…</option>
                   {(obras ?? []).map((o) => (
                     <option key={o.id} value={o.id}>{o.nome}</option>
@@ -97,7 +108,7 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
                 </select>
               </Campo>
               <Campo rotulo="Responsável pelo fundo" obrigatorio ajuda="Engenheiro ou Suprimentos que vai gastar e prestar contas.">
-                <select name="pessoa_id" required className="campo" defaultValue={sp.pessoa ?? ""}>
+                <select name="pessoa_id" required className="campo">
                   <option value="">Selecione…</option>
                   {(pessoas ?? []).map((p) => (
                     <option key={p.id} value={p.id}>{p.nome}</option>
@@ -105,7 +116,7 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
                 </select>
               </Campo>
               <Campo rotulo="Valor do fundo (R$)" obrigatorio>
-                <input name="valor" required inputMode="decimal" className="campo" placeholder="0,00" defaultValue={sp.valor ?? ""} />
+                <input name="valor" required inputMode="decimal" className="campo" placeholder="0,00" />
               </Campo>
               <Campo rotulo="Sai da conta" obrigatorio ajuda="O desembolso entra em Contas a pagar (sem aprovação) para pagar e conciliar.">
                 <select name="conta_id" required className="campo" defaultValue={contas.length === 1 ? contas[0].id : ""}>
@@ -193,47 +204,62 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
             ) : !filtrados.length ? (
               <Vazio>Nenhum fundo encontrado com esses filtros.</Vazio>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="tabela">
-                  <thead>
-                    <tr>
-                      <th>Centro de custo</th>
-                      <th>Responsável</th>
-                      <th className="text-right">Valor</th>
-                      <th className="text-right">Saldo</th>
-                      <th>Situação</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtrados.map((f) => {
-                      const saldo = saldoDoFundo(f.valor, gastosPorFundo.get(f.id) ?? []);
-                      const st = STATUS_FUNDO[f.status] ?? STATUS_FUNDO.em_andamento;
-                      return (
-                        <tr key={f.id}>
-                          <td className="font-medium">{f.obra?.nome}</td>
-                          <td>{f.pessoa?.nome}</td>
-                          <td className="text-right tabular-nums">{moeda(f.valor)}</td>
-                          <td className="text-right tabular-nums">{f.status === "fechado" ? "—" : moeda(Math.max(saldo, 0))}</td>
-                          <td><Selo cor={st.cor}>{st.rotulo}</Selo></td>
-                          <td className="whitespace-nowrap text-xs">
-                            <div className="flex flex-col gap-1">
-                              <Link href={`/fundos-fixos/${f.id}`} className="text-marca-700 hover:underline">Ver fundo</Link>
-                              {fin && f.status === "fechado" && (
-                                <Link
-                                  href={`/fundos-fixos?obra=${f.obra?.id ?? ""}&pessoa=${f.pessoa?.id ?? ""}&valor=${f.valor}`}
-                                  className="text-marca-700 hover:underline"
-                                >
-                                  Criar novo de mesmo valor
-                                </Link>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="divide-y divide-slate-200" data-fundos-por-centro>
+                {porCentro.map(([obraId, nomeCentro, lista]) => (
+                  <section key={obraId} data-centro-de-custo={nomeCentro} aria-label={`Fundos de ${nomeCentro}`}>
+                    <h3 className="flex flex-wrap items-baseline justify-between gap-2 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">
+                      <span>{nomeCentro}</span>
+                      <span className="text-xs font-normal text-slate-500">
+                        {lista.filter((x) => x.status !== "fechado").length} aberto(s) · {lista.length} no total
+                      </span>
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="tabela">
+                        <thead>
+                          <tr>
+                            <th>Responsável</th>
+                            <th className="hidden text-right sm:table-cell">Valor</th>
+                            <th className="text-right">Saldo</th>
+                            <th className="hidden text-right sm:table-cell">Reembolso</th>
+                            <th>Situação</th>
+                            <th className="hidden sm:table-cell" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lista.map((f) => {
+                            const saldo = saldoDoFundo(f.valor, gastosPorFundo.get(f.id) ?? []);
+                            const st = STATUS_FUNDO[f.status] ?? STATUS_FUNDO.em_andamento;
+                            // Reembolso: gasto aprovado acima do valor do fundo (fechado: o que foi pago no fechamento)
+                            const gasto = Math.round((gastosPorFundo.get(f.id) ?? []).reduce((a, v) => a + v, 0) * 100) / 100;
+                            const reembolso = f.status === "fechado" ? Number(f.reembolso ?? 0) : Math.max(Math.round((gasto - f.valor) * 100) / 100, 0);
+                            return (
+                              <tr key={f.id}>
+                                <td className="font-medium">
+                                  {f.pessoa?.nome}
+                                  <Link href={`/fundos-fixos/${f.id}`} className="block text-xs font-normal text-marca-700 hover:underline sm:hidden">Ver fundo</Link>
+                                </td>
+                                <td className="hidden text-right tabular-nums sm:table-cell">{moeda(f.valor)}</td>
+                                <td className="text-right tabular-nums">
+                                  {f.status === "fechado" ? "—" : moeda(Math.max(saldo, 0))}
+                                  <div className="text-xs text-slate-500 sm:hidden">de {moeda(f.valor)}</div>
+                                  {reembolso > 0 && <div className="text-xs text-amber-700 sm:hidden">Reembolso {moeda(reembolso)}</div>}
+                                </td>
+                                <td className="hidden text-right tabular-nums sm:table-cell" data-reembolso={reembolso > 0 ? reembolso : undefined}>{reembolso > 0 ? <span className="font-medium text-amber-700">{moeda(reembolso)}</span> : "—"}</td>
+                                <td>
+                                  <Selo cor={st.cor}>{st.rotulo}</Selo>
+                                  {f.status !== "fechado" && f.reposicao_pedida_em && <div className="mt-1 text-xs text-amber-700" data-reposicao-pedida>Reposição pedida</div>}
+                                </td>
+                                <td className="hidden whitespace-nowrap text-xs sm:table-cell">
+                                  <Link href={`/fundos-fixos/${f.id}`} className="text-marca-700 hover:underline">Ver fundo</Link>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                ))}
               </div>
             )}
           </Cartao>

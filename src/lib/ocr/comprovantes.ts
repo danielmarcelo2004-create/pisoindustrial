@@ -2,6 +2,7 @@
 
 // Leitura de PDFs no navegador: camada de texto do PDF ou OCR (português) quando a página é imagem.
 // A interpretação dos comprovantes e o casamento com os pagamentos ficam em @/lib/comprovantes-banco.
+import { montarLinhas, type PedacoPdf } from "@/lib/pdf-texto";
 
 async function carregarPdfjs() {
   const pdfjs = await import("pdfjs-dist");
@@ -14,6 +15,17 @@ export async function contarPaginas(arquivo: File): Promise<number> {
   const pdfjs = await carregarPdfjs();
   const doc = await pdfjs.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise;
   return doc.numPages;
+}
+
+/** Texto do PDF com as linhas montadas pela posição na página (para notas fiscais: o emissor pode gravar fora de ordem). */
+export async function textoPdfPorPosicao(arquivo: File): Promise<string> {
+  const pdfjs = await carregarPdfjs();
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise;
+  let texto = "";
+  for (let i = 1; i <= Math.min(doc.numPages, 5); i++) {
+    texto += montarLinhas((await (await doc.getPage(i)).getTextContent()).items.filter((it) => "str" in it) as PedacoPdf[]) + "\n";
+  }
+  return texto;
 }
 
 /** Texto de cada página pela camada de texto do PDF (vazio quando a página é só imagem). */

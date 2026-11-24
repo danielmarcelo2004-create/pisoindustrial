@@ -66,10 +66,13 @@ input[type="file"].campo {
 }
 
 /* Janelas (role="dialog") nunca herdam "sem quebra de linha" da célula de onde foram abertas
-   e nunca passam da largura da tela (conferido em tests/e2e/janelas.cjs). */
-[role="dialog"] {
-  white-space: normal;
-}
-[role="dialog"] > * {
-  max-width: 100%;
+   e nunca passam da largura da tela (conferido em tests/e2e/janelas.cjs).
+   Fica na camada "base" para não anular as larguras das classes (max-w-md, max-w-lg...). */
+@layer base {
+  [role="dialog"] {
+    white-space: normal;
+  }
+  [role="dialog"] > * {
+    max-width: 100%;
+  }
 }

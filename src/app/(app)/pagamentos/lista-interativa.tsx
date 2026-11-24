@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { JanelaExcluirLancamento } from "@/components/excluir-lancamento";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { moeda } from "@/lib/formato";
@@ -356,6 +357,10 @@ export type AcoesProps = {
   podeEditarParcelas: boolean;
   podeClonar: boolean;
   podeCancelar: boolean;
+  /** Já cancelado: não há o que excluir. */
+  cancelado?: boolean;
+  /** Faz parte de uma repetição (despesas sem parcelas). */
+  serie?: boolean;
   /** "Alterar conta bancária" (ex.: foi paga por outra conta). */
   contas?: { id: string; nome: string }[];
   podeAlterarConta?: boolean;
@@ -379,6 +384,9 @@ export function AcoesLinha(a: AcoesProps) {
     setAberto(true);
   }
   const [estorno, setEstorno] = useState(false);
+  const [excluir, setExcluir] = useState(false);
+  // Excluir: o que está em aberto, quem pode cancelar; o que está pago, só quem estorna (a baixa é desfeita)
+  const podeExcluir = !a.cancelado && (a.pago ? a.podeBaixar : a.podeCancelar || a.podeBaixar);
   const [trocaConta, setTrocaConta] = useState(false);
   const [novaConta, setNovaConta] = useState("");
   const [motivo, setMotivo] = useState("");
@@ -462,12 +470,22 @@ export function AcoesLinha(a: AcoesProps) {
               {pendente ? "Clonando…" : "Clonar lançamento"}
             </button>
           )}
-          {a.podeCancelar && (
-            <a role="menuitem" href={`${base}?origem=contas#cancelar`} className={`${base0} border-t border-slate-100 text-red-700`} onClick={() => setAberto(false)}>
-              Cancelar lançamento
-            </a>
+          {podeExcluir && (
+            <button role="menuitem" type="button" className={`${base0} border-t border-slate-100 text-red-700`} onClick={() => { setExcluir(true); setAberto(false); }}>
+              Excluir lançamento
+            </button>
           )}
         </div>
+      )}
+      {excluir && (
+        <JanelaExcluirLancamento
+          pagamentoId={a.pagamentoId}
+          parcelaId={a.parcelaId}
+          irmaos={a.qtdParcelas > 1 || Boolean(a.serie)}
+          podeEstornar={a.podeBaixar}
+          pago={a.pago}
+          aoFechar={() => setExcluir(false)}
+        />
       )}
       {estorno && (
         <div role="dialog" aria-label="Voltar para em aberto" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4">

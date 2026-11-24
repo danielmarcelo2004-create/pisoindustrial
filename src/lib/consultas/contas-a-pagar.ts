@@ -32,6 +32,8 @@ export type LinhaConta = {
   statusPagamento: StatusPagamento | null;
   parcela: { n: number; total: number } | null;
   repeticao: string | null;
+  /** A despesa faz parte de uma repetição (série de provisões): "Excluir" oferece excluir as outras também. */
+  serie?: boolean;
   temAnexo: boolean;
   baixavel: boolean;
   criadoPor: string | null;
@@ -206,6 +208,14 @@ export async function listarContas(f: FiltrosContas) {
       criadoPor: p.created_by,
       grupo: grupoDe(situacao, pc.vencimento, hoje),
     });
+  }
+  // Despesas que fazem parte de uma repetição (a de origem ou as lançadas das provisões da série)
+  const idsAvulsos = linhas.filter((l) => l.tipo === "pagamento").map((l) => l.pagamentoId!);
+  if (idsAvulsos.length) {
+    const lista = idsAvulsos.slice(0, 300).join(",");
+    const { data: ser } = await supabase.from("provisoes").select("pagamento_origem_id, pagamento_id").or(`pagamento_origem_id.in.(${lista}),pagamento_id.in.(${lista})`).not("pagamento_origem_id", "is", null).limit(2000);
+    const naSerie = new Set((ser ?? []).flatMap((x) => [x.pagamento_origem_id, x.pagamento_id]));
+    for (const l of linhas) if (l.tipo === "pagamento" && naSerie.has(l.pagamentoId)) l.serie = true;
   }
   for (const v of provs ?? []) {
     const m = v.descricao.match(/ \((\d+\/\d+)\)$/);

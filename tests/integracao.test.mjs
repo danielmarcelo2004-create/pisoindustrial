@@ -589,6 +589,58 @@ test('baixa por parcela: pagamento só fica pago quando todas as parcelas estive
 })
 
 // -----------------------------------------------------------------------------
+// Excluir lançamento (escopo: atual / não vencidos / em aberto / todos)
+// -----------------------------------------------------------------------------
+test('excluir lançamento parcelado: parcela sai da despesa, total diminui, renumera; "não vencidos" poupa vencidas e pagas; "todos" estorna as pagas', async () => {
+  const id = await novoPagamento('fin', obraC.id, 1000)
+  await rpc('fin', 'definir_parcelas', { p_pagamento_id: id, p_parcelas: [
+    { valor: 100, vencimento: '2020-01-10' }, { valor: 200, vencimento: '2020-02-10' },
+    { valor: 300, vencimento: '2030-01-10' }, { valor: 400, vencimento: '2030-02-10' },
+  ] })
+  const parcs = async () => (await admin.from('pagamento_parcelas').select('id, numero, valor_base, status').eq('pagamento_id', id).order('numero')).data
+  const [p1, p2, p3] = await parcs()
+  await rpc('fin', 'registrar_baixa_parcela', { p_parcela_id: p2.id, p_pago_em: '2020-02-10' })
+  await rpcFalha('eng', 'excluir_lancamentos', { p_pagamento_id: id, p_parcela_id: p3.id, p_escopo: 'atual', p_motivo: 'teste' }, /não encontrado|permissão/)
+  await rpcFalha('fin', 'excluir_lancamentos', { p_pagamento_id: id, p_parcela_id: p3.id, p_escopo: 'xyz', p_motivo: 'teste' }, /Escolha/)
+  await rpcFalha('fin', 'excluir_lancamentos', { p_pagamento_id: id, p_parcela_id: p3.id, p_escopo: 'atual', p_motivo: '' }, /motivo/)
+  // A partir da 3ª: sai ela e a 4ª (a vencer, sem baixa); a 1ª (vencida) e a 2ª (paga) ficam
+  assert.deepEqual(await rpc('fin', 'excluir_lancamentos', { p_pagamento_id: id, p_parcela_id: p3.id, p_escopo: 'nao_vencidos', p_motivo: 'duplicado' }), { pagamentos: 0, parcelas: 2, provisoes: 0 })
+  assert.deepEqual((await parcs()).map((x) => [x.numero, Number(x.valor_base), x.status]), [[1, 100, 'a_pagar'], [2, 200, 'pago']])
+  assert.equal(Number((await pagamento(id)).valor), 300, 'o total diminui')
+  // Só a 1ª (em aberto): fica só a paga, renumerada como 1, e a despesa vira paga
+  await rpc('fin', 'excluir_lancamentos', { p_pagamento_id: id, p_parcela_id: p1.id, p_escopo: 'atual', p_motivo: 'duplicado' })
+  assert.deepEqual((await parcs()).map((x) => [x.numero, Number(x.valor_base), x.status]), [[1, 200, 'pago']])
+  const fim = await pagamento(id)
+  assert.deepEqual([fim.status, Number(fim.valor), Number(fim.valor_pago)], ['pago', 200, 200])
+  const { data: aud } = await admin.from('auditoria').select('acao').eq('pagamento_id', id).in('acao', ['excluiu', 'excluiu_parcela'])
+  assert.equal(aud.length, 5, 'auditoria de cada parcela e de cada exclusão')
+  // "Todos": a paga tem a baixa estornada e a despesa, sem parcelas, é cancelada
+  await rpcFalha('sup', 'excluir_lancamentos', { p_pagamento_id: id, p_parcela_id: p2.id, p_escopo: 'todos', p_motivo: 'teste' }, /não encontrado|permissão|estornam/)
+  assert.deepEqual(await rpc('fin', 'excluir_lancamentos', { p_pagamento_id: id, p_parcela_id: p2.id, p_escopo: 'todos', p_motivo: 'errado' }), { pagamentos: 0, parcelas: 1, provisoes: 0 })
+  assert.equal((await parcs()).length, 0)
+  assert.equal((await pagamento(id)).status, 'cancelado')
+})
+
+test('excluir lançamento de repetição: "em aberto" cancela as despesas sem baixa e as provisões; "todos" estorna e cancela a paga; avulso: só ela', async () => {
+  const raiz = await novoPagamento('fin', obraC.id, 900)
+  assert.equal(await rpc('fin', 'criar_repeticoes', { p_pagamento_id: raiz, p_intervalo: 1, p_vezes: 3 }), 2)
+  await rpc('fin', 'registrar_baixa', { p_id: raiz, p_pago_em: '2026-12-10' })
+  const { data: provs } = await admin.from('provisoes').select('id').eq('pagamento_origem_id', raiz).order('vencimento')
+  const lancada = await novoPagamento('fin', obraC.id, 905)
+  await rpc('fin', 'lancar_provisao', { p_provisao_id: provs[0].id, p_pagamento_id: lancada })
+  assert.deepEqual(await rpc('fin', 'excluir_lancamentos', { p_pagamento_id: lancada, p_parcela_id: null, p_escopo: 'em_aberto', p_motivo: 'contrato encerrado' }), { pagamentos: 1, parcelas: 0, provisoes: 1 })
+  assert.equal((await pagamento(lancada)).status, 'cancelado')
+  assert.equal((await pagamento(raiz)).status, 'pago', 'a paga fica')
+  assert.equal((await admin.from('provisoes').select('status').eq('id', provs[1].id).single()).data.status, 'cancelada')
+  assert.deepEqual(await rpc('fin', 'excluir_lancamentos', { p_pagamento_id: raiz, p_parcela_id: null, p_escopo: 'todos', p_motivo: 'contrato encerrado' }), { pagamentos: 1, parcelas: 0, provisoes: 0 })
+  assert.equal((await pagamento(raiz)).status, 'cancelado')
+  // Avulsa: "somente o atual"
+  const avulsa = await novoPagamento('fin', obraC.id, 50)
+  await rpc('fin', 'excluir_lancamentos', { p_pagamento_id: avulsa, p_parcela_id: null, p_escopo: 'atual', p_motivo: 'teste' })
+  assert.equal((await pagamento(avulsa)).status, 'cancelado')
+})
+
+// -----------------------------------------------------------------------------
 // Fundo fixo
 // -----------------------------------------------------------------------------
 test('fundo fixo no caixa: criar = desembolso; "repor" paga os gastos e abre novo fundo do mesmo valor; "encerrar" devolve o saldo (receita) ou reembolsa', async () => {

@@ -8,6 +8,7 @@ import { CampoArquivos } from "@/components/campo-arquivos";
 import { LeitorComprovante } from "@/components/leitor-comprovante";
 import { AbrirPorAncora } from "@/components/abrir-por-ancora";
 import { AcoesLinha } from "../lista-interativa";
+import { BotaoExcluirLancamento } from "@/components/excluir-lancamento";
 import { estornarBaixa, estornarParcela, registrarBaixaParcela } from "../actions";
 import { FormAcao } from "@/components/form-acao";
 import { LinhaDoTempo } from "@/components/linha-do-tempo";
@@ -19,7 +20,6 @@ import { FLUXOS, FORMAS_PAGAMENTO, PERFIS, TIPOS_DOCUMENTO, type StatusPagamento
 import { createClient } from "@/lib/supabase/server";
 import {
   anexarDocumento,
-  cancelarPagamento,
   reenviarPagamento,
   registrarBaixa,
   substituirDocumento,
@@ -109,9 +109,10 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
 
   const ativos = (docs ?? []).filter((d) => d.ativo);
   const analista = u.perfil === "financeiro" || u.perfil === "suprimentos";
-  const [{ data: parcelas }, { count: repeticoesAbertas }] = await Promise.all([
+  const [{ data: parcelas }, { count: repeticoesAbertas }, { count: lancadaDeSerie }] = await Promise.all([
     supabase.from("pagamento_parcelas").select("*").eq("pagamento_id", id).order("numero"),
     supabase.from("provisoes").select("id", { count: "exact", head: true }).eq("pagamento_origem_id", id).eq("status", "provisionada"),
+    supabase.from("provisoes").select("id", { count: "exact", head: true }).eq("pagamento_id", id).not("pagamento_origem_id", "is", null),
   ]);
 
   // Assinatura guardada do usuário (para assinar os documentos deste pagamento)
@@ -352,6 +353,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                               podeEditarParcelas={u.perfil === "financeiro" || p.created_by === u.id}
                               podeClonar={p.ordem_id ? ["financeiro", "suprimentos", "engenheiro"].includes(u.perfil) : u.perfil === "financeiro" || u.perfil === "suprimentos"}
                               podeCancelar={atua}
+                              cancelado={p.status === "cancelado"}
                             />
                           </td>
                         </tr>
@@ -757,31 +759,16 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             )}
           </Cartao>
 
-          {atua && (
-            <Cartao titulo="Cancelar pagamento">
-              <details id="cancelar">
-                <summary className="cursor-pointer text-sm text-red-700">Cancelar este pagamento…</summary>
-                <div className="mt-3">
-                  <FormAcao
-                    action={cancelarPagamento.bind(null, id)}
-                    enviar="Cancelar pagamento"
-                    variante="perigo"
-                    confirmar="Confirma o cancelamento deste pagamento?"
-                  >
-                    <Campo rotulo="Motivo" obrigatorio>
-                      <input name="motivo" required className="campo" />
-                    </Campo>
-                    {!!repeticoesAbertas && (
-                      <label className="flex items-start gap-2 text-sm text-slate-700">
-                        <input type="checkbox" name="cancelar_serie" defaultChecked className="mt-0.5" />
-                        <span>
-                          Cancelar também as {repeticoesAbertas} repetição(ões) futura(s) deste lançamento (provisões em aberto)
-                        </span>
-                      </label>
-                    )}
-                  </FormAcao>
+          {p.status !== "cancelado" && (p.status === "pago" ? baixa : atua || baixa) && (
+            <Cartao titulo="Excluir lançamento">
+              {parcelas && parcelas.length > 0 ? (
+                <p className="text-sm text-slate-600">Para excluir parcelas, use <strong>Ações › Excluir lançamento</strong> na parcela, em Condição de pagamento.</p>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-slate-600">{repeticoesAbertas || lancadaDeSerie ? "Faz parte de uma repetição: dá para excluir só esta ou as outras também." : "O lançamento é cancelado e fica no histórico."}</p>
+                  <BotaoExcluirLancamento pagamentoId={p.id} parcelaId={null} irmaos={Boolean(repeticoesAbertas || lancadaDeSerie)} podeEstornar={baixa} pago={p.status === "pago"} />
                 </div>
-              </details>
+              )}
             </Cartao>
           )}
         </div>

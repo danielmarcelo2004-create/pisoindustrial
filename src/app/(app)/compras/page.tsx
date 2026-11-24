@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { FormAcao } from "@/components/form-acao";
+import { lerNotasPendentes } from "./actions";
 import { GraficoBarras, rotuloMes } from "@/components/grafico-barras";
 import { Aviso, Cabecalho, Cartao, Indicador, Selo, Vazio, classeBotao, cx } from "@/components/ui";
 import { exigirPerfil } from "@/lib/auth";
@@ -25,7 +27,8 @@ const preco = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curr
 const qtd = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 
 export default async function ComprasPage({ searchParams }: PageProps<"/compras">) {
-  await exigirPerfil("financeiro", "suprimentos", "administrador", "administrador_master");
+  const u = await exigirPerfil("financeiro", "suprimentos", "administrador", "administrador_master");
+  const podeLer = u.perfil === "financeiro" || u.perfil === "suprimentos";
   const sp = await searchParams;
   const s = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const filtros: FiltrosCompras = {
@@ -40,7 +43,17 @@ export default async function ComprasPage({ searchParams }: PageProps<"/compras"
   const grupoSel = s("grupo");
 
   const supabase = await createClient();
-  const [todos, { data: obras }] = await Promise.all([itensCompras(filtros), supabase.from("obras").select("id, nome").order("nome")]);
+  const [todos, { data: obras }, { data: docsNf }] = await Promise.all([
+    itensCompras(filtros),
+    supabase.from("obras").select("id, nome").order("nome"),
+    supabase.from("documentos").select("id").eq("tipo", "nota_fiscal").eq("ativo", true).limit(2000),
+  ]);
+  // Notas anexadas às despesas que ainda não entraram na análise (nem como NF-e, nem como nota de serviço)
+  const idsNf = (docsNf ?? []).map((d) => d.id);
+  const [{ data: nfLidas }, { data: nfServico }] = idsNf.length
+    ? await Promise.all([supabase.from("nf_notas").select("documento_id").in("documento_id", idsNf), supabase.from("notas_contabeis").select("documento_id").in("documento_id", idsNf)])
+    : [{ data: [] }, { data: [] }];
+  const naoLidas = idsNf.length - new Set([...(nfLidas ?? []), ...(nfServico ?? [])].map((x) => x.documento_id)).size;
   const itens = grupoSel ? todos.filter((i) => chaveMaterial(i) === grupoSel) : todos;
   const grupos = agruparMateriais(todos);
   const alertas = alertasPreco(todos, grupos);
@@ -70,6 +83,20 @@ export default async function ComprasPage({ searchParams }: PageProps<"/compras"
           </div>
         }
       />
+
+      {podeLer && naoLidas > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-notas-nao-lidas>
+          <span>
+            <strong>{naoLidas} nota(s) fiscal(is)</strong> anexada(s) às despesas ainda não entraram na análise.
+          </span>
+          <span className="flex flex-wrap items-center gap-2">
+            <FormAcao action={lerNotasPendentes} enviar="Ler automaticamente" pendente="Lendo…" className="flex items-center gap-2" />
+            <Link href="/compras/ler-notas" className="text-amber-900 underline">
+              Ler as escaneadas
+            </Link>
+          </span>
+        </div>
+      )}
 
       <Cartao className="mb-4">
         <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

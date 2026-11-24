@@ -114,7 +114,9 @@ export function lerNotaTexto(texto: string): NotaLidaOcr {
   const chaveDigitos = todo.replace(/[\s.\-]/g, "").match(/\d{44}/);
   const chave = chaveDigitos ? chaveDigitos[0] : null;
   // Emitente: a razão social (LTDA etc.) que não é a própria empresa nem o destinatário.
-  const emitenteLinha = linhas.find((l) => /\b(LTDA|EIRELI|S\/?A|ME|EPP)\b/i.test(l) && !/CNPJ|DESTINAT|CONSTRUTORA PARCERIA|ENDERE|BAIRRO|CEP|DATA|\d{2}\.\d{3}\.\d{3}|\d{2}\/\d{2}\/\d{4}/i.test(l)) ?? null;
+  // DANFE com texto (PDF gerado pelo emissor): "EMITENTE <razão social> CNPJ …" na mesma linha
+  const emitenteRotulo = todo.match(/EMITENTE\s*:?\s+(.+?)\s+CNPJ/i)?.[1]?.trim() || null;
+  const emitenteLinha = emitenteRotulo ?? linhas.find((l) => /\b(LTDA|EIRELI|S\/?A|ME|EPP)\b/i.test(l) && !/CNPJ|DESTINAT|CONSTRUTORA PARCERIA|ENDERE|BAIRRO|CEP|DATA|\d{2}\.\d{3}\.\d{3}|\d{2}\/\d{2}\/\d{4}/i.test(l)) ?? null;
   const ufM = todo.match(/\bUF\b\D{0,5}\b([A-Z]{2})\b/);
 
   const totalProdM = todo.match(/VALOR\s+TOTAL\s+DOS\s+PRODUTOS[\s\S]{0,160}?([\d.]+,\d{2})/i);
@@ -145,7 +147,7 @@ export function lerNotaTexto(texto: string): NotaLidaOcr {
     const ncmIdx = antes.findIndex((t) => /^\d{8}$/.test(t));
     const temCodigo = ncmIdx > 1 && /^[A-Za-z0-9\-]{1,15}$/.test(antes[0]);
     const codigo = temCodigo ? antes[0] : null;
-    const descricao = antes.slice(temCodigo ? 1 : 0, ncmIdx > 0 ? ncmIdx : antes.length).join(" ").trim();
+    const descricao = antes.slice(temCodigo ? 1 : 0, ncmIdx > 0 ? ncmIdx : antes.length).join(" ").replace(/\s+NCM:?$/i, "").trim(); // rótulo "NCM" antes do código
     if (!fecha || !/[A-Za-zÀ-ÿ]{3,}/.test(descricao) || !/^[A-Za-z][A-Za-z0-9²³]{0,4}$/.test(unidade ?? "")) {
       duvidosas++;
       continue;

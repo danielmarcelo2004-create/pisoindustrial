@@ -13,7 +13,7 @@
     "criar-admin": "node --env-file=.env.local scripts/criar-admin.mjs",
     "seed:demo": "node --env-file=.env.local scripts/seed-demo.mjs",
     "test:nfe": "node --test tests/nfe.test.mts tests/notas-contabeis.test.mts tests/notas-pdf.test.mts tests/comprovantes-banco.test.mts tests/conciliacao.test.mts",
-    "test:unit": "node --test tests/*.test.mts",
+    "test:unit": "node --test tests/*.test.mts tests/nota/*.test.mts",
     "test:gremlins": "node tests/e2e/gremlins.cjs",
     "test:e2e": "bash tests/e2e/rodar.sh"
   },

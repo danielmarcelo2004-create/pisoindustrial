@@ -56,6 +56,9 @@ fs.writeFileSync(pdf, '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 
     const t = await dlg.innerText();
     confere(f.url().includes('/pagamentos') && /Conta de água \(2\/10\)/.test(t) && /R\$\s100,00/.test(t) && t.includes(obraA.nome), t.slice(0, 200));
     confere(await dlg.getByRole('link', { name: 'Lançar despesa agora' }).getAttribute('href') === `/pagamentos/novo?provisao=${pAgua}`, 'link do lançamento');
+    // Regressão: janela aberta de dentro de uma célula sem quebra de linha não pode passar da borda
+    const corta = await dlg.evaluate((el) => { const c = el.firstElementChild; return c.scrollWidth > c.clientWidth + 1; });
+    confere(!corta, 'regressão: a janela da provisão está cortando o conteúdo');
     await foto(f, 'janela');
   });
 

@@ -404,10 +404,19 @@ export function LinhaPendente({
             {podeAgir && (
               <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-3 py-2">
                 {conta.diferenca !== 0 && (
-                  <button type="button" className="rounded bg-sky-700 px-2 py-1 text-xs font-medium text-white hover:bg-sky-800" onClick={() => abrirBusca([conta.candidato.chave])}>
-                    Ajustar valores
-                  </button>
+                  <AjustarValores
+                    diferenca={conta.diferenca}
+                    banco={-linha.valor}
+                    pend={pend}
+                    aoInformar={() => abrirBusca([conta.candidato.chave])}
+                    aoUsarExtrato={() => iniciar(async () => fim((await conciliar(linha.id, [{ tipo: conta.candidato.tipo, id: conta.candidato.id }], conta.diferenca > 0 ? "juros" : "desconto")).erro))}
+                    aoBuscarMais={() => abrirBusca([conta.candidato.chave])}
+                    aoNovo={() => (setDescartada(true), setAba("lancamento"))}
+                  />
                 )}
+                <Link href={`/pagamentos/${conta.candidato.pagamentoId}/editar`} target="_blank" className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">
+                  Editar
+                </Link>
                 <Link href={`/pagamentos/${conta.candidato.pagamentoId}`} target="_blank" className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">
                   Ver conta
                 </Link>
@@ -669,6 +678,48 @@ export function LinhaPendente({
       )}
       {buscarReceita && <BuscarReceita linha={linha} receitas={receitas} aoFechar={() => setBuscarReceita(false)} aoConciliar={() => (setBuscarReceita(false), router.refresh())} />}
       {buscar && <BuscarConta linha={linha} candidatos={candidatos} inicial={inicial} aoFechar={() => (setBuscar(false), setInicial([]))} aoConciliar={() => (setBuscar(false), router.refresh())} />}
+    </div>
+  );
+}
+
+/** "Ajustar valores ▾" da sugestão "Quase lá" (como no Conta Azul). */
+function AjustarValores({ diferenca, banco, pend, aoInformar, aoUsarExtrato, aoBuscarMais, aoNovo }: { diferenca: number; banco: number; pend: boolean; aoInformar: () => void; aoUsarExtrato: () => void; aoBuscarMais: () => void; aoNovo: () => void }) {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setAberto(false);
+    document.addEventListener("mousedown", fora);
+    return () => document.removeEventListener("mousedown", fora);
+  }, [aberto]);
+  const item = "block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50";
+  const fazer = (f: () => void) => () => (setAberto(false), f());
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" disabled={pend} onClick={() => setAberto(!aberto)} aria-expanded={aberto} className="rounded bg-sky-700 px-2 py-1 text-xs font-medium text-white hover:bg-sky-800">
+        {pend ? "…" : "Ajustar valores ▾"}
+      </button>
+      {aberto && (
+        <div role="menu" className="absolute right-0 z-30 mt-1 w-72 rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+          <button role="menuitem" type="button" className={item} onClick={fazer(aoInformar)}>
+            Informar valores adicionais
+            <span className="block text-xs text-slate-500">Juros/multa, desconto ou pagamento parcial</span>
+          </button>
+          <button role="menuitem" type="button" className={item} onClick={fazer(aoUsarExtrato)}>
+            Usar valor do extrato ({moeda(banco)})
+            <span className="block text-xs text-slate-500">
+              Diferença de {moeda(Math.abs(diferenca))} entra como {diferenca > 0 ? "juros/multa" : "desconto"} e a conta fica paga
+            </span>
+          </button>
+          <button role="menuitem" type="button" className={item} onClick={fazer(aoBuscarMais)}>
+            Buscar mais lançamentos
+            <span className="block text-xs text-slate-500">Uma saída para várias contas</span>
+          </button>
+          <button role="menuitem" type="button" className={item} onClick={fazer(aoNovo)}>
+            Criar novo pagamento
+          </button>
+        </div>
+      )}
     </div>
   );
 }

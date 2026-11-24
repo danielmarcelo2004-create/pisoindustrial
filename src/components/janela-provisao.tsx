@@ -41,7 +41,7 @@ export function JanelaProvisao({ provisao, podeAgir, rotulo = "Lançar despesa",
         {rotulo}
       </button>
       {aberta && (
-        <div role="dialog" aria-label="Lançar despesa da provisão" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && setAberta(false)}>
+        <div role="dialog" aria-label="Lançar despesa da provisão" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4 whitespace-normal" onMouseDown={(e) => e.target === e.currentTarget && setAberta(false)}>
           <div className="w-full max-w-md rounded-lg bg-white p-5 text-left shadow-xl">
             <h3 className="text-base font-semibold text-slate-800">Provisão: {provisao.descricao}</h3>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">

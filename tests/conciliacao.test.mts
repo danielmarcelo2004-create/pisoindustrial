@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { decodificarOfx, lerOfx, normalizarBanco, normalizarConta } from "../src/lib/ofx.ts";
-import { chaveMemo, classificacaoProvavel, sugerirRecebimento, pareceEstorno, saidasParaEstorno, sugerir, sugerirEstornos, sugerirLancamento, sugerirTransferencias, tolerancia, type Candidato, type Historico, type LinhaExtrato, type SaidaEstornavel, type TransferenciaAberta } from "../src/lib/conciliacao-sugestao.ts";
+import { chaveMemo, classificacaoProvavel, sugerirReceitas, sugerirRecebimento, type ReceitaAberta, pareceEstorno, saidasParaEstorno, sugerir, sugerirEstornos, sugerirLancamento, sugerirTransferencias, tolerancia, type Candidato, type Historico, type LinhaExtrato, type SaidaEstornavel, type TransferenciaAberta } from "../src/lib/conciliacao-sugestao.ts";
 
 // ---------- OFX ----------
 const cab = "OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\nCHARSET:1252\nCOMPRESSION:NONE\nOLDFILEUID:NONE\nNEWFILEUID:NONE\n";
@@ -241,4 +241,16 @@ test("novo recebimento: mesma descrição do banco → centro de custo, categori
   assert.equal(sugerirRecebimento("TED CONSTRUTORA ALFA SA", h, cats).origem, "nome");
   assert.equal(sugerirRecebimento("CRED MEDICAO 03", [], cats).categoriaId, "r-med");
   assert.deepEqual(sugerirRecebimento("CRED PIX CHAVE", [], cats), { descricao: "CRED PIX CHAVE", categoriaId: null, obraId: null, cliente: "", origem: null });
+});
+
+// ---------- Receita em aberto (Contas a receber) ----------
+test("entrada × receita em aberto: valor total, ou total − imposto retido (medição); uma receita por entrada; até 45 dias", () => {
+  const rec = (id: string, valor: number, retido: number, vencimento: string): ReceitaAberta => ({ id, numero: 1, cliente: "C", descricao: "", obra: "", valor, retido, vencimento });
+  const ls = [linha("liq", "2026-12-10", 9400, "TED RECEBIDA"), linha("tot", "2026-12-10", 5000, "CRED TED"), linha("x", "2026-12-10", 777, "CRED"), linha("long", "2027-03-01", 5000, "CRED")];
+  const m = sugerirReceitas(ls, [rec("med", 10000, 600, "2026-12-08"), rec("ap", 5000, 0, "2026-12-09")]);
+  assert.deepEqual([m.get("liq")?.receita.id, m.get("liq")?.liquido], ["med", true], "líquido = total − retido");
+  assert.deepEqual([m.get("tot")?.receita.id, m.get("tot")?.liquido], ["ap", false]);
+  assert.equal(m.get("x"), undefined);
+  assert.equal(m.get("long"), undefined, "receita já usada e longe da data");
+  assert.equal(sugerirReceitas([linha("s", "2026-12-10", -5000, "SAIDA")], [rec("ap", 5000, 0, "2026-12-09")]).size, 0, "saída não é receita");
 });

@@ -6,22 +6,31 @@ import { calcularImpostosMedicao, TAXA_IMPOSTO_DEVIDO } from "@/lib/impostos-med
 import { data, moeda } from "@/lib/formato";
 import { createClient } from "@/lib/supabase/server";
 import { anexarNotaMedicao } from "./actions";
+import Link from "next/link";
+import { LancarMedicao } from "@/components/lancar-medicao";
+import { categoriasAtivas } from "@/lib/consultas/categorias";
 
 export const metadata: Metadata = { title: "Notas de medição" };
 
 const pct = (v: number) => `${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 
 export default async function NotasMedicaoPage() {
-  await exigirPerfil("financeiro", "suprimentos");
+  const u = await exigirPerfil("financeiro", "suprimentos");
+  const fin = u.perfil === "financeiro";
   const supabase = await createClient();
-  const [{ data: notas }, { data: obras }] = await Promise.all([
+  const [{ data: notas }, { data: obras }, { data: recs }, { data: contas }, catReceita, catDespesa] = await Promise.all([
     supabase
       .from("notas_medicao")
-      .select("id, nome_arquivo, numero, prestador_nome, prestador_documento, data_emissao, valor, valor_liquido, descricao, obra:obras(nome)")
+      .select("id, nome_arquivo, numero, prestador_nome, prestador_documento, data_emissao, valor, valor_liquido, descricao, obra:obras(nome, cliente)")
       .order("criada_em", { ascending: false })
       .limit(500),
     supabase.from("obras").select("id, nome").order("nome"),
+    fin ? supabase.from("recebimentos").select("id, numero, nota_medicao_id, status").not("nota_medicao_id", "is", null).neq("status", "cancelado") : Promise.resolve({ data: [] }),
+    fin ? supabase.from("contas_bancarias").select("id, nome").eq("ativa", true).eq("tipo", "corrente").order("nome") : Promise.resolve({ data: [] }),
+    fin ? categoriasAtivas("receita") : Promise.resolve([]),
+    fin ? categoriasAtivas("despesa") : Promise.resolve([]),
   ]);
+  const recDaNota = new Map((recs ?? []).map((r) => [r.nota_medicao_id as string, r]));
 
   const linhas = (notas ?? []).map((n) => ({ n, calc: calcularImpostosMedicao(Number(n.valor), Number(n.valor_liquido)) }));
   const calculadas = linhas.flatMap((l) => (l.calc ? [l.calc] : []));
@@ -96,6 +105,7 @@ export default async function NotasMedicaoPage() {
                       <th className="text-right">Líquido</th>
                       <th className="text-right">Retido</th>
                       <th className="text-right">Devido</th>
+                      {fin && <th>Receita</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -120,6 +130,23 @@ export default async function NotasMedicaoPage() {
                           </>
                         ) : (
                           <td colSpan={2} className="text-xs text-slate-500">Valores inválidos.</td>
+                        )}
+                        {fin && (
+                          <td className="whitespace-nowrap">
+                            {recDaNota.get(n.id) ? (
+                              <Link href={`/recebimentos/${recDaNota.get(n.id)!.id}`} className="text-xs text-marca-700 hover:underline" data-receita-da-nota>
+                                Receita nº {recDaNota.get(n.id)!.numero}
+                              </Link>
+                            ) : calc ? (
+                              <LancarMedicao
+                                nota={{ id: n.id, numero: n.numero, obra: n.obra?.nome ?? "", valor: Number(n.valor), liquido: Number(n.valor_liquido), emissao: n.data_emissao }}
+                                cliente={(n.obra as { cliente?: string | null } | null)?.cliente ?? ""}
+                                contas={contas ?? []}
+                                categoriasReceita={catReceita}
+                                categoriasDespesa={catDespesa}
+                              />
+                            ) : null}
+                          </td>
                         )}
                       </tr>
                     ))}

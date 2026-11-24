@@ -6,6 +6,9 @@ import { getUsuario } from "@/lib/auth";
 import { data, hojeISO, moeda } from "@/lib/formato";
 import { createClient } from "@/lib/supabase/server";
 import { analisarSeries, numeroParcela } from "@/lib/provisoes-serie";
+import { BarraFiltros } from "../pagamentos/filtros-contas";
+import { lerPeriodo } from "@/lib/periodo";
+import { categoriasAtivas } from "@/lib/consultas/categorias";
 import { adicionarParcelasProvisao, alterarProvisao, cancelarProximasProvisoes, criarProvisao } from "./actions";
 
 export const metadata: Metadata = { title: "Provisões de pagamento" };
@@ -32,9 +35,10 @@ export default async function ProvisoesPage({ searchParams }: PageProps<"/provis
   const sp = await searchParams;
   const u = await getUsuario();
   const supabase = await createClient();
-  const [{ data: provisoes }, { data: obras }] = await Promise.all([
+  const [{ data: provisoes }, { data: obras }, categorias] = await Promise.all([
     supabase.from("provisoes").select("id, descricao, mes_referencia, vencimento, valor_estimado, status, categoria_id, created_by, pagamento_origem_id, pagamento_id, pagamento:pagamentos!provisoes_pagamento_id_fkey(numero), obra:obras(id, nome)").order("vencimento", { ascending: true, nullsFirst: false }).limit(300),
     supabase.from("obras").select("id, nome").order("nome"),
+    categoriasAtivas(),
   ]);
   const fin = u.perfil === "financeiro";
   const sup = u.perfil === "suprimentos";
@@ -49,7 +53,26 @@ export default async function ProvisoesPage({ searchParams }: PageProps<"/provis
   // Última parcela de cada série e séries que chegaram na última parcela em aberto
   const { ultimas, naUltima } = analisarSeries(todas);
   const idsNaUltima = new Set(naUltima.map((x) => x.ultima.id));
-  const lista = soVencidas ? todas.filter(vencida) : soUltimas ? todas.filter((p) => idsNaUltima.has(p.id)) : todas;
+  // Filtros (como em Contas a pagar): período de vencimento, pesquisa, centro de custo, categoria e situação
+  const txt = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
+  const periodo = lerPeriodo({ periodo: txt("periodo"), mes: txt("mes"), de: txt("de"), ate: txt("ate") }, hoje, "todos");
+  const busca = txt("busca").trim().toLocaleLowerCase("pt-BR");
+  const situacao = ["abertas", "lancadas", "canceladas"].includes(txt("ver")) ? txt("ver") : "";
+  const filtrar = (p: (typeof todas)[number]) =>
+    (periodo.tipo === "todos" || (!!p.vencimento && p.vencimento >= periodo.de && p.vencimento <= periodo.ate)) &&
+    (!busca || p.descricao.toLocaleLowerCase("pt-BR").includes(busca)) &&
+    (!txt("obra") || p.obra?.id === txt("obra")) &&
+    (!txt("categoria") || p.categoria_id === txt("categoria")) &&
+    (situacao === "abertas" ? p.status === "provisionada" : situacao === "lancadas" ? p.status === "convertida" : situacao === "canceladas" ? p.status === "cancelada" : true);
+  const lista = (soVencidas ? todas.filter(vencida) : soUltimas ? todas.filter((p) => idsNaUltima.has(p.id)) : todas).filter(filtrar);
+  const consulta = new URLSearchParams(Object.entries({ periodo: periodo.tipo === "todos" ? "" : periodo.tipo, de: periodo.tipo === "personalizado" ? periodo.de : "", ate: periodo.tipo === "personalizado" ? periodo.ate : "", mes: txt("mes"), busca: txt("busca"), obra: txt("obra"), categoria: txt("categoria"), ver: situacao, situacao: txt("situacao") }).filter(([, v]) => v) as [string, string][]);
+  const linkSituacao = (v: string) => {
+    const q = new URLSearchParams(consulta);
+    q.delete("situacao");
+    if (v) q.set("ver", v);
+    else q.delete("ver");
+    return `/provisoes${q.size ? `?${q}` : ""}`;
+  };
   // Acabou de lançar a última parcela de uma série?
   const encerrada = sp.aviso === "ultima" && typeof sp.prov === "string" ? todas.find((p) => p.id === sp.prov) : undefined;
   const qtdVencidas = todas.filter(vencida).length;
@@ -116,11 +139,11 @@ export default async function ProvisoesPage({ searchParams }: PageProps<"/provis
           </Aviso>
         </div>
       )}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="space-y-6">
         {podeCriar && (
-          <Cartao titulo="Nova provisão" className="xl:col-span-1">
-            <FormAcao action={criarProvisao} enviar="Registrar provisão">
-              <Campo rotulo="Centro de custo" obrigatorio>
+          <Cartao titulo="Nova provisão">
+            <FormAcao action={criarProvisao} enviar="Registrar provisão" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              <Campo rotulo="Centro de custo" obrigatorio className="xl:col-span-2">
                 <select name="obra_id" required className="campo" defaultValue="">
                   <option value="">Selecione…</option>
                   {(obras ?? []).map((o) => (
@@ -130,30 +153,53 @@ export default async function ProvisoesPage({ searchParams }: PageProps<"/provis
                   ))}
                 </select>
               </Campo>
-              <Campo rotulo="Descrição" obrigatorio>
+              <Campo rotulo="Descrição" obrigatorio className="xl:col-span-4">
                 <input name="descricao" required className="campo" maxLength={300} placeholder="Ex.: Conta de luz da casa alugada" />
               </Campo>
-              <div className="grid grid-cols-2 gap-3">
-                <Campo rotulo="Primeiro vencimento" ajuda="Nas demais parcelas, o vencimento é o mesmo dia de cada mês.">
-                  <input type="date" name="vencimento" className="campo" />
-                </Campo>
-                <Campo rotulo="Quantidade de meses" ajuda="Use 1 para uma provisão única. Ex.: 10 para um contrato de 10 meses.">
-                  <input type="number" name="meses" min={1} max={60} defaultValue={1} required className="campo" />
-                </Campo>
-              </div>
-              <Campo rotulo="Valor de cada parcela (R$)" ajuda="Pode deixar em branco quando ainda não souber o valor.">
+              <Campo rotulo="Primeiro vencimento" ajuda="Nas demais, o mesmo dia de cada mês." className="xl:col-span-1">
+                <input type="date" name="vencimento" className="campo" />
+              </Campo>
+              <Campo rotulo="Quantidade de meses" ajuda="1 = provisão única." className="xl:col-span-1">
+                <input type="number" name="meses" min={1} max={60} defaultValue={1} required className="campo" />
+              </Campo>
+              <Campo rotulo="Valor de cada parcela (R$)" ajuda="Pode ficar em branco." className="xl:col-span-1">
                 <input name="valor_estimado" inputMode="decimal" className="campo" placeholder="0,00" />
               </Campo>
-              <Campo rotulo="Observações">
-                <textarea name="observacoes" rows={2} className="campo" maxLength={1000} />
+              <Campo rotulo="Observações" className="sm:col-span-2 xl:col-span-3">
+                <textarea name="observacoes" rows={1} className="campo" maxLength={1000} />
               </Campo>
             </FormAcao>
           </Cartao>
         )}
-        <div className={podeCriar ? "xl:col-span-2" : "xl:col-span-3"}>
+        <div>
+          <BarraFiltros
+            caminho="/provisoes"
+            consulta={consulta.toString()}
+            periodo={periodo}
+            hoje={hoje}
+            busca={txt("busca")}
+            dicaBusca="Descrição da provisão"
+            itens={["obra", "categoria"]}
+            valores={{ obra: txt("obra"), categoria: txt("categoria") }}
+            opcoes={{ obra: (obras ?? []).map((o) => ({ v: o.id, r: o.nome })), categoria: categorias.map((c) => ({ v: c.id, r: c.nome })) }}
+          />
+          <nav className="mb-3 flex flex-wrap gap-2 text-sm" aria-label="Situação">
+            {(
+              [
+                ["", "Todas"],
+                ["abertas", "Em aberto"],
+                ["lancadas", "Lançadas"],
+                ["canceladas", "Canceladas"],
+              ] as const
+            ).map(([v, r]) => (
+              <Link key={r} href={linkSituacao(v)} aria-current={situacao === v && !soVencidas && !soUltimas ? "page" : undefined} className={`rounded-full border px-3 py-1 ${situacao === v && !soVencidas && !soUltimas ? "border-sky-700 bg-sky-50 font-semibold text-sky-800" : "border-slate-300 text-slate-700 hover:bg-slate-50"}`}>
+                {r}
+              </Link>
+            ))}
+          </nav>
           <Cartao titulo={`${soVencidas ? "Provisões vencidas" : soUltimas ? "Últimas parcelas" : "Provisões"} (${lista.length})`} semPadding>
             {!lista.length ? (
-              <Vazio>Nenhuma provisão registrada.</Vazio>
+              <Vazio>{todas.length ? "Nenhuma provisão com esses filtros." : "Nenhuma provisão registrada."}</Vazio>
             ) : (
               <div className="overflow-x-auto">
                 <table className="tabela">
@@ -196,9 +242,9 @@ export default async function ProvisoesPage({ searchParams }: PageProps<"/provis
                           )}
                         </td>
                         {(fin || sup) && (
-                          <td className="whitespace-nowrap">
+                          <td>
                             {p.status === "provisionada" && podeAgir(p.created_by) && (
-                              <div className="flex flex-col gap-1 text-xs">
+                              <div className="flex max-w-56 flex-wrap items-center gap-x-3 gap-y-1 text-xs [&_form]:contents [&_button]:px-1 [&_button]:py-0.5">
                                 <Link
                                   href={`/pagamentos/novo?provisao=${p.id}`}
                                   className="text-marca-700 hover:underline"

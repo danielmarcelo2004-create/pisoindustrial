@@ -101,7 +101,7 @@ fs.writeFileSync(pdf, '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 
   });
 
   await passo('Agenda: provisão com "Lançar" abre a mesma janela', async () => {
-    await ir(f, '/agenda');
+    await ir(f, '/?ver=provisoes'); // as provisões ficam na aba "Provisões" do Painel
     const btn = f.getByRole('button', { name: 'Lançar', exact: true }).first();
     confere(await btn.count() === 1, 'sem botão Lançar na agenda');
     await btn.click();

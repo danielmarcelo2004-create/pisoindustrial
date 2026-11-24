@@ -591,6 +591,39 @@ test('baixa por parcela: pagamento só fica pago quando todas as parcelas estive
 // -----------------------------------------------------------------------------
 // Fundo fixo
 // -----------------------------------------------------------------------------
+test('fundo fixo no caixa: criar = desembolso; "repor" paga os gastos e abre novo fundo do mesmo valor; "encerrar" devolve o saldo (receita) ou reembolsa', async () => {
+  const conta = await rpc('fin', 'criar_conta_bancaria', { p_nome: 'Conta fundo', p_banco: '237', p_agencia: '9', p_conta: String(Date.now()).slice(-8) })
+  const fundo = await rpc('fin', 'criar_fundo_fixo', { p_obra_id: obraB.id, p_pessoa_id: u.sup.id, p_valor: 1000, p_conta_id: conta, p_vencimento: '2026-12-01' })
+  const { data: f0 } = await admin.from('fundos_fixos').select('pagamento_inicial_id, conta_bancaria_id').eq('id', fundo).single()
+  const ini = await pagamento(f0.pagamento_inicial_id)
+  assert.deepEqual([Number(ini.valor), ini.status, ini.conta_bancaria_id, ini.vencimento], [1000, 'aguardando_pagamento', conta, '2026-12-01'])
+  // Gastou 990 → "repor": paga 990 e abre novo fundo de 1000 (sem novo desembolso)
+  const g = await rpc('sup', 'lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Compras', p_data: '2026-12-05', p_valor: 990 })
+  if ((await admin.from('fundo_gastos').select('status').eq('id', g).single()).data.status === 'pendente') await rpc('adm2', 'decidir_gasto_fundo', { p_gasto_id: g, p_aprovar: true }).catch(async () => rpc('fin', 'decidir_gasto_fundo', { p_gasto_id: g, p_aprovar: true }))
+  const pagRep = await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: '2026-12-06', p_modo: 'repor' })
+  assert.equal(Number((await pagamento(pagRep)).valor), 990)
+  const { data: novo } = await admin.from('fundos_fixos').select('id, valor, status, pagamento_inicial_id').eq('fundo_anterior_id', fundo).single()
+  assert.deepEqual([Number(novo.valor), novo.status, novo.pagamento_inicial_id], [1000, 'em_andamento', null])
+  // Novo fundo gasta 1200 → "repor": 1000 de reposição + 200 de reembolso = 1200
+  for (const v of [700, 500]) {
+    const x = await rpc('sup', 'lancar_gasto_fundo', { p_fundo_id: novo.id, p_descricao: 'Obra', p_data: '2026-12-10', p_valor: v })
+    if ((await admin.from('fundo_gastos').select('status').eq('id', x).single()).data.status === 'pendente') await rpc('adm2', 'decidir_gasto_fundo', { p_gasto_id: x, p_aprovar: true }).catch(async () => rpc('fin', 'decidir_gasto_fundo', { p_gasto_id: x, p_aprovar: true }))
+  }
+  const pag2 = await pagamento(await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: novo.id, p_vencimento: '2026-12-11', p_modo: 'repor' }))
+  assert.equal(Number(pag2.valor), 1200); assert.match(pag2.descricao, /reposição de R\$ 1\.?000,00 \+ reembolso de R\$ 200,00/)
+  const { data: terceiro } = await admin.from('fundos_fixos').select('id').eq('fundo_anterior_id', novo.id).single()
+  // Fim da obra: gastou 300 → "encerrar": saldo de 700 vira receita em aberto (devolução)
+  const y = await rpc('sup', 'lancar_gasto_fundo', { p_fundo_id: terceiro.id, p_descricao: 'Final', p_data: '2026-12-20', p_valor: 300 })
+  if ((await admin.from('fundo_gastos').select('status').eq('id', y).single()).data.status === 'pendente') await rpc('adm2', 'decidir_gasto_fundo', { p_gasto_id: y, p_aprovar: true }).catch(async () => rpc('fin', 'decidir_gasto_fundo', { p_gasto_id: y, p_aprovar: true }))
+  const semPag = await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: terceiro.id, p_vencimento: '2026-12-21', p_modo: 'encerrar' })
+  assert.equal(semPag, null, 'sem reembolso não gera pagamento')
+  const { data: fim } = await admin.from('fundos_fixos').select('status, recebimento_devolucao_id, saldo_repassado').eq('id', terceiro.id).single()
+  const { data: dev } = await admin.from('recebimentos').select('valor, status, descricao').eq('id', fim.recebimento_devolucao_id).single()
+  assert.deepEqual([fim.status, Number(fim.saldo_repassado), Number(dev.valor), dev.status], ['fechado', 700, 700, 'aberto'])
+  assert.equal((await admin.from('fundos_fixos').select('id').eq('fundo_anterior_id', terceiro.id)).data.length, 0, 'encerrar não abre novo fundo')
+  await rpcFalha('fin', 'fechar_fundo_fixo', { p_fundo_id: terceiro.id, p_vencimento: '2026-12-21', p_modo: 'xyz' }, /inválido|já fechado/)
+})
+
 test('fundo fixo: aprovação do administrador, status pelo saldo, avisos e fechamento', async () => {
   const fundo = await rpc('fin', 'criar_fundo_fixo', { p_obra_id: obraA.id, p_pessoa_id: u.eng.id, p_valor: 100 })
   await rpcFalha('fin', 'criar_fundo_fixo', { p_obra_id: obraA.id, p_pessoa_id: u.eng.id, p_valor: 50 }, /unique|duplicate|já/)
@@ -1431,6 +1464,53 @@ describe('conciliação bancária', () => {
     assert.equal((await admin.from('recebimentos').select('status').eq('id', id2).single()).data.status, 'cancelado')
     const { data: aud } = await admin.from('auditoria').select('acao').eq('entidade', 'recebimento').eq('entidade_id', id)
     assert.ok(['criou', 'editou', 'anexou_nota', 'desconciliou'].every((a) => aud.some((x) => x.acao === a)), 'auditoria completa')
+  })
+
+  test('receita manual e medição: receita total + imposto retido (a pagar) + devido (pago na baixa manual); entrada líquida concilia receita − retido; desfazer volta a aberto; cancelar', async () => {
+    const catRec = await rpc('fin', 'criar_categoria_receita', { p_nome: 'Medição int ' + contaNum })
+    const catImp = await rpc('fin', 'criar_categoria', { p_nome: 'Impostos int ' + contaNum })
+    // Receita manual
+    const base = { p_obra_id: obraA.id, p_categoria_id: catRec, p_cliente: 'Cliente Manual', p_descricao: 'Aporte', p_valor: 5000, p_vencimento: '2026-12-20' }
+    for (const k of ['sup', 'eng']) await falha(k, 'criar_recebimento', base, 'Somente o Financeiro e o administrador master')
+    const rm = await rpc(mst, 'criar_recebimento', base)
+    assert.equal((await admin.from('recebimentos').select('status').eq('id', rm).single()).data.status, 'aberto')
+    await falha('fin', 'cancelar_recebimento', { p_id: rm, p_motivo: '' }, 'motivo')
+    await rpc('fin', 'cancelar_recebimento', { p_id: rm, p_motivo: 'lançada errado' })
+    assert.equal((await admin.from('recebimentos').select('status').eq('id', rm).single()).data.status, 'cancelado')
+    // Medição: total 10.000, líquido 9.400 → retido 600; devido 14% = 1.400 − 600 = 800
+    const { data: nota } = await admin.from('notas_medicao').insert({ obra_id: obraA.id, storage_path: `${obraA.id}/medicoes/${randomUUID()}.pdf`, nome_arquivo: 'med.pdf', numero: '12', sha256: 'd'.repeat(64), valor: 10000, valor_liquido: 9400, criada_por: u.fin.id }).select('id').single()
+    const args = { p_nota_id: nota.id, p_vencimento: '2026-12-22', p_conta_id: conta, p_cliente: '', p_categoria_receita: catRec, p_categoria_imposto: catImp, p_aliquota: 14 }
+    await falha('eng', 'lancar_medicao', args, 'Somente o Financeiro')
+    const rec = await rpc('fin', 'lancar_medicao', args)
+    const { data: r } = await admin.from('recebimentos').select('valor, status, nota_medicao_id, cliente').eq('id', rec).single()
+    assert.deepEqual([Number(r.valor), r.status, r.nota_medicao_id], [10000, 'aberto', nota.id])
+    const { data: imp } = await admin.from('pagamentos').select('id, imposto_medicao, valor, status, conta_bancaria_id, pago_em').eq('recebimento_id', rec).order('imposto_medicao')
+    const ret = imp.find((i) => i.imposto_medicao === 'retido'); const dev = imp.find((i) => i.imposto_medicao === 'devido')
+    assert.deepEqual([Number(ret.valor), ret.status, ret.conta_bancaria_id], [600, 'aguardando_pagamento', conta])
+    const manual = (await admin.from('contas_bancarias').select('id').eq('tipo', 'manual').single()).data.id
+    assert.deepEqual([Number(dev.valor), dev.status, dev.conta_bancaria_id], [800, 'pago', manual])
+    assert.equal((await admin.from('assinaturas').select('id', { count: 'exact', head: true }).in('pagamento_id', [ret.id, dev.id])).count, 0, 'sem aprovação')
+    const aviso = (await u.eng.client.from('notificacoes').select('titulo').eq('titulo', 'Medição lançada com impostos')).data.length
+    assert.ok(aviso >= 1, 'engenheiro avisado')
+    await falha('fin', 'lancar_medicao', args, 'já foi lançada')
+    // Conciliação: entra o líquido (9.400)
+    await importar('fin', [L('2026-12-22', 9400, 'TED RECEBIDA MEDICAO 12', 'MD1'), L('2026-12-22', 9999, 'TED OUTRA', 'MD2')])
+    const [lm] = await linhaPor(conta, 'TED RECEBIDA MEDICAO 12'); const [lo] = await linhaPor(conta, 'TED OUTRA')
+    await falha('fin', 'conciliar_recebimento', { p_linha_id: lo.id, p_recebimento_id: rec }, 'não bate')
+    await falha(mst, 'conciliar_recebimento', { p_linha_id: lm.id, p_recebimento_id: rec }, 'Somente o Financeiro')
+    await rpc('fin', 'conciliar_recebimento', { p_linha_id: lm.id, p_recebimento_id: rec })
+    const { data: r2 } = await admin.from('recebimentos').select('status, recebido_em, valor_recebido').eq('id', rec).single()
+    assert.deepEqual([r2.status, r2.recebido_em, Number(r2.valor_recebido)], ['recebido', '2026-12-22', 10000])
+    const { data: ret2 } = await admin.from('pagamentos').select('status, pago_em').eq('id', ret.id).single()
+    assert.deepEqual([ret2.status, ret2.pago_em], ['pago', '2026-12-22'], 'retido baixado junto')
+    // Desfazer voltando a aberto: receita em aberto e retido a pagar de novo
+    await rpc('fin', 'desfazer_conciliacao', { p_linha_id: lm.id, p_voltar_aberto: true, p_motivo: 'teste' })
+    assert.equal((await admin.from('recebimentos').select('status').eq('id', rec).single()).data.status, 'aberto')
+    assert.equal((await admin.from('pagamentos').select('status').eq('id', ret.id).single()).data.status, 'aguardando_pagamento')
+    // Cancelar a receita cancela o retido em aberto (o devido já pago fica)
+    await rpc('fin', 'cancelar_recebimento', { p_id: rec, p_motivo: 'teste' })
+    const { data: imp2 } = await admin.from('pagamentos').select('imposto_medicao, status').eq('recebimento_id', rec)
+    assert.deepEqual(imp2.map((i) => `${i.imposto_medicao}:${i.status}`).sort(), ['devido:pago', 'retido:cancelado'])
   })
 
   test('arquivar com tipo, não mexe em conciliadas, restaurar; tipo inválido recusado', async () => {

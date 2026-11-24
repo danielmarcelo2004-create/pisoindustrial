@@ -8,7 +8,7 @@ import { recebimento, situacaoReceber } from "@/lib/consultas/contas-a-receber";
 import { categoriasAtivas } from "@/lib/consultas/categorias";
 import { createClient } from "@/lib/supabase/server";
 import { data, hojeISO, moeda } from "@/lib/formato";
-import { editarRecebimento, enviarNotaNoRecebimento, vincularNota } from "../actions";
+import { cancelarReceita, editarRecebimento, enviarNotaNoRecebimento, vincularNota } from "../actions";
 
 export const metadata: Metadata = { title: "Recebimento" };
 
@@ -21,8 +21,9 @@ const SITUACAO = {
   cancelado: { r: "Cancelado", c: "cinza" },
 } as const;
 
-export default async function RecebimentoPage({ params }: PageProps<"/recebimentos/[id]">) {
+export default async function RecebimentoPage({ params, searchParams }: PageProps<"/recebimentos/[id]">) {
   const { id } = await params;
+  const criada = (await searchParams).criada === "1";
   if (!UUID.test(id)) notFound();
   const u = await getUsuario();
   const r = await recebimento(id);
@@ -43,6 +44,11 @@ export default async function RecebimentoPage({ params }: PageProps<"/recebiment
           </Link>
         }
       />
+      {criada && (
+        <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          Receita lançada. Ela fica em aberto até a entrada aparecer no extrato: a conciliação sugere esta receita.
+        </p>
+      )}
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-4">
           <Cartao titulo="Dados">
@@ -68,6 +74,32 @@ export default async function RecebimentoPage({ params }: PageProps<"/recebiment
             )}
             {r.status === "cancelado" && <p className="mt-3 text-sm text-red-700">Cancelado{r.cancelamento_motivo ? `: ${r.cancelamento_motivo}` : ""}</p>}
           </Cartao>
+
+          {r.impostos.length > 0 && (
+            <Cartao titulo="Impostos da medição" semPadding>
+              <ul className="divide-y divide-slate-100 text-sm" data-impostos-medicao>
+                {r.impostos.map((i) => (
+                  <li key={i.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+                    <Link href={`/pagamentos/${i.id}`} className="text-marca-700 hover:underline">
+                      nº {i.numero} · Imposto {i.imposto_medicao}
+                    </Link>
+                    <span className="tabular-nums">{moeda(Number(i.valor))}</span>
+                    <Selo cor={i.status === "pago" ? "verde" : i.status === "cancelado" ? "cinza" : "azul"}>
+                      {i.status === "pago" ? `Pago${i.pago_em ? ` em ${data(i.pago_em)}` : ""}` : i.status === "cancelado" ? "Cancelado" : "A pagar (baixa na conciliação)"}
+                    </Selo>
+                  </li>
+                ))}
+              </ul>
+            </Cartao>
+          )}
+
+          {podeMexer && r.status === "aberto" && (
+            <Cartao titulo="Cancelar receita">
+              <FormAcao action={cancelarReceita.bind(null, r.id)} enviar="Cancelar receita" variante="perigo" confirmar="Cancelar esta receita (e os impostos ainda não pagos)?" className="flex flex-wrap items-end gap-2">
+                <input name="motivo" required minLength={3} placeholder="Motivo" className="campo sm:max-w-sm" aria-label="Motivo do cancelamento" />
+              </FormAcao>
+            </Cartao>
+          )}
 
           {podeMexer && (
             <Cartao titulo="Editar">

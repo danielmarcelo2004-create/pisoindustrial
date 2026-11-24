@@ -56,7 +56,11 @@ export type Sugestao =
   | { tipo: "classificar"; classificacao: Classificacao }
   | { tipo: "transferencia"; transferencia: TransferenciaAberta }
   | { tipo: "estorno"; saida: SaidaEstornavel }
-  | { tipo: "aplicacao" }; // aplicação/resgate automático (BB Rende Fácil) conciliado na própria conta
+  | { tipo: "aplicacao" } // aplicação/resgate automático (BB Rende Fácil) conciliado na própria conta
+  | { tipo: "receita"; receita: ReceitaAberta; liquido: boolean }; // entrada = receita em aberto (ou receita − imposto retido)
+
+/** Receita em aberto em Contas a receber; "retido" é o imposto retido da medição ainda a pagar. */
+export type ReceitaAberta = { id: string; numero: number; cliente: string; descricao: string; obra: string; valor: number; retido: number; vencimento: string };
 
 /** Saída da mesma conta que um estorno pode devolver (pendente, ou já conciliada com uma conta paga). */
 export type SaidaEstornavel = { id: string; data: string; valor: number; descricao: string; situacao: "pendente" | "conciliada"; conciliadaCom: string | null };
@@ -297,4 +301,32 @@ export function sugerirRecebimento(desc: string, historico: HistoricoReceita[], 
     if (c) return { descricao, categoriaId: c.id, obraId: null, cliente: "", origem: "palavra" };
   }
   return { descricao, categoriaId: null, obraId: null, cliente: "", origem: null };
+}
+
+/**
+ * Entrada do extrato × receita em aberto: valor igual ao total, ou igual ao total menos o imposto retido
+ * (medição: o banco paga o líquido). Vencimento até 45 dias de diferença; o mais próximo primeiro;
+ * cada receita para uma entrada só.
+ */
+export function sugerirReceitas(linhas: LinhaExtrato[], abertas: ReceitaAberta[]): Map<string, { receita: ReceitaAberta; liquido: boolean }> {
+  const pares: { l: LinhaExtrato; r: ReceitaAberta; liquido: boolean; d: number }[] = [];
+  for (const l of linhas) {
+    if (l.situacao !== "pendente" || l.valor <= 0) continue;
+    for (const r of abertas) {
+      const total = iguais(l.valor, r.valor);
+      const liquido = r.retido > 0 && iguais(l.valor, r.valor - r.retido);
+      if (!total && !liquido) continue;
+      const d = dias(r.vencimento, l.data);
+      if (d <= 45) pares.push({ l, r, liquido: !total && liquido, d });
+    }
+  }
+  pares.sort((a, b) => a.d - b.d);
+  const res = new Map<string, { receita: ReceitaAberta; liquido: boolean }>();
+  const usadas = new Set<string>();
+  for (const p of pares) {
+    if (res.has(p.l.id) || usadas.has(p.r.id)) continue;
+    usadas.add(p.r.id);
+    res.set(p.l.id, { receita: p.r, liquido: p.liquido });
+  }
+  return res;
 }

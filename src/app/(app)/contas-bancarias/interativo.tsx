@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, useActionState, useContext, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { moeda } from "@/lib/formato";
-import type { Candidato, Classificacao, LinhaExtrato, SaidaEstornavel, Sugestao, SugestaoLancamento, SugestaoRecebimento } from "@/lib/consultas/conciliacao";
+import type { Candidato, Classificacao, LinhaExtrato, ReceitaAberta, SaidaEstornavel, Sugestao, SugestaoLancamento, SugestaoRecebimento } from "@/lib/consultas/conciliacao";
 import { pareceEstorno } from "@/lib/conciliacao-sugestao";
 import { criarCategoriaRapida, criarCategoriaReceitaRapida } from "@/app/(app)/categorias/actions";
-import { arquivar, conciliar, conciliarAplicacao, conciliarEstorno, conciliarTransferencia, criarContaBancaria, desfazer, importarExtrato, novaTransferencia, novoLancamento, novoLancamentoCompleto, novoRecebimento, renomearConta, restaurar } from "./actions";
+import { arquivar, conciliar, conciliarAplicacao, conciliarEstorno, conciliarReceita, conciliarTransferencia, criarContaBancaria, desfazer, importarExtrato, novaTransferencia, novoLancamento, novoLancamentoCompleto, novoRecebimento, renomearConta, restaurar } from "./actions";
 
 const br = (iso: string) => iso.split("-").reverse().join("/");
 const botao = "rounded-md px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40";
@@ -149,6 +149,7 @@ export type ListasConciliacao = {
   fornecedores: Opcao[];
   contas: Opcao[]; // outras contas bancárias da empresa (para transferência)
   contaAtual: string;
+  receitas?: ReceitaAberta[]; // receitas em aberto (Contas a receber)
 };
 const ContextoListas = createContext<ListasConciliacao>({ candidatos: [], categorias: [], categoriasReceita: [], obras: [], fornecedores: [], contas: [], contaAtual: "" });
 
@@ -219,7 +220,7 @@ export function LinhaPendente({
   estornos?: SaidaEstornavel[]; // saídas que esta entrada pode devolver
   sugestaoRecebimento?: SugestaoRecebimento | null; // entrada: sugestão do "Novo lançamento" de receita
 }) {
-  const { candidatos, categorias: catDespesa, categoriasReceita: catReceita, obras, fornecedores, contas } = useContext(ContextoListas);
+  const { candidatos, categorias: catDespesa, categoriasReceita: catReceita, obras, fornecedores, contas, receitas = [] } = useContext(ContextoListas);
   // Categorias criadas aqui mesmo ("+ Nova") entram na lista desta linha
   const [novasCat, setNovasCat] = useState<{ despesa: Opcao[]; receita: Opcao[] }>({ despesa: [], receita: [] });
   const categorias = [...catDespesa, ...novasCat.despesa];
@@ -231,10 +232,11 @@ export function LinhaPendente({
   const [inicial, setInicial] = useState<string[]>([]);
   const [pend, iniciar] = useTransition();
   const saida = linha.valor < 0;
-  const [aba, setAba] = useState<"lancamento" | "transferencia" | "estorno">(
+  const [aba, setAba] = useState<"lancamento" | "transferencia" | "estorno" | "receita">(
     saida ? "lancamento" : estornos.length && pareceEstorno(linha.descricao) ? "estorno" : "lancamento",
   );
   const [estSel, setEstSel] = useState(estornos.length === 1 ? estornos[0].id : "");
+  const [recSel, setRecSel] = useState("");
   const [completar, setCompletar] = useState(false);
   const [lanc, setLanc] = useState({
     descricao: sugestaoLancamento?.descricao ?? linha.descricao,
@@ -256,20 +258,23 @@ export function LinhaPendente({
   const transfSug = sug?.tipo === "transferencia" ? sug.transferencia : null;
   const estornoSug = sug?.tipo === "estorno" ? sug.saida : null;
   const aplicSug = sug?.tipo === "aplicacao";
+  const receitaSug = sug?.tipo === "receita" ? sug : null;
   const abrirBusca = (pre: string[] = []) => (setInicial(pre), setBuscar(true));
   const conciliarAgora = () => conta && iniciar(async () => fim((await conciliar(linha.id, [{ tipo: conta.candidato.tipo, id: conta.candidato.id }], null)).erro));
-  const semConta = !conta && !transfSug && !estornoSug && !aplicSug;
+  const semConta = !conta && !transfSug && !estornoSug && !aplicSug && !receitaSug;
   const podeLancar = Boolean(lanc.categoria && lanc.obra && lanc.descricao.trim());
   const acaoMeio = () => {
     if (transfSug) return iniciar(async () => fim((await conciliarTransferencia(linha.id, transfSug.id)).erro));
     if (estornoSug) return iniciar(async () => fim((await conciliarEstorno(linha.id, estornoSug.id)).erro));
     if (aplicSug) return iniciar(async () => fim((await conciliarAplicacao([linha.id])).erro));
+    if (receitaSug) return iniciar(async () => fim((await conciliarReceita(linha.id, receitaSug.receita.id)).erro));
+    if (aba === "receita") return iniciar(async () => fim((await conciliarReceita(linha.id, recSel)).erro));
     if (aba === "estorno") return iniciar(async () => fim((await conciliarEstorno(linha.id, estSel)).erro));
     if (aba === "lancamento" && !saida) return iniciar(async () => fim((await novoRecebimento(linha.id, { obra: rec.obra, categoria: rec.categoria, cliente: rec.cliente, descricao: rec.descricao })).erro));
     if (aba === "lancamento") return iniciar(async () => fim((await novoLancamento(linha.id, { obra: lanc.obra, categoria: lanc.categoria, descricao: lanc.descricao, fornecedor: lanc.fornecedor })).erro));
     return iniciar(async () => fim((await novaTransferencia(linha.id, transf.conta, transf.descricao)).erro));
   };
-  const meioHabilitado = transfSug || estornoSug || aplicSug ? true : aba === "lancamento" ? (saida ? podeLancar : Boolean(rec.categoria && rec.obra && rec.cliente.trim() && rec.descricao.trim())) : aba === "estorno" ? Boolean(estSel) : Boolean(transf.conta);
+  const meioHabilitado = transfSug || estornoSug || aplicSug || receitaSug ? true : aba === "receita" ? Boolean(recSel) : aba === "lancamento" ? (saida ? podeLancar : Boolean(rec.categoria && rec.obra && rec.cliente.trim() && rec.descricao.trim())) : aba === "estorno" ? Boolean(estSel) : Boolean(transf.conta);
   const sugerido = (campo: "categoria" | "obra" | "fornecedor", valor: string) =>
     sugestaoLancamento && valor && valor === (campo === "categoria" ? sugestaoLancamento.categoriaId : campo === "obra" ? sugestaoLancamento.obraId : sugestaoLancamento.fornecedorId);
 
@@ -330,8 +335,8 @@ export function LinhaPendente({
               <span className="rounded bg-violet-100 px-2 py-0.5 text-center text-xs font-semibold text-violet-800" data-sugestao="aplicacao">
                 {saida ? "Aplicação automática" : "Resgate automático"}
               </span>
-            ) : transfSug || estornoSug ? (
-              <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800" data-sugestao={transfSug ? "transferencia" : "estorno"}>
+            ) : transfSug || estornoSug || receitaSug ? (
+              <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800" data-sugestao={transfSug ? "transferencia" : estornoSug ? "estorno" : "receita"}>
                 Encontramos
               </span>
             ) : classe ? (
@@ -425,6 +430,28 @@ export function LinhaPendente({
               </button>
             )}
           </div>
+        ) : receitaSug ? (
+          <div className="flex-1 space-y-1 px-3 py-3 text-sm" data-receita-sugerida>
+            <div className="font-medium text-slate-800">
+              <Link href={`/recebimentos/${receitaSug.receita.id}`} target="_blank" className="hover:underline">
+                Receita nº {receitaSug.receita.numero}
+              </Link>{" "}
+              · {receitaSug.receita.cliente} · <span className="tabular-nums">{moeda(receitaSug.receita.valor)}</span>
+            </div>
+            <div className="text-xs text-slate-600">
+              {receitaSug.receita.descricao} · {receitaSug.receita.obra} · vence em {br(receitaSug.receita.vencimento)}
+            </div>
+            {receitaSug.liquido && (
+              <div className="rounded bg-emerald-50 px-2 py-1 text-xs text-emerald-900">
+                Total {moeda(receitaSug.receita.valor)} − imposto retido {moeda(receitaSug.receita.retido)} = {moeda(linha.valor)}. Ao conciliar, a receita fica recebida e o imposto retido, pago.
+              </div>
+            )}
+            {podeAgir && (
+              <button type="button" className="mt-1 text-xs text-sky-700 hover:underline" onClick={() => setDescartada(true)}>
+                Não é esta receita
+              </button>
+            )}
+          </div>
         ) : aplicSug ? (
           <div className="flex-1 space-y-1 px-3 py-3 text-sm" data-aplicacao-sugerida>
             <div className="font-medium text-slate-800">{saida ? "Aplicação automática (BB Rende Fácil)" : "Resgate automático (BB Rende Fácil)"}</div>
@@ -475,6 +502,11 @@ export function LinhaPendente({
                 <button type="button" role="tab" aria-selected={aba === "transferencia"} className={`px-2 py-1 ${aba === "transferencia" ? "bg-sky-700 text-white" : "bg-white text-sky-800"}`} onClick={() => setAba("transferencia")}>
                   Nova transferência
                 </button>
+                {!saida && receitas.length > 0 && (
+                  <button type="button" role="tab" aria-selected={aba === "receita"} className={`px-2 py-1 ${aba === "receita" ? "bg-sky-700 text-white" : "bg-white text-sky-800"}`} onClick={() => setAba("receita")}>
+                    Receita em aberto
+                  </button>
+                )}
                 {!saida && estornos.length > 0 && (
                   <button type="button" role="tab" aria-selected={aba === "estorno"} className={`px-2 py-1 ${aba === "estorno" ? "bg-sky-700 text-white" : "bg-white text-sky-800"}`} onClick={() => setAba("estorno")}>
                     Estorno
@@ -576,6 +608,19 @@ export function LinhaPendente({
                   <input value={rec.cliente} onChange={(e) => setRec({ ...rec, cliente: e.target.value })} placeholder="Quem pagou (o cliente da obra vem preenchido)" className="campo mt-0.5 py-1 text-sm" aria-label="Cliente do recebimento" />
                 </label>
                 <span className="text-[11px] text-slate-500 sm:col-span-2">Entra em Contas a receber como recebido, com a data e o valor do banco. A nota de medição pode ser anexada depois, no recebimento.</span>
+              </div>
+            ) : aba === "receita" && !saida ? (
+              <div className="grid gap-2 px-3 py-2 text-xs" data-receita-aberta>
+                <span className="text-slate-600">Qual receita de Contas a receber entrou? (valor total, ou total − imposto retido)</span>
+                <select value={recSel} onChange={(e) => setRecSel(e.target.value)} className="campo py-1 text-sm" aria-label="Receita em aberto">
+                  <option value="">Escolha…</option>
+                  {receitas.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      nº {r.numero} · {r.cliente} · {moeda(r.valor)}
+                      {r.retido > 0 ? ` (líquido ${moeda(r.valor - r.retido)})` : ""} · vence {br(r.vencimento)}
+                    </option>
+                  ))}
+                </select>
               </div>
             ) : aba === "estorno" && !saida ? (
               <div className="grid gap-2 px-3 py-2 text-xs" data-estorno>

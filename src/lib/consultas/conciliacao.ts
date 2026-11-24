@@ -2,14 +2,14 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 
-import type { Candidato, Historico, HistoricoReceita, LinhaExtrato, SaidaEstornavel, TransferenciaAberta } from "@/lib/conciliacao-sugestao";
-export { CLASSIFICACOES, classificacaoProvavel, pareceEstorno, saidasParaEstorno, sugerir, sugerirEstornos, sugerirLancamento, sugerirRecebimento, sugerirTransferencias, tolerancia } from "@/lib/conciliacao-sugestao";
-export type { Candidato, Classificacao, Historico, HistoricoReceita, LinhaExtrato, SaidaEstornavel, Sugestao, SugestaoLancamento, SugestaoRecebimento, TransferenciaAberta } from "@/lib/conciliacao-sugestao";
+import type { Candidato, Historico, HistoricoReceita, LinhaExtrato, ReceitaAberta, SaidaEstornavel, TransferenciaAberta } from "@/lib/conciliacao-sugestao";
+export { CLASSIFICACOES, classificacaoProvavel, pareceEstorno, saidasParaEstorno, sugerir, sugerirEstornos, sugerirLancamento, sugerirReceitas, sugerirRecebimento, sugerirTransferencias, tolerancia } from "@/lib/conciliacao-sugestao";
+export type { Candidato, Classificacao, Historico, HistoricoReceita, LinhaExtrato, ReceitaAberta, SaidaEstornavel, Sugestao, SugestaoLancamento, SugestaoRecebimento, TransferenciaAberta } from "@/lib/conciliacao-sugestao";
 
 export async function contasBancarias() {
   const supabase = await createClient();
   const [{ data: contas }, { data: saldos }, { data: aplic }, { data: pend }] = await Promise.all([
-    supabase.from("contas_bancarias").select("id, nome, banco, agencia, conta, tipo").eq("ativa", true).order("nome"),
+    supabase.from("contas_bancarias").select("id, nome, banco, agencia, conta, tipo").eq("ativa", true).neq("tipo", "manual").order("nome"), // "Baixa manual" não tem extrato
     supabase.rpc("saldos_contas_bancarias"), // saldo: só Financeiro/master
     supabase.rpc("aplicado_nas_contas"), // aplicado no Rende Fácil (aplicações − resgates conciliados)
     supabase.from("extrato_linhas").select("conta_id, valor").eq("situacao", "pendente").limit(50000),
@@ -80,10 +80,11 @@ export async function candidatos(periodo: { de: string; ate: string } | null): P
   const SEL = "id, numero, favorecido, descricao, valor, vencimento, status, forma_pagamento, conta_bancaria_id, conta_bancaria:contas_bancarias(nome), pago_em, valor_pago, obra:obras(nome), categoria:categorias(nome), fornecedor:fornecedores(nome, cpf_cnpj), parcelas:pagamento_parcelas(id, numero, valor_base, multa, juros, desconto, vencimento, status, pago_em, valor_pago)";
   const de = periodo ? new Date(new Date(periodo.de + "T12:00:00Z").getTime() - 60 * 86400000).toISOString().slice(0, 10) : null;
   const ate = periodo ? new Date(new Date(periodo.ate + "T12:00:00Z").getTime() + 60 * 86400000).toISOString().slice(0, 10) : null;
-  let qPago = supabase.from("pagamentos").select(SEL).eq("status", "pago");
+  // Impostos da medição ficam fora: o retido é baixado com a receita e o devido já nasce pago (baixa manual)
+  let qPago = supabase.from("pagamentos").select(SEL).eq("status", "pago").is("imposto_medicao", null);
   if (de && ate) qPago = qPago.gte("pago_em", de).lte("pago_em", ate);
   const [{ data: abertos }, { data: pagos }, { data: ligados }] = await Promise.all([
-    supabase.from("pagamentos").select(SEL).eq("status", "aguardando_pagamento").limit(2000),
+    supabase.from("pagamentos").select(SEL).eq("status", "aguardando_pagamento").is("imposto_medicao", null).limit(2000),
     qPago.limit(3000),
     supabase.from("conciliacao_itens").select("pagamento_id, parcela_id").limit(50000),
   ]);
@@ -304,4 +305,28 @@ export async function recebimentosDasLinhas(ids: string[]) {
   const { data } = await supabase.from("recebimentos").select("id, numero, cliente, lancado_conciliacao").in("id", ids);
   for (const r of data ?? []) m.set(r.id, { id: r.id, numero: Number(r.numero), cliente: r.cliente, lancado: r.lancado_conciliacao });
   return m;
+}
+
+/** Receitas em aberto (com o imposto retido da medição, se houver) para conciliar entradas do extrato. */
+export async function receitasAbertas(): Promise<ReceitaAberta[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("recebimentos")
+    .select("id, numero, cliente, descricao, valor, vencimento, obra:obras(nome), impostos:pagamentos!pagamentos_recebimento_id_fkey(valor, status, imposto_medicao)")
+    .eq("status", "aberto")
+    .limit(1000);
+  return (data ?? []).map((r) => {
+    const imp = (r.impostos ?? []) as { valor: number; status: string; imposto_medicao: string | null }[];
+    const obra = (Array.isArray(r.obra) ? r.obra[0] : r.obra) as { nome: string } | null;
+    return {
+      id: r.id,
+      numero: Number(r.numero),
+      cliente: r.cliente,
+      descricao: r.descricao,
+      obra: obra?.nome ?? "",
+      valor: Number(r.valor),
+      retido: Math.round(imp.filter((i) => i.imposto_medicao === "retido" && i.status === "aguardando_pagamento").reduce((t, i) => t + Number(i.valor), 0) * 100) / 100,
+      vencimento: r.vencimento,
+    };
+  });
 }

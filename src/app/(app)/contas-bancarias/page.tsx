@@ -16,6 +16,8 @@ import {
   datasDaConta,
   historicoLancamentos,
   historicoRecebimentos,
+  receitasAbertas,
+  sugerirReceitas,
   recebimentosDasLinhas,
   sugerirRecebimento,
   itensConciliados,
@@ -150,7 +152,7 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
   const linhas = todasLinhas.filter((l) => (tipo === "entradas" ? l.valor > 0 : tipo === "saidas" ? l.valor < 0 : true));
   const periodo = linhas.length ? { de: linhas.reduce((m, l) => (l.data < m ? l.data : m), linhas[0].data), ate: linhas.reduce((m, l) => (l.data > m ? l.data : m), linhas[0].data) } : null;
   const pend = situacao === "pendente";
-  const [cands, historico, abertas, categorias, fornecedores, obras, saidas, histRec, categoriasReceita] = pend
+  const [cands, historico, abertas, categorias, fornecedores, obras, saidas, histRec, categoriasReceita, receitas] = pend
     ? await Promise.all([
         buscarCandidatos(periodo),
         historicoLancamentos(),
@@ -161,8 +163,9 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
         saidasEstornaveis(conta.id, periodo),
         historicoRecebimentos(),
         categoriasAtivas("receita"),
+        receitasAbertas(),
       ])
-    : [[], [], [], [], [], [], [], [], []];
+    : [[], [], [], [], [], [], [], [], [], []];
   const sugestoes = pend ? sugerir(linhas, cands, conta.id) : new Map();
   // Transferência registrada na outra conta: vale quando não há conta a pagar "Encontramos"
   if (pend) {
@@ -173,6 +176,8 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
   }
   // Estorno: a entrada com "estorno/devolução" e a saída de mesmo valor até 10 dias antes
   if (pend) for (const [id, saida] of sugerirEstornos(linhas, saidas)) sugestoes.set(id, { tipo: "estorno", saida });
+  // Receita em aberto (Contas a receber): valor igual, ou receita − imposto retido da medição
+  if (pend) for (const [id, r] of sugerirReceitas(linhas, receitas)) if (!sugestoes.has(id)) sugestoes.set(id, { tipo: "receita", receita: r.receita, liquido: r.liquido });
   const estornosPorLinha = new Map(pend ? linhas.filter((l) => l.valor > 0).map((l) => [l.id, saidasParaEstorno(l, saidas)]) : []);
   const sugLanc = new Map(
     pend ? linhas.filter((l) => l.valor < 0 && !["conta", "transferencia", "estorno", "aplicacao"].includes(sugestoes.get(l.id)?.tipo ?? "")).map((l) => [l.id, sugerirLancamento(l.descricao, historico, categorias)]) : [],
@@ -349,6 +354,7 @@ export default async function ConciliacaoPage({ searchParams }: PageProps<"/cont
                   fornecedores: fornecedores.map((f) => ({ id: f.id, nome: f.nome })),
                   contas: contas.filter((c) => c.id !== conta.id).map((c) => ({ id: c.id, nome: c.nome })),
                   contaAtual: conta.id,
+                  receitas,
                 }}
               >
                 {linhas.map((l) => (

@@ -154,10 +154,11 @@ export async function recebimento(id: string) {
     .eq("id", id)
     .maybeSingle();
   if (!r) return null;
-  const [{ data: linha }, { data: notas }, { data: usadas }] = await Promise.all([
+  const [{ data: linha }, { data: notas }, { data: usadas }, { data: impostos }] = await Promise.all([
     supabase.from("extrato_linhas").select("id, data, descricao, valor, conta_id").eq("recebimento_id", id).maybeSingle(),
     supabase.from("notas_medicao").select("id, numero, nome_arquivo, valor, valor_liquido, data_emissao").eq("obra_id", r.obra_id).order("criada_em", { ascending: false }).limit(200),
     supabase.from("recebimentos").select("nota_medicao_id").not("nota_medicao_id", "is", null),
+    supabase.from("pagamentos").select("id, numero, descricao, valor, status, pago_em, imposto_medicao").eq("recebimento_id", id).order("imposto_medicao"),
   ]);
   const ocupadas = new Set((usadas ?? []).map((x) => x.nota_medicao_id));
   return {
@@ -167,6 +168,7 @@ export async function recebimento(id: string) {
     conta: um(r.conta as { nome: string } | { nome: string }[] | null),
     nota: um(r.nota as { id: string; numero: string | null; nome_arquivo: string; valor: number; valor_liquido: number; data_emissao: string | null; prestador_nome: string | null } | null),
     linha,
+    impostos: impostos ?? [],
     notasDisponiveis: (notas ?? []).filter((n) => !ocupadas.has(n.id) || n.id === r.nota_medicao_id),
   };
 }

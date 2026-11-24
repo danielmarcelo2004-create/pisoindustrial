@@ -36,6 +36,7 @@ const hoje = new Date().toISOString().slice(0, 10);
   await fin.selectOption('select[name=obra_id]', obra.id);
   await fin.selectOption('select[name=pessoa_id]', eng.id);
   await fin.fill('input[name=valor]', '100,00');
+  await fin.selectOption('select[name=conta_id]', { index: 1 }); // conta de onde sai o desembolso
   await fin.click('button:has-text("Criar fundo")');
   await fin.getByText('Fundo fixo criado').waitFor({ timeout: 60000 });
   console.log('✔ fundo fixo de R$ 100,00 criado');
@@ -95,9 +96,16 @@ const hoje = new Date().toISOString().slice(0, 10);
   // 5. Financeiro fecha o fundo: reposição R$ 100,00 + reembolso R$ 20,00 num único pagamento
   await fin.goto(`${APP}/fundos-fixos`);
   await fin.click('text=Ver fundo');
-  await fin.click('button:has-text("Fechar fundo")');
-  await fin.getByText(/Fundo fechado\. A reposição/).waitFor({ timeout: 60000 });
-  const { data: pag } = await sb.from('pagamentos').select('descricao, valor, fluxo, status').like('descricao', 'Fundo fixo%').single();
+  fin.on('dialog', (d) => d.accept());
+  await fin.click('button:has-text("Fechar e repor")');
+  await fin.getByText(/Fundo reposto/).waitFor({ timeout: 60000 });
+  const { data: ini } = await sb.from('pagamentos').select('valor, status').like('descricao', '%desembolso inicial').single();
+  if (Number(ini.valor) !== 100 || ini.status !== 'aguardando_pagamento') throw new Error(`desembolso inicial inesperado: ${JSON.stringify(ini)}`);
+  console.log('✔ criar o fundo gerou o desembolso de R$ 100,00 em Contas a pagar');
+  const { data: novos } = await sb.from('fundos_fixos').select('valor, status, fundo_anterior_id').not('fundo_anterior_id', 'is', null);
+  if (novos.length !== 1 || Number(novos[0].valor) !== 100 || novos[0].status === 'fechado') throw new Error(`novo fundo não abriu: ${JSON.stringify(novos)}`);
+  console.log('✔ "Fechar e repor" abriu um novo fundo de R$ 100,00');
+  const { data: pag } = await sb.from('pagamentos').select('descricao, valor, fluxo, status').like('descricao', 'Fundo fixo%reposição%').single();
   if (!/reposição de R\$ 100,00 \+ reembolso de R\$ 20,00/.test(pag.descricao) || Number(pag.valor) !== 120 || pag.fluxo !== 'C') {
     throw new Error(`pagamento de fechamento inesperado: ${JSON.stringify(pag)}`);
   }

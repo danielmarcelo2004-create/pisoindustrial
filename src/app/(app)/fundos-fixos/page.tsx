@@ -7,6 +7,7 @@ import { STATUS_FUNDO, saldoDoFundo } from "@/lib/fundos";
 import { moeda } from "@/lib/formato";
 import { createClient } from "@/lib/supabase/server";
 import { criarFundo } from "./actions";
+import { contasBancariasAtivas } from "@/lib/consultas/contas-bancarias";
 
 export const metadata: Metadata = { title: "Fundos fixos" };
 
@@ -21,6 +22,7 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
   const fin = u.perfil === "financeiro";
   const admin = u.perfil === "administrador" || u.perfil === "administrador_master";
 
+  const contas = fin ? await contasBancariasAtivas() : [];
   const [{ data: fundos }, { data: aprovados }, { data: pendentes }, { data: obras }, { data: pessoas }] = await Promise.all([
     supabase
       .from("fundos_fixos")
@@ -67,8 +69,10 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
       {sp.fechado && (
         <div className="mb-6">
           <Aviso tipo="sucesso">
-            {sp.fechado === "pagamento"
-              ? "Fundo fechado. A reposição e o reembolso viraram um pagamento para o Financeiro pagar."
+            {sp.fechado === "reposto"
+              ? "Fundo reposto: os gastos viraram um pagamento (reposição e reembolso) e um novo fundo do mesmo valor já está aberto."
+              : sp.fechado === "pagamento"
+              ? "Fundo encerrado. O reembolso virou um pagamento e o saldo que sobrou, se houver, está em Contas a receber para a devolução."
               : "Fundo fechado. Não havia reposição nem reembolso; o saldo fica registrado para repasse à empresa."}
           </Aviso>
         </div>
@@ -102,6 +106,17 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
               </Campo>
               <Campo rotulo="Valor do fundo (R$)" obrigatorio>
                 <input name="valor" required inputMode="decimal" className="campo" placeholder="0,00" defaultValue={sp.valor ?? ""} />
+              </Campo>
+              <Campo rotulo="Sai da conta" obrigatorio ajuda="O desembolso entra em Contas a pagar (sem aprovação) para pagar e conciliar.">
+                <select name="conta_id" required className="campo" defaultValue={contas.length === 1 ? contas[0].id : ""}>
+                  <option value="">Selecione…</option>
+                  {contas.filter((c) => !/baixa manual/i.test(c.nome)).map((c) => (
+                    <option key={c.id} value={c.id}>{c.nome}</option>
+                  ))}
+                </select>
+              </Campo>
+              <Campo rotulo="Data do desembolso" ajuda="Em branco = hoje.">
+                <input type="date" name="vencimento" className="campo" />
               </Campo>
             </FormAcao>
           </Cartao>

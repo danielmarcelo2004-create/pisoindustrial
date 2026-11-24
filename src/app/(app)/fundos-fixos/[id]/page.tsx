@@ -22,7 +22,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
 
   const { data: f } = await supabase
     .from("fundos_fixos")
-    .select("id, valor, status, pessoa_id, fechado_em, reposicao, reembolso, saldo_repassado, pagamento_id, obra:obras(id, nome), pessoa:profiles!fundos_fixos_pessoa_id_fkey(nome)")
+    .select("id, valor, status, pessoa_id, fechado_em, reposicao, reembolso, saldo_repassado, pagamento_id, pagamento_inicial_id, recebimento_devolucao_id, obra:obras(id, nome), pessoa:profiles!fundos_fixos_pessoa_id_fkey(nome)")
     .eq("id", id)
     .maybeSingle();
   if (!f) notFound();
@@ -168,20 +168,26 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
 
           {fin && !fechado && (
             <Cartao titulo="Fechar fundo">
-              <div className="mb-3 space-y-1 text-sm text-slate-700">
-                {f.status === "esgotado" && (
-                  <p>Será criado um pagamento de <strong>{moeda(reposicaoPrevista + reembolsoPrevisto)}</strong>: reposição de {moeda(reposicaoPrevista)} + reembolso de {moeda(reembolsoPrevisto)}.</p>
-                )}
-                {f.status !== "esgotado" && (
-                  <p>{reembolsoPrevisto > 0 ? `Reembolso de ${moeda(reembolsoPrevisto)} será pago. ` : ""}Sem reposição: o saldo de {moeda(Math.max(saldo, 0))} fica registrado para repasse à empresa.</p>
-                )}
+              <div className="space-y-4 text-sm text-slate-700">
+                <FormAcao action={fecharFundo.bind(null, f.id)} enviar="Fechar e repor" pendente="Fechando…" className="space-y-2 rounded-md border border-slate-200 p-3" confirmar="Fechar e repor este fundo?">
+                  <input type="hidden" name="modo" value="repor" />
+                  <p className="font-medium text-slate-800">Repor e continuar</p>
+                  <p>
+                    Paga os gastos aprovados: <strong>{moeda(reposicaoPrevista + reembolsoPrevisto)}</strong>
+                    {reembolsoPrevisto > 0 ? ` (reposição de ${moeda(reposicaoPrevista)} + reembolso de ${moeda(reembolsoPrevisto)})` : ""}. Um novo fundo de {moeda(f.valor)} abre na hora.
+                  </p>
+                  <input type="date" name="vencimento" className="campo" aria-label="Vencimento da reposição" />
+                </FormAcao>
+                <FormAcao action={fecharFundo.bind(null, f.id)} enviar="Encerrar fundo" variante="perigo" pendente="Encerrando…" className="space-y-2 rounded-md border border-slate-200 p-3" confirmar="Encerrar este fundo (fim da obra)?">
+                  <input type="hidden" name="modo" value="encerrar" />
+                  <p className="font-medium text-slate-800">Encerrar (fim da obra)</p>
+                  <p>
+                    {reembolsoPrevisto > 0 ? `Reembolso de ${moeda(reembolsoPrevisto)} vira um pagamento. ` : ""}
+                    {saldo > 0 ? `O saldo de ${moeda(saldo)} vira uma receita em aberto (devolução à empresa).` : "Não há saldo para devolver."}
+                  </p>
+                  <input type="date" name="vencimento" className="campo" aria-label="Vencimento do encerramento" />
+                </FormAcao>
               </div>
-              <FormAcao action={fecharFundo.bind(null, f.id)} enviar="Fechar fundo" variante="perigo" pendente="Fechando…">
-                <Campo rotulo="Vencimento do pagamento de reposição/reembolso" ajuda="Deixe em branco para hoje.">
-                  <input type="date" name="vencimento" className="campo" />
-                </Campo>
-              </FormAcao>
-              <p className="mt-3 text-xs text-slate-500">Depois de fechar, crie um novo fundo do mesmo valor na listagem de fundos.</p>
             </Cartao>
           )}
 
@@ -191,9 +197,12 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
                 <Dado rotulo="Fechado em">{data(f.fechado_em)}</Dado>
                 <Dado rotulo="Reposição">{moeda(f.reposicao ?? 0)}</Dado>
                 <Dado rotulo="Reembolso">{moeda(f.reembolso ?? 0)}</Dado>
-                <Dado rotulo="Saldo a repassar à empresa">{moeda(f.saldo_repassado ?? 0)}</Dado>
+                <Dado rotulo="Saldo devolvido à empresa">{moeda(f.saldo_repassado ?? 0)}</Dado>
                 {f.pagamento_id && (
                   <Link href={`/pagamentos/${f.pagamento_id}`} className="text-marca-700 hover:underline">Ver pagamento de reposição/reembolso</Link>
+                )}
+                {f.recebimento_devolucao_id && (
+                  <Link href={`/recebimentos/${f.recebimento_devolucao_id}`} className="block text-marca-700 hover:underline">Ver devolução do saldo (Contas a receber)</Link>
                 )}
               </div>
             </Cartao>

@@ -303,3 +303,14 @@ export async function conciliarAplicacao(ids: string[]): Promise<Resultado & { n
   revalidatePath("/contas-bancarias");
   return { ok: "Conciliado.", n: data ?? 0 };
 }
+
+/** Entrada do extrato × receita em aberto (ou receita − imposto retido da medição). */
+export async function conciliarReceita(linhaId: string, recebimentoId: string): Promise<Resultado> {
+  if (!(await soFinanceiro())) return { erro: "Somente o Financeiro faz a conciliação." };
+  if (!UUID.test(linhaId) || !UUID.test(recebimentoId)) return { erro: "Seleção inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("conciliar_recebimento", { p_linha_id: linhaId, p_recebimento_id: recebimentoId });
+  if (error) return { erro: mensagemErro(error) };
+  revalidatePath("/", "layout");
+  return { ok: "Receita conciliada." };
+}

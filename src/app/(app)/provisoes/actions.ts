@@ -52,7 +52,7 @@ export async function criarProvisao(_: Estado, fd: FormData): Promise<Estado> {
   const { error } = await supabase.from("provisoes").insert(linhas);
   if (error) return { erro: mensagemErro(error) };
   revalidatePath("/provisoes");
-  revalidatePath("/agenda");
+  revalidatePath("/");
   return {
     ok: meses > 1
       ? `${meses} provisões criadas, uma por mês a partir de ${venc.split("-").reverse().join("/")}. Elas aparecem na agenda, mas não entram nos totais a pagar.`
@@ -69,7 +69,7 @@ export async function alterarProvisao(id: string, status: "convertida" | "cancel
   if (error) return { erro: mensagemErro(error) };
   if (!data?.length) return { erro: "Você só pode alterar as provisões que cadastrou." };
   revalidatePath("/provisoes");
-  revalidatePath("/agenda");
+  revalidatePath("/");
   // A linha sai da situação "provisionada": volta à lista com a confirmação visível.
   // Se era a última parcela de uma série, a página pergunta se deseja adicionar mais.
   const { data: pv } = await supabase.from("provisoes").select("descricao").eq("id", id).single();
@@ -122,7 +122,7 @@ export async function cancelarProximasProvisoes(id: string, _: Estado): Promise<
     qtd = data.length;
   }
   revalidatePath("/provisoes");
-  revalidatePath("/agenda");
+  revalidatePath("/");
   revalidatePath("/");
   redirect(`/provisoes?aviso=serie&qtd=${qtd}`);
 }
@@ -137,7 +137,7 @@ export async function adicionarParcelasProvisao(id: string, _: Estado, fd: FormD
   const { error } = await supabase.rpc("estender_serie_provisao", { p_provisao_id: id, p_quantidade: qtd });
   if (error) return { erro: mensagemErro(error) };
   revalidatePath("/provisoes");
-  revalidatePath("/agenda");
+  revalidatePath("/");
   revalidatePath("/");
   redirect(`/provisoes?aviso=estendida&qtd=${qtd}`);
 }

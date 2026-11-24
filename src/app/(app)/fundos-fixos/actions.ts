@@ -23,11 +23,16 @@ export async function criarFundo(_: Estado, fd: FormData): Promise<Estado> {
   if (!UUID.test(obra)) return { erro: "Selecione o centro de custo." };
   if (!UUID.test(pessoa)) return { erro: "Selecione o engenheiro ou Suprimentos responsável pelo fundo." };
   if (valor === null || valor <= 0) return { erro: "Informe o valor do fundo." };
+  const conta = t(fd, "conta_id");
+  const venc = t(fd, "vencimento");
+  if (!UUID.test(conta)) return { erro: "Escolha a conta de onde sai o dinheiro do fundo." };
+  if (venc && !/^\d{4}-\d{2}-\d{2}$/.test(venc)) return { erro: "Data do desembolso inválida." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("criar_fundo_fixo", { p_obra_id: obra, p_pessoa_id: pessoa, p_valor: valor });
+  const { error } = await supabase.rpc("criar_fundo_fixo", { p_obra_id: obra, p_pessoa_id: pessoa, p_valor: valor, p_conta_id: conta, ...(venc ? { p_vencimento: venc } : {}) });
   if (error) return { erro: mensagemErro(error) };
   revalidar();
-  return { ok: "Fundo fixo criado. A pessoa já pode lançar gastos nele." };
+  revalidatePath("/pagamentos");
+  return { ok: "Fundo fixo criado. O desembolso entrou em Contas a pagar e a pessoa já pode lançar gastos." };
 }
 
 export async function lancarGasto(fundoId: string, _: Estado, fd: FormData): Promise<Estado> {
@@ -67,12 +72,15 @@ export async function fecharFundo(fundoId: string, _: Estado, fd: FormData): Pro
   const venc = t(fd, "vencimento");
   if (venc && !/^\d{4}-\d{2}-\d{2}$/.test(venc)) return { erro: "Vencimento inválido." };
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("fechar_fundo_fixo", { p_fundo_id: fundoId, p_vencimento: venc || hojeISO() });
+  const modo = t(fd, "modo") === "encerrar" ? "encerrar" : "repor";
+  const conta = t(fd, "conta_id");
+  const { data, error } = await supabase.rpc("fechar_fundo_fixo", { p_fundo_id: fundoId, p_vencimento: venc || hojeISO(), p_modo: modo, ...(UUID.test(conta) ? { p_conta_id: conta } : {}) });
   if (error) return { erro: mensagemErro(error) };
   revalidar(fundoId);
   revalidatePath("/pagamentos");
-  revalidatePath("/agenda");
-  redirect(`/fundos-fixos?fechado=${data ? "pagamento" : "saldo"}`);
+  revalidatePath("/");
+  revalidatePath("/recebimentos");
+  redirect(`/fundos-fixos?fechado=${modo === "repor" ? "reposto" : data ? "pagamento" : "saldo"}`);
 }
 
 export async function excluirGasto(fundoId: string, gastoId: string, _: Estado, __: FormData): Promise<Estado> {

@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { data, hojeISO, moeda } from "@/lib/formato";
 import { lerPeriodo } from "@/lib/periodo";
 import { BarraFiltros } from "../pagamentos/filtros-contas";
+import { NovaReceita } from "@/components/nova-receita";
 
 export const metadata: Metadata = { title: "Contas a receber" };
 
@@ -51,9 +52,9 @@ export default async function ContasAReceberPage({ searchParams }: PageProps<"/r
   const supabase = await createClient();
   const [{ linhas, totais }, { data: obras }, categorias, { data: contas }] = await Promise.all([
     listarRecebimentos({ ...filtros, cartao }, hoje, veBanco),
-    supabase.from("obras").select("id, nome").order("nome"),
+    supabase.from("obras").select("id, nome, cliente").order("nome"),
     categoriasAtivas("receita"),
-    supabase.from("contas_bancarias").select("id, nome").eq("ativa", true).order("nome"),
+    supabase.from("contas_bancarias").select("id, nome").eq("ativa", true).eq("tipo", "corrente").order("nome"),
   ]);
 
   const pagina = Math.max(1, Number(str(sp.pagina)) || 1);
@@ -86,12 +87,17 @@ export default async function ContasAReceberPage({ searchParams }: PageProps<"/r
     <>
       <Cabecalho
         titulo="Contas a receber"
-        subtitulo={`${periodo.rotulo} · ${linhas.filter((l) => l.tipo === "recebimento").length} recebimento(s)${veBanco ? " · lançados pela conciliação das contas bancárias" : ""}`}
+        subtitulo={`${periodo.rotulo} · ${linhas.filter((l) => l.tipo === "recebimento").length} recebimento(s)`}
         acoes={
-          u.perfil === "financeiro" ? (
-            <Link href="/contas-bancarias?tipo=entradas" className="rounded-md border border-sky-300 bg-white px-3 py-2 text-sm font-medium text-sky-800 hover:bg-sky-50">
-              Lançar pela conciliação
-            </Link>
+          veBanco ? (
+            <div className="flex flex-wrap gap-2">
+              {u.perfil === "financeiro" && (
+                <Link href="/contas-bancarias?tipo=entradas" className="rounded-md border border-sky-300 bg-white px-3 py-2 text-sm font-medium text-sky-800 hover:bg-sky-50">
+                  Lançar pela conciliação
+                </Link>
+              )}
+              <NovaReceita obras={(obras ?? []).map((o) => ({ id: o.id, nome: o.nome, cliente: o.cliente }))} categorias={categorias} contas={contas ?? []} />
+            </div>
           ) : undefined
         }
       />

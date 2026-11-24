@@ -1,0 +1,128 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import { lancarMedicao } from "@/app/(app)/recebimentos/actions";
+import { moeda } from "@/lib/formato";
+
+type Opcao = { id: string; nome: string };
+const r2 = (x: number) => Math.round((x + Number.EPSILON) * 100) / 100;
+
+/**
+ * Nota de medição › "Lançar receita e impostos": receita com o valor total, imposto retido (total − líquido)
+ * a pagar na conta onde o dinheiro cai e imposto devido (alíquota × total − retido) já pago na "Baixa manual".
+ */
+export function LancarMedicao({
+  nota,
+  cliente,
+  contas,
+  categoriasReceita,
+  categoriasDespesa,
+}: {
+  nota: { id: string; numero: string | null; obra: string; valor: number; liquido: number; emissao: string | null };
+  cliente: string;
+  contas: Opcao[];
+  categoriasReceita: Opcao[];
+  categoriasDespesa: Opcao[];
+}) {
+  const [aberta, setAberta] = useState(false);
+  const [aliq, setAliq] = useState("14");
+  const [estado, acao, enviando] = useActionState(lancarMedicao.bind(null, nota.id), null);
+  const a = Number(aliq.replace(",", "."));
+  const retido = r2(nota.valor - nota.liquido);
+  const devido = Number.isFinite(a) ? r2(r2((nota.valor * a) / 100) - retido) : NaN;
+  const medicao = categoriasReceita.find((c) => /medi/i.test(c.nome))?.id ?? "";
+  const imposto = categoriasDespesa.find((c) => /imposto/i.test(c.nome))?.id ?? "";
+  if (!aberta)
+    return (
+      <button type="button" onClick={() => setAberta(true)} className="rounded-md border border-sky-300 px-2 py-1 text-xs font-medium whitespace-nowrap text-sky-800 hover:bg-sky-50">
+        Lançar receita
+      </button>
+    );
+  return (
+    <div role="dialog" aria-label="Lançar receita e impostos" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4 text-left">
+      <form action={acao} className="max-h-[92vh] w-full max-w-xl space-y-3 overflow-y-auto rounded-lg bg-white p-5 text-sm shadow-xl">
+        <h3 className="text-base font-semibold text-slate-800">
+          Lançar receita e impostos — nota {nota.numero ? `nº ${nota.numero}` : ""} · {nota.obra}
+        </h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label>
+            Cliente *
+            <input name="cliente" required defaultValue={cliente} className="campo mt-1" maxLength={200} />
+          </label>
+          <label>
+            Vencimento (quando deve cair) *
+            <input type="date" name="vencimento" required defaultValue={nota.emissao ?? ""} className="campo mt-1" />
+          </label>
+          <label className="sm:col-span-2">
+            Conta onde o dinheiro vai cair *
+            <select name="conta_id" required defaultValue={contas.length === 1 ? contas[0].id : ""} className="campo mt-1">
+              <option value="">Escolha…</option>
+              {contas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Categoria da receita
+            <select name="categoria_receita" defaultValue={medicao} className="campo mt-1">
+              <option value="">— Sem categoria —</option>
+              {categoriasReceita.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Categoria dos impostos
+            <select name="categoria_imposto" defaultValue={imposto} className="campo mt-1">
+              <option value="">— Sem categoria —</option>
+              {categoriasDespesa.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Alíquota do imposto devido (%)
+            <input name="aliquota" value={aliq} onChange={(e) => setAliq(e.target.value)} inputMode="decimal" className="campo mt-1" aria-label="Alíquota" />
+          </label>
+        </div>
+        <table className="w-full text-sm" data-calculo-medicao>
+          <tbody className="divide-y divide-slate-100">
+            <tr>
+              <td className="py-1.5">Receita (valor total da nota)</td>
+              <td className="text-right font-medium tabular-nums">{moeda(nota.valor)}</td>
+            </tr>
+            <tr>
+              <td className="py-1.5">Imposto retido (total − líquido) · a pagar, baixa na conciliação</td>
+              <td className="text-right tabular-nums">{moeda(retido)}</td>
+            </tr>
+            <tr>
+              <td className="py-1.5">Imposto devido ({aliq}% × total − retido) · pago na “Baixa manual”</td>
+              <td className={`text-right tabular-nums ${devido < 0 ? "text-red-600" : ""}`}>{Number.isFinite(devido) ? moeda(devido) : "—"}</td>
+            </tr>
+            <tr>
+              <td className="py-1.5 text-slate-600">O banco deve creditar (líquido)</td>
+              <td className="text-right tabular-nums text-slate-600">{moeda(nota.liquido)}</td>
+            </tr>
+          </tbody>
+        </table>
+        {devido < 0 && <p className="text-xs text-red-700">Retenção acima da alíquota: o imposto devido não é lançado.</p>}
+        <p className="text-xs text-slate-500">Os impostos entram sem fluxo de aprovação; o engenheiro e o administrador do centro de custo são avisados.</p>
+        {estado?.erro && <p className="text-sm text-red-700">{estado.erro}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={() => setAberta(false)} className="rounded-md border border-slate-300 px-3 py-2 text-slate-700">
+            Voltar
+          </button>
+          <button type="submit" disabled={enviando} className="rounded-md bg-marca-700 px-3 py-2 font-semibold text-white disabled:opacity-50">
+            {enviando ? "Lançando…" : "Lançar receita e impostos"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

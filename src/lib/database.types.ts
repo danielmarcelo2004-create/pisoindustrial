@@ -347,14 +347,14 @@ isOneToOne: false
                   ]
                 },"fundos_fixos": {
                   Row: {
-                    "conta_bancaria_id": string | null,"created_at": string,"criado_por": string,"fechado_em": string | null,"fundo_anterior_id": string | null,"id": string,"obra_id": string,"pagamento_id": string | null,"pagamento_inicial_id": string | null,"pessoa_id": string,"recebimento_devolucao_id": string | null,"reembolso": number | null,"reposicao": number | null,"saldo_repassado": number | null,"status": Database["public"]['Enums']["status_fundo"],"valor": number
+                    "conta_bancaria_id": string | null,"created_at": string,"criado_por": string,"fechado_em": string | null,"fundo_anterior_id": string | null,"id": string,"obra_id": string,"pagamento_id": string | null,"pagamento_inicial_id": string | null,"pessoa_id": string,"receb_agencia": string | null,"receb_banco": string | null,"receb_chave_pix": string | null,"receb_conta": string | null,"receb_favorecido": string | null,"receb_forma": string | null,"receb_informado_em": string | null,"recebimento_devolucao_id": string | null,"reembolso": number | null,"reposicao": number | null,"reposicao_pedida_em": string | null,"saldo_repassado": number | null,"status": Database["public"]['Enums']["status_fundo"],"valor": number,"_dados_bancarios_fundo": string | null
                   }
-                  ComputedFields: never
+                  ComputedFields: "_dados_bancarios_fundo"
                   Insert: {
-                    "conta_bancaria_id"?: string | null,"created_at"?: string,"criado_por"?: string,"fechado_em"?: string | null,"fundo_anterior_id"?: string | null,"id"?: string,"obra_id": string,"pagamento_id"?: string | null,"pagamento_inicial_id"?: string | null,"pessoa_id": string,"recebimento_devolucao_id"?: string | null,"reembolso"?: number | null,"reposicao"?: number | null,"saldo_repassado"?: number | null,"status"?: Database["public"]['Enums']["status_fundo"],"valor": number
+                    "conta_bancaria_id"?: string | null,"created_at"?: string,"criado_por"?: string,"fechado_em"?: string | null,"fundo_anterior_id"?: string | null,"id"?: string,"obra_id": string,"pagamento_id"?: string | null,"pagamento_inicial_id"?: string | null,"pessoa_id": string,"receb_agencia"?: string | null,"receb_banco"?: string | null,"receb_chave_pix"?: string | null,"receb_conta"?: string | null,"receb_favorecido"?: string | null,"receb_forma"?: string | null,"receb_informado_em"?: string | null,"recebimento_devolucao_id"?: string | null,"reembolso"?: number | null,"reposicao"?: number | null,"reposicao_pedida_em"?: string | null,"saldo_repassado"?: number | null,"status"?: Database["public"]['Enums']["status_fundo"],"valor": number
                   }
                   Update: {
-                    "conta_bancaria_id"?: string | null,"created_at"?: string,"criado_por"?: string,"fechado_em"?: string | null,"fundo_anterior_id"?: string | null,"id"?: string,"obra_id"?: string,"pagamento_id"?: string | null,"pagamento_inicial_id"?: string | null,"pessoa_id"?: string,"recebimento_devolucao_id"?: string | null,"reembolso"?: number | null,"reposicao"?: number | null,"saldo_repassado"?: number | null,"status"?: Database["public"]['Enums']["status_fundo"],"valor"?: number
+                    "conta_bancaria_id"?: string | null,"created_at"?: string,"criado_por"?: string,"fechado_em"?: string | null,"fundo_anterior_id"?: string | null,"id"?: string,"obra_id"?: string,"pagamento_id"?: string | null,"pagamento_inicial_id"?: string | null,"pessoa_id"?: string,"receb_agencia"?: string | null,"receb_banco"?: string | null,"receb_chave_pix"?: string | null,"receb_conta"?: string | null,"receb_favorecido"?: string | null,"receb_forma"?: string | null,"receb_informado_em"?: string | null,"recebimento_devolucao_id"?: string | null,"reembolso"?: number | null,"reposicao"?: number | null,"reposicao_pedida_em"?: string | null,"saldo_repassado"?: number | null,"status"?: Database["public"]['Enums']["status_fundo"],"valor"?: number
                   }
                   Relationships: [
                     {
@@ -1022,6 +1022,9 @@ isOneToOne: false
 "_converter_provisao":
 { Args: { "p_pagamento_id": string,"p_provisao_id": string }; Returns: undefined
                            },
+"_dados_bancarios_fundo":
+{ Args: { "f": Omit<Database["public"]['Tables']["fundos_fixos"]['Row'], Database["public"]['Tables']["fundos_fixos"]['ComputedFields']> }; Returns: string
+                           },
 "_diff_jsonb":
 { Args: { "p_antes": Json,"p_depois": Json }; Returns: Record<string, unknown>
                            },
@@ -1066,6 +1069,9 @@ isOneToOne: false
                            },
 "_reais":
 { Args: { "p_valor": number }; Returns: string
+                           },
+"_saldo_disponivel_fundo":
+{ Args: { "p_fundo": string }; Returns: number
                            },
 "_saldo_fundo":
 { Args: { "p_fundo": string }; Returns: number
@@ -1240,6 +1246,9 @@ isOneToOne: false
 "importar_extrato":
 { Args: { "p_agencia": string,"p_arquivo": string,"p_banco": string,"p_conta": string,"p_fim": string,"p_inicio": string,"p_linhas": Json,"p_saldo": number,"p_saldo_em": string }; Returns: Json
                            },
+"informar_dados_bancarios_fundo":
+{ Args: { "p_agencia"?: string,"p_banco": string,"p_chave_pix"?: string,"p_conta"?: string,"p_favorecido": string,"p_forma": string,"p_fundo_id": string }; Returns: undefined
+                           },
 "is_financeiro":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },
@@ -1306,6 +1315,9 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"pedir_reposicao_fundo":
+{ Args: { "p_fundo_id": string }; Returns: undefined
+                           },
 "pode_atuar_obra":
 { Args: { "p_obra_id": string }; Returns: boolean
                            },

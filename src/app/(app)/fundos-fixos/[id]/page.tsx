@@ -7,7 +7,8 @@ import { getUsuario } from "@/lib/auth";
 import { STATUS_FUNDO, STATUS_GASTO, saldoDoFundo } from "@/lib/fundos";
 import { data, moeda } from "@/lib/formato";
 import { createClient } from "@/lib/supabase/server";
-import { decidirGasto, excluirGasto, fecharFundo, lancarGasto } from "../actions";
+import { decidirGasto, excluirGasto, fecharFundo, informarDadosBancarios, lancarGasto, pedirReposicao } from "../actions";
+import { CamposDadosBancarios } from "@/components/campos-dados-bancarios";
 import { AnexosGasto, type AnexoGasto } from "./anexos";
 
 export const metadata: Metadata = { title: "Fundo fixo" };
@@ -22,7 +23,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
 
   const { data: f } = await supabase
     .from("fundos_fixos")
-    .select("id, valor, status, pessoa_id, fechado_em, reposicao, reembolso, saldo_repassado, pagamento_id, pagamento_inicial_id, recebimento_devolucao_id, obra:obras(id, nome), pessoa:profiles!fundos_fixos_pessoa_id_fkey(nome)")
+    .select("id, valor, status, pessoa_id, receb_forma, receb_favorecido, receb_banco, receb_agencia, receb_conta, receb_chave_pix, receb_informado_em, reposicao_pedida_em, fechado_em, reposicao, reembolso, saldo_repassado, pagamento_id, pagamento_inicial_id, recebimento_devolucao_id, obra:obras(id, nome), pessoa:profiles!fundos_fixos_pessoa_id_fkey(nome)")
     .eq("id", id)
     .maybeSingle();
   if (!f) notFound();
@@ -38,6 +39,22 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
   ]);
 
   const fin = u.perfil === "financeiro";
+  const informados = Boolean(f.receb_informado_em);
+  // Quem ainda não informou: sugere os dados do último fundo dela (só para conferir e salvar)
+  const anterior =
+    f.pessoa_id === u.id && !informados
+      ? (
+          await supabase
+            .from("fundos_fixos")
+            .select("receb_forma, receb_favorecido, receb_banco, receb_agencia, receb_conta, receb_chave_pix")
+            .eq("pessoa_id", u.id)
+            .not("receb_informado_em", "is", null)
+            .order("receb_informado_em", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        ).data
+      : null;
+  const dadosIniciais = { forma: (informados ? f.receb_forma : anterior?.receb_forma) ?? null, favorecido: (informados ? f.receb_favorecido : anterior?.receb_favorecido) ?? f.pessoa?.nome ?? null, banco: (informados ? f.receb_banco : anterior?.receb_banco) ?? null, agencia: (informados ? f.receb_agencia : anterior?.receb_agencia) ?? null, conta: (informados ? f.receb_conta : anterior?.receb_conta) ?? null, chavePix: (informados ? f.receb_chave_pix : anterior?.receb_chave_pix) ?? null };
   const admin = u.perfil === "administrador" || u.perfil === "administrador_master";
   const minhas = f.pessoa_id === u.id;
   const fechado = f.status === "fechado";
@@ -48,6 +65,10 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
   const aprovados = (gastos ?? []).filter((g) => g.status === "aprovado").map((g) => g.valor);
   const gastoAprovado = aprovados.reduce((s, v) => s + v, 0);
   const saldo = saldoDoFundo(f.valor, aprovados);
+  // Quanto ainda dá para lançar: valor menos o aprovado e o que aguarda aprovação/assinatura
+  const comprometidos = (gastos ?? []).filter((g) => g.status === "aprovado" || g.status === "pendente").map((g) => g.valor);
+  const disponivel = saldoDoFundo(f.valor, comprometidos);
+  const semSaldo = f.status === "esgotado" || disponivel <= 0;
   const st = STATUS_FUNDO[f.status] ?? STATUS_FUNDO.em_andamento;
   const reposicaoPrevista = Math.min(gastoAprovado, f.valor);
   const reembolsoPrevisto = Math.max(gastoAprovado - f.valor, 0);
@@ -79,7 +100,21 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
           <p className="text-xl font-semibold tabular-nums">{moeda(reembolsoPrevisto)}</p>
           <p className="text-xs text-slate-500">Gasto aprovado acima do valor do fundo</p>
         </Cartao>
-        <Cartao titulo="Pode gastar?"><p className="text-sm">{fechado ? "Fundo fechado" : admin ? "Acompanhe e decida os gastos" : "Lance gastos com comprovante assinado"}</p></Cartao>
+        <Cartao titulo="Pode gastar?">
+          <p className="text-sm" data-pode-gastar>
+            {fechado
+              ? "Fundo fechado"
+              : semSaldo
+                ? "Não: fundo esgotado. O Financeiro precisa fechar e repor."
+                : admin
+                  ? "Acompanhe e decida os gastos"
+                  : minhas && !assinaturaUrl
+                    ? "Só depois de cadastrar sua assinatura"
+                    : minhas && !informados
+                      ? "Só depois de informar seus dados bancários"
+                      : "Sim: lance o gasto e assine o comprovante"}
+          </p>
+        </Cartao>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -90,7 +125,8 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
             ) : (
               <ul className="divide-y divide-slate-100">
                 {linhas.map((g) => {
-                  const sg = STATUS_GASTO[g.status] ?? STATUS_GASTO.pendente;
+                  const temAssinado = ((g.anexos ?? []) as AnexoGasto[]).some((a) => a.assinado);
+                  const sg = g.status === "pendente" && !temAssinado ? { rotulo: "Aguardando comprovante assinado", cor: "vermelho" as const } : (STATUS_GASTO[g.status] ?? STATUS_GASTO.pendente);
                   const pendente = g.status === "pendente";
                   return (
                     <li key={g.id} className="space-y-3 px-4 py-4 sm:px-6">
@@ -107,6 +143,11 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
                       {g.status === "aprovado" && (
                         <div className="text-xs text-slate-500">Saldo após este gasto: <span className="tabular-nums">{moeda(Math.max(g.saldoApos, 0))}</span></div>
                       )}
+                      {pendente && !temAssinado && (
+                        <Aviso tipo="alerta">
+                          Este gasto só conta no saldo depois que o comprovante for anexado <strong>e assinado</strong> por {minhas ? "você" : "quem gastou"}.
+                        </Aviso>
+                      )}
                       {g.status === "recusado" && (
                         <Aviso tipo="alerta">Recusado: {g.motivo_recusa}. Não entrou no saldo; lance de novo se for o caso.</Aviso>
                       )}
@@ -121,7 +162,10 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
                       {fin && !fechado && (
                         <FormAcao action={excluirGasto.bind(null, f.id, g.id)} enviar="Excluir gasto" variante="fantasma" confirmar="Excluir este gasto? Os comprovantes deixam de estar anexados a ele." />
                       )}
-                      {admin && pendente && (
+                      {admin && pendente && !temAssinado && (
+                        <p className="text-xs text-slate-500">A decisão fica disponível quando o comprovante assinado for anexado.</p>
+                      )}
+                      {admin && pendente && temAssinado && (
                         <div className="grid gap-3 rounded-md bg-amber-50 p-3 sm:grid-cols-2">
                           <FormAcao action={decidirGasto.bind(null, f.id, g.id, true)} enviar="Aprovar gasto" className="space-y-2" />
                           <FormAcao
@@ -145,7 +189,73 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
         </div>
 
         <div className="space-y-6">
-          {minhas && !fechado && (
+          {minhas && !fechado && semSaldo && (
+            <Cartao titulo="Lançar gasto">
+              <Aviso tipo="alerta">
+                <span data-fundo-esgotado>Fundo esgotado: os gastos já lançados cobrem todo o valor do fundo. Não dá para lançar novos gastos até o Financeiro fechar e repor o fundo; o novo fundo abre na hora, com o mesmo valor.</span>
+              </Aviso>
+              {f.reposicao_pedida_em ? (
+                <p className="mt-3 text-sm text-slate-600" data-reposicao-pedida>Reposição solicitada ao Financeiro em {data(f.reposicao_pedida_em.slice(0, 10))}. Assim que ele repuser, o novo fundo aparece aqui.</p>
+              ) : (
+                <div className="mt-3">
+                  <FormAcao action={pedirReposicao.bind(null, f.id)} enviar="Pedir reposição ao Financeiro" pendente="Pedindo…" />
+                </div>
+              )}
+            </Cartao>
+          )}
+          {minhas && !fechado && !semSaldo && !assinaturaUrl && (
+            <Cartao titulo="Lançar gasto">
+              <Aviso tipo="alerta">
+                <span data-sem-assinatura>
+                  Para lançar gastos você precisa ter a sua assinatura cadastrada: todo comprovante do fundo fixo é assinado por quem gastou.{" "}
+                  <Link href="/perfil" className="font-medium underline">Cadastrar minha assinatura</Link>.
+                </span>
+              </Aviso>
+            </Cartao>
+          )}
+          {minhas && !fechado && !semSaldo && !!assinaturaUrl && !informados && (
+            <Cartao titulo="Seus dados bancários">
+              <p className="mb-3 text-sm text-slate-600" data-dados-bancarios-obrigatorio>
+                Antes do primeiro gasto, informe como você recebe o reembolso e a reposição deste fundo: conta bancária ou PIX.
+                {anterior ? " Sugerimos os dados do seu último fundo: confira e salve." : ""}
+              </p>
+              <FormAcao action={informarDadosBancarios.bind(null, f.id)} enviar="Salvar dados bancários" pendente="Salvando…">
+                <CamposDadosBancarios inicial={dadosIniciais} />
+              </FormAcao>
+            </Cartao>
+          )}
+          {(minhas || fin || admin) && !fechado && informados && (
+            <Cartao titulo="Dados para recebimento">
+              <dl className="space-y-1 text-sm" data-dados-recebimento>
+                <div><dt className="inline text-slate-500">Favorecido: </dt><dd className="inline font-medium">{f.receb_favorecido}</dd></div>
+                <div><dt className="inline text-slate-500">Instituição: </dt><dd className="inline font-medium">{f.receb_banco}</dd></div>
+                {f.receb_forma === "pix" ? (
+                  <div><dt className="inline text-slate-500">Chave PIX: </dt><dd className="inline font-medium">{f.receb_chave_pix}</dd></div>
+                ) : (
+                  <>
+                    <div><dt className="inline text-slate-500">Agência: </dt><dd className="inline font-medium">{f.receb_agencia}</dd></div>
+                    <div><dt className="inline text-slate-500">Conta: </dt><dd className="inline font-medium">{f.receb_conta}</dd></div>
+                  </>
+                )}
+              </dl>
+              {minhas && (
+                <details className="mt-3 text-sm">
+                  <summary className="cursor-pointer text-marca-700">Corrigir dados</summary>
+                  <div className="mt-3">
+                    <FormAcao action={informarDadosBancarios.bind(null, f.id)} enviar="Salvar dados bancários" pendente="Salvando…">
+                      <CamposDadosBancarios inicial={dadosIniciais} />
+                    </FormAcao>
+                  </div>
+                </details>
+              )}
+            </Cartao>
+          )}
+          {fin && !fechado && !informados && (
+            <Cartao titulo="Dados para recebimento">
+              <p className="text-sm text-slate-600">A pessoa ainda não informou os dados bancários. Ela informa antes do primeiro gasto; eles vão na OP e no pagamento do fechamento.</p>
+            </Cartao>
+          )}
+          {minhas && !fechado && !semSaldo && !!assinaturaUrl && informados && (
             <Cartao titulo="Lançar gasto">
               <FormAcao action={lancarGasto.bind(null, f.id)} enviar="Lançar gasto" pendente="Lançando…">
                 <Campo rotulo="Descrição" obrigatorio>
@@ -161,13 +271,18 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
                 </div>
               </FormAcao>
               <p className="mt-3 text-xs text-slate-500">
-                {f.obra?.id && "Com administrador na obra, o gasto só abate o saldo depois da aprovação."}
+                O gasto só abate o saldo depois do comprovante assinado{f.obra?.id && " e, com administrador na obra, da aprovação"}. O último gasto pode passar do valor do fundo; depois dele o fundo fica esgotado.
               </p>
             </Cartao>
           )}
 
           {fin && !fechado && (
             <Cartao titulo="Fechar fundo">
+              {f.reposicao_pedida_em && (
+                <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900" data-reposicao-pedida>
+                  {f.pessoa?.nome} pediu a reposição em {data(f.reposicao_pedida_em.slice(0, 10))}: use "Repor e continuar" para ele seguir lançando gastos.
+                </p>
+              )}
               <div className="space-y-4 text-sm text-slate-700">
                 <FormAcao action={fecharFundo.bind(null, f.id)} enviar="Fechar e repor" pendente="Fechando…" className="space-y-2 rounded-md border border-slate-200 p-3" confirmar="Fechar e repor este fundo?">
                   <input type="hidden" name="modo" value="repor" />

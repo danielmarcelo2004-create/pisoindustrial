@@ -137,7 +137,7 @@ export function AnexosGasto({
       if (assinaturaUrl) {
         await montarAlvo(arquivo, arquivo.name);
       } else {
-        setOk("Comprovante anexado. Cadastre sua assinatura em Perfil para assiná-lo.");
+        setOk("Comprovante anexado, mas o gasto só conta com o comprovante assinado. Cadastre sua assinatura em Minha assinatura para assiná-lo.");
       }
     } catch (e) {
       setErro(`Não foi possível anexar: ${mensagemDe(e)}`);
@@ -282,7 +282,12 @@ export function AnexosGasto({
           />
         </label>
       )}
-      {podeEnviar && !assinaturaUrl && <p className="text-xs text-amber-700">Cadastre sua assinatura em Perfil para assinar os comprovantes.</p>}
+      {podeEnviar && !assinaturaUrl && (
+        <p className="text-xs text-amber-700">
+          A assinatura é obrigatória: o gasto não conta sem o comprovante assinado.{" "}
+          <a href="/perfil" className="font-medium underline">Cadastrar minha assinatura</a>.
+        </p>
+      )}
 
       {alvo && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4" role="dialog" aria-modal>

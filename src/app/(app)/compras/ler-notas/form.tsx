@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Aviso, Botao, Cartao, Selo, Vazio } from "@/components/ui";
-import { contarPaginas, criarOcr, lerPaginaNota, renderizarPagina } from "@/lib/ocr/comprovantes";
+import { contarPaginas, criarOcr, lerPaginaNota, renderizarPagina, textoPdfPorPosicao } from "@/lib/ocr/comprovantes";
 import { lerNotaTexto, type NotaLidaOcr } from "@/lib/ocr/nota-fiscal";
 import { registrarNotaLida } from "./actions";
 
@@ -22,6 +22,9 @@ export function FormLerNotas({ pendentes }: { pendentes: Pendente[] }) {
     const blob = await resp.blob();
     const arquivo = new File([blob], doc.arquivo, { type: doc.mime || blob.type });
     if (arquivo.type === "application/pdf") {
+      // PDF gerado pelo emissor (com texto): lê o texto direto, sem OCR; só cai no OCR se não der certo
+      const textoPdf = await textoPdfPorPosicao(arquivo).catch(() => "");
+      if (textoPdf.replace(/\s/g, "").length >= 40 && lerNotaTexto(textoPdf).confiavel) return textoPdf;
       const total = await contarPaginas(arquivo);
       let texto = "";
       for (let n = 1; n <= total; n++) {

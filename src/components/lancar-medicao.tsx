@@ -27,9 +27,16 @@ export function LancarMedicao({
   const [aberta, setAberta] = useState(false);
   const [aliq, setAliq] = useState("14");
   const [estado, acao, enviando] = useActionState(lancarMedicao.bind(null, nota.id), null);
+  const fmt = (v: number) => (Number.isFinite(v) ? v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "");
+  const lerBR = (v: string) => (v.trim() ? Number(v.replace(/\./g, "").replace(",", ".")) : NaN);
+  // Valores calculados, editáveis: enquanto o Financeiro não digitar, seguem o cálculo (e a alíquota)
+  const [retidoTxt, setRetidoTxt] = useState<string | null>(null);
+  const [devidoTxt, setDevidoTxt] = useState<string | null>(null);
   const a = Number(aliq.replace(",", "."));
-  const retido = r2(nota.valor - nota.liquido);
-  const devido = Number.isFinite(a) ? r2(r2((nota.valor * a) / 100) - retido) : NaN;
+  const retidoCalc = r2(nota.valor - nota.liquido);
+  const retido = retidoTxt === null ? retidoCalc : lerBR(retidoTxt);
+  const devidoCalc = Number.isFinite(a) && Number.isFinite(retido) ? r2(r2((nota.valor * a) / 100) - retido) : NaN;
+  const devido = devidoTxt === null ? devidoCalc : lerBR(devidoTxt);
   const medicao = categoriasReceita.find((c) => /medi/i.test(c.nome))?.id ?? "";
   const imposto = categoriasDespesa.find((c) => /imposto/i.test(c.nome))?.id ?? "";
   if (!aberta)
@@ -98,20 +105,38 @@ export function LancarMedicao({
               <td className="text-right font-medium tabular-nums">{moeda(nota.valor)}</td>
             </tr>
             <tr>
-              <td className="py-1.5">Imposto retido (total − líquido) · a pagar, baixa na conciliação</td>
-              <td className="text-right tabular-nums">{moeda(retido)}</td>
+              <td className="py-1.5">
+                Imposto retido (total − líquido) · entra em Contas a pagar, baixa na conciliação
+                {retidoTxt !== null && (
+                  <button type="button" className="ml-2 text-xs text-sky-700 hover:underline" onClick={() => setRetidoTxt(null)}>
+                    voltar ao cálculo ({moeda(retidoCalc)})
+                  </button>
+                )}
+              </td>
+              <td className="w-36 text-right">
+                <input name="retido" value={retidoTxt ?? fmt(retidoCalc)} onChange={(e) => setRetidoTxt(e.target.value)} inputMode="decimal" className="campo py-1 text-right tabular-nums" aria-label="Imposto retido" />
+              </td>
             </tr>
             <tr>
-              <td className="py-1.5">Imposto devido ({aliq}% × total − retido) · pago na “Baixa manual”</td>
-              <td className={`text-right tabular-nums ${devido < 0 ? "text-red-600" : ""}`}>{Number.isFinite(devido) ? moeda(devido) : "—"}</td>
+              <td className="py-1.5">
+                Imposto devido ({aliq}% × total − retido) · entra em Contas a pagar já pago, na “Baixa manual”
+                {devidoTxt !== null && (
+                  <button type="button" className="ml-2 text-xs text-sky-700 hover:underline" onClick={() => setDevidoTxt(null)}>
+                    voltar ao cálculo ({Number.isFinite(devidoCalc) ? moeda(devidoCalc) : "—"})
+                  </button>
+                )}
+              </td>
+              <td className="w-36 text-right">
+                <input name="devido" value={devidoTxt ?? fmt(devidoCalc)} onChange={(e) => setDevidoTxt(e.target.value)} inputMode="decimal" className={`campo py-1 text-right tabular-nums ${devido < 0 ? "text-red-600" : ""}`} aria-label="Imposto devido" />
+              </td>
             </tr>
             <tr>
-              <td className="py-1.5 text-slate-600">O banco deve creditar (líquido)</td>
-              <td className="text-right tabular-nums text-slate-600">{moeda(nota.liquido)}</td>
+              <td className="py-1.5 text-slate-600">O banco deve creditar (receita − retido)</td>
+              <td className="text-right tabular-nums text-slate-600">{Number.isFinite(retido) ? moeda(r2(nota.valor - retido)) : "—"}</td>
             </tr>
           </tbody>
         </table>
-        {devido < 0 && <p className="text-xs text-red-700">Retenção acima da alíquota: o imposto devido não é lançado.</p>}
+        {devido <= 0 && <p className="text-xs text-amber-800">Imposto devido zero ou negativo: ele não é lançado.</p>}
         <p className="text-xs text-slate-500">Os impostos entram sem fluxo de aprovação; o engenheiro e o administrador do centro de custo são avisados.</p>
         {estado?.erro && <p className="text-sm text-red-700">{estado.erro}</p>}
         <div className="flex justify-end gap-2">

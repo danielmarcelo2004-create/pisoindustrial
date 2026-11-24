@@ -59,14 +59,17 @@ const ir = async (p, url) => { await p.goto(BASE + url); await p.waitForLoadStat
     await p.getByRole('button', { name: 'Lançar receita' }).first().click();
     const d = p.getByRole('dialog', { name: 'Lançar receita e impostos' });
     const calc = await d.locator('[data-calculo-medicao]').innerText();
-    confere(/10\.000,00/.test(calc) && /600,00/.test(calc) && /800,00/.test(calc) && /9\.400,00/.test(calc), calc.replace(/\s+/g, ' '));
+    const ret = await d.locator('input[aria-label="Imposto retido"]').inputValue();
+    const dev = await d.locator('input[aria-label="Imposto devido"]').inputValue();
+    confere(/10\.000,00/.test(calc) && ret === '600,00' && dev === '800,00' && /9\.400,00/.test(calc), `${ret} / ${dev} / ${calc.replace(/\s+/g, ' ')}`);
     await d.locator('select[name=conta_id]').selectOption(bb);
+    await d.locator('input[aria-label="Imposto devido"]').fill('750,00'); // valores editáveis
     await p.screenshot({ path: path.join(DIR, 'med-lancar.png'), fullPage: false });
     await d.getByRole('button', { name: 'Lançar receita e impostos' }).click();
     await p.waitForURL(/\/recebimentos\/[0-9a-f-]{36}\?criada=1/, { timeout: 20000 }).catch(async () => { throw new Error('ficou na janela: ' + (await d.innerText()).slice(-200).replace(/\s+/g, ' ')); });
     rec = p.url().match(/recebimentos\/([0-9a-f-]{36})/)[1];
     const imp = await p.locator('[data-impostos-medicao]').innerText();
-    confere(/retido/.test(imp) && /devido/.test(imp) && /600,00/.test(imp) && /800,00/.test(imp), imp.replace(/\s+/g, ' '));
+    confere(/retido/.test(imp) && /devido/.test(imp) && /600,00/.test(imp) && /750,00/.test(imp), imp.replace(/\s+/g, ' '));
     await p.screenshot({ path: path.join(DIR, 'med-recebimento.png'), fullPage: true });
   });
 
@@ -83,6 +86,22 @@ const ir = async (p, url) => { await p.goto(BASE + url); await p.waitForLoadStat
     const r = await um(admin.from('recebimentos').select('status').eq('id', rec).single());
     const ret = await um(admin.from('pagamentos').select('status').eq('recebimento_id', rec).eq('imposto_medicao', 'retido').single());
     confere(r.status === 'recebido' && ret.status === 'pago', `${r.status} / ${ret.status}`);
+  });
+
+  await passo('Conciliação: "🔍 Buscar lançamento" numa entrada pesquisa as receitas em aberto (aporte de R$ 5.000)', async () => {
+    const imp = (await um(admin.from('extrato_importacoes').insert({ conta_id: bb, arquivo: 'e2e2.ofx', created_by: fin }).select('id').single())).id;
+    await um(admin.from('extrato_linhas').insert({ conta_id: bb, importacao_id: imp, data: hoje, valor: 5000, tipo: 'CREDIT', descricao: 'TED RECEBIDA SOCIO', fitid: 'M2' }));
+    await ir(p, `/contas-bancarias?conta=${bb}`);
+    const l = p.locator('[data-linha-banco]').filter({ has: p.locator('[data-descricao-banco]', { hasText: 'SOCIO' }) });
+    if (await l.getByRole('button', { name: 'Não é esta receita' }).count()) await l.getByRole('button', { name: 'Não é esta receita' }).click(); // já vinha sugerida
+    await l.getByRole('button', { name: /Buscar lançamento/ }).click();
+    const d = p.getByRole('dialog', { name: 'Buscar receita' });
+    await d.locator('input[aria-label="Pesquisar receita"]').fill('Aporte');
+    await d.locator('li', { hasText: 'Aporte fictício' }).locator('input').check();
+    await d.getByRole('button', { name: 'Conciliar' }).click();
+    await d.waitFor({ state: 'detached', timeout: 20000 });
+    const r = await um(admin.from('recebimentos').select('status').eq('descricao', 'Aporte fictício').single());
+    confere(r.status === 'recebido', r.status);
   });
 
   await passo('Contas a receber: a medição aparece como Recebida', async () => {

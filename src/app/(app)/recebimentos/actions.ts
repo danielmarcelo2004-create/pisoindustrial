@@ -128,6 +128,8 @@ export async function lancarMedicao(notaId: string, _: Estado, fd: FormData): Pr
     p_categoria_receita: (UUID.test(catR) ? catR : null) as string,
     p_categoria_imposto: (UUID.test(catI) ? catI : null) as string,
     p_aliquota: aliq,
+    ...(Number.isFinite(num(t(fd, "retido"))) ? { p_retido: num(t(fd, "retido")) } : {}),
+    ...(Number.isFinite(num(t(fd, "devido"))) ? { p_devido: num(t(fd, "devido")) } : {}),
   });
   if (error || !data) return { erro: mensagemErro(error) };
   revalidatePath("/", "layout");

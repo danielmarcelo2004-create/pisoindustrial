@@ -228,6 +228,7 @@ export function LinhaPendente({
   const router = useRouter();
   const [erro, setErro] = useState("");
   const [buscar, setBuscar] = useState(false);
+  const [buscarReceita, setBuscarReceita] = useState(false);
   const [descartada, setDescartada] = useState(false);
   const [inicial, setInicial] = useState<string[]>([]);
   const [pend, iniciar] = useTransition();
@@ -513,8 +514,8 @@ export function LinhaPendente({
                   </button>
                 )}
               </div>
-              {saida && (
-                <button type="button" className="text-xs font-medium text-sky-700 hover:underline" onClick={() => abrirBusca()}>
+              {(saida || receitas.length > 0) && (
+                <button type="button" className="text-xs font-medium text-sky-700 hover:underline" onClick={() => (saida ? abrirBusca() : setBuscarReceita(true))}>
                   🔍 Buscar lançamento
                 </button>
               )}
@@ -666,7 +667,69 @@ export function LinhaPendente({
       {semConta && completar && (
         <CompletarLancamento linha={linha} inicial={lanc} aoFechar={() => setCompletar(false)} aoConcluir={() => (setCompletar(false), router.refresh())} />
       )}
+      {buscarReceita && <BuscarReceita linha={linha} receitas={receitas} aoFechar={() => setBuscarReceita(false)} aoConciliar={() => (setBuscarReceita(false), router.refresh())} />}
       {buscar && <BuscarConta linha={linha} candidatos={candidatos} inicial={inicial} aoFechar={() => (setBuscar(false), setInicial([]))} aoConciliar={() => (setBuscar(false), router.refresh())} />}
+    </div>
+  );
+}
+
+/** "Buscar lançamento" numa entrada do extrato: pesquisa as receitas em aberto (Contas a receber). */
+function BuscarReceita({ linha, receitas, aoFechar, aoConciliar }: { linha: LinhaExtrato; receitas: ReceitaAberta[]; aoFechar: () => void; aoConciliar: () => void }) {
+  const [busca, setBusca] = useState("");
+  const [sel, setSel] = useState("");
+  const [erro, setErro] = useState("");
+  const [pend, iniciar] = useTransition();
+  const t = busca.trim().toLocaleLowerCase("pt-BR");
+  const n = Number(t.replace(/[r$\s]/g, "").replace(/\./g, "").replace(",", "."));
+  const lista = receitas
+    .filter((r) => !t || r.cliente.toLocaleLowerCase("pt-BR").includes(t) || r.descricao.toLocaleLowerCase("pt-BR").includes(t) || r.obra.toLocaleLowerCase("pt-BR").includes(t) || String(r.numero) === t.replace(/^n[ºo°]?\s*/, "") || (Number.isFinite(n) && n > 0 && (Math.abs(r.valor - n) < 0.005 || Math.abs(r.valor - r.retido - n) < 0.005)))
+    .sort((a, b) => Number(Math.abs(b.valor - b.retido - linha.valor) < 0.005 || Math.abs(b.valor - linha.valor) < 0.005) - Number(Math.abs(a.valor - a.retido - linha.valor) < 0.005 || Math.abs(a.valor - linha.valor) < 0.005));
+  const escolhida = receitas.find((r) => r.id === sel);
+  const bate = escolhida && (Math.abs(escolhida.valor - linha.valor) < 0.005 || Math.abs(escolhida.valor - escolhida.retido - linha.valor) < 0.005);
+  return (
+    <div role="dialog" aria-label="Buscar receita" className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white p-5 shadow-xl">
+        <h3 className="text-base font-semibold text-slate-800">Buscar receita para {moeda(linha.valor)} de {br(linha.data)}</h3>
+        <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Cliente, descrição, nº ou valor" className="campo mt-3" aria-label="Pesquisar receita" />
+        <ul className="mt-3 flex-1 divide-y divide-slate-100 overflow-y-auto rounded border border-slate-200">
+          {lista.length === 0 && <li className="px-3 py-3 text-sm text-slate-500">Nenhuma receita em aberto encontrada.</li>}
+          {lista.map((r) => (
+            <li key={r.id}>
+              <label className="flex cursor-pointer items-start gap-2 px-3 py-2 text-sm hover:bg-slate-50">
+                <input type="radio" name="receita" checked={sel === r.id} onChange={() => setSel(r.id)} className="mt-1" />
+                <span className="flex-1">
+                  <span className="font-medium">nº {r.numero} · {r.cliente}</span> · {r.descricao}
+                  <span className="block text-xs text-slate-500">
+                    {r.obra} · vence {br(r.vencimento)} · {moeda(r.valor)}
+                    {r.retido > 0 ? ` − retido ${moeda(r.retido)} = ${moeda(r.valor - r.retido)}` : ""}
+                  </span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        {escolhida && !bate && <p className="mt-2 text-xs text-amber-800">O valor do banco não bate com esta receita (total ou total − retido). Confira antes de conciliar.</p>}
+        {erro && <p className="mt-2 text-sm text-red-700">{erro}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className={`${botao} border border-slate-300`} onClick={aoFechar}>
+            Voltar
+          </button>
+          <button
+            type="button"
+            disabled={!sel || pend}
+            className={`${botao} bg-emerald-600 text-white hover:bg-emerald-700`}
+            onClick={() =>
+              iniciar(async () => {
+                const r = await conciliarReceita(linha.id, sel);
+                if (r.erro) return setErro(r.erro);
+                aoConciliar();
+              })
+            }
+          >
+            {pend ? "Conciliando…" : "Conciliar"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -24,7 +24,6 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const fin = u.perfil === "financeiro";
   const sup = u.perfil === "suprimentos";
   const assinante = u.perfil === "engenheiro" || u.perfil === "administrador" || u.perfil === "administrador_master";
-  const compras = u.perfil !== "engenheiro";
 
   const principal: ItemMenu[] = [
     { href: "/", rotulo: "Painel", icone: Icones.painel },
@@ -42,7 +41,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     ...(fin || sup ? [{ href: "/fornecedores", rotulo: "Fornecedores", icone: Icones.fornecedores }] : []),
     ...(fin || u.perfil === "administrador_master" ? [{ href: "/categorias", rotulo: "Categorias", icone: Icones.relatorios }] : []),
     { href: "/relatorios", rotulo: "Relatórios", icone: Icones.relatorios },
-    ...(compras ? [{ href: "/compras", rotulo: "Inteligência de Compras", icone: Icones.compras }] : []),
+    { href: "/compras", rotulo: "Inteligência de Compras", icone: Icones.compras },
     ...(fin ? [{ href: "/usuarios", rotulo: "Usuários e permissões", icone: Icones.usuarios }] : []),
     ...(fin ? [{ href: "/auditoria", rotulo: "Histórico de atividades", icone: Icones.auditoria }] : []),
   ];

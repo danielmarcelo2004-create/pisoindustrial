@@ -84,7 +84,7 @@ As regras ficam em `src/lib/notas-contabeis.ts`. Os testes estão em `tests/nota
 - Para NF em **PDF ou imagem**, o detalhe do pagamento oferece o **lançamento manual dos itens** (conferência humana).
 - A mesma NF-e (pela chave de acesso) não entra duas vezes. Se o documento da NF for substituído, os itens antigos saem da análise.
 - Alertas marcam preços mais de 15% acima da mediana do mesmo material e unidade (com no mínimo 3 compras). São **indicadores para análise**, não prova de sobrepreço.
-- Acesso: Financeiro e Suprimentos.
+- Acesso: **todos os perfis consultam e comparam preços, só para leitura, com as notas de todas as obras** (engenheiro, administrador, Suprimentos, Financeiro e Administrador master). Ler/lançar notas fica com o Financeiro e Suprimentos. O **CPF/CNPJ do fornecedor e a exportação para Excel** ficam com o Financeiro, Suprimentos e o Administrador master; os demais veem o nome do fornecedor (a regra vale no banco, pela visão `compras_itens`).
 
 ## Alertas por WhatsApp
 

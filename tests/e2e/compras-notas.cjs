@@ -66,6 +66,23 @@ async function novaDespesa(p, descricao, nota) {
     return (await p.getByText(/nota\(s\) lida\(s\)/).innerText()).slice(0, 160);
   });
 
+  await passo('Inteligência de Compras aberta a engenheiro e administrador: só leitura, sem CNPJ, sem Excel nem leitura de notas', async () => {
+    for (const email of ['engenheiro@demo.local', 'administrador@demo.local']) {
+      const c = await (await b.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+      c.on('pageerror', (e) => { errosJS++; console.log(`  ERRO JS [${email}] ${e.message.slice(0, 200)}`); });
+      await c.goto(BASE + '/login'); await c.fill('input[name=email]', email); await c.fill('input[name=senha]', 'Demo-1234');
+      await Promise.all([c.waitForURL((u) => !u.pathname.startsWith('/login')), c.click('button:has-text("Entrar")')]);
+      confere(await c.getByRole('link', { name: 'Inteligência de Compras' }).count() > 0, `${email}: sem o item no menu`);
+      await c.goto(BASE + '/compras'); await c.waitForLoadState('networkidle');
+      const t = await c.locator('main').innerText();
+      confere(/Vergalh/i.test(t), `${email}: não vê os preços de todas as obras`);
+      confere(!/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/.test(t), `${email}: o CNPJ do fornecedor apareceu`);
+      confere(await c.getByRole('link', { name: 'Exportar para Excel' }).count() === 0 && await c.getByRole('link', { name: 'Ler notas (PDF)' }).count() === 0, `${email}: viu botões de Excel ou leitura de notas`);
+      confere((await c.request.get(BASE + '/compras/exportar')).status() === 403, `${email}: a exportação não deveria abrir`);
+      confere((await c.goto(BASE + '/compras/ler-notas')) && !c.url().includes('/compras/ler-notas'), `${email}: abriu a leitura de notas`);
+    }
+  });
+
   console.log(`\nCompras × notas das despesas: ${ok}/${tot} · erros de JavaScript: ${errosJS}`);
   await b.close();
   process.exit(ok === tot && errosJS === 0 ? 0 : 1);

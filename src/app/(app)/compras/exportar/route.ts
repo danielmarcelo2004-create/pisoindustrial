@@ -8,6 +8,9 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: c } = await supabase.auth.getClaims();
   if (!c?.claims?.sub) return new Response("Não autorizado", { status: 401 });
+  // Excel com CNPJ dos fornecedores: Financeiro, Suprimentos e Administrador master
+  const { data: perfil } = await supabase.from("profiles").select("perfil").eq("id", c.claims.sub).maybeSingle();
+  if (!perfil || !["financeiro", "suprimentos", "administrador_master"].includes(perfil.perfil)) return new Response("Sem permissão", { status: 403 });
   const sp = request.nextUrl.searchParams;
   const g = (k: string) => sp.get(k) ?? "";
   const itens = await itensCompras({ material: g("material"), fornecedor: g("fornecedor"), obra: g("obra"), cidade: g("cidade"), uf: g("uf"), de: g("de"), ate: g("ate") });

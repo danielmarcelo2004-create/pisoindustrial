@@ -1651,6 +1651,9 @@ isOneToOne: false
 "reajustar_serie":
 { Args: { "p_pagamento_id": string,"p_valor": number }; Returns: number
                            },
+"recusar_fechamento_fundo":
+{ Args: { "p_fundo_id": string,"p_motivo"?: string }; Returns: undefined
+                           },
 "reenviar_pagamento":
 { Args: { "p_id": string,"p_observacao"?: string }; Returns: undefined
                            },

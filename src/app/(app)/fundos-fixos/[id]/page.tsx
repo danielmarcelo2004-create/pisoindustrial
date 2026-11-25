@@ -7,7 +7,7 @@ import { getUsuario } from "@/lib/auth";
 import { STATUS_FUNDO, STATUS_GASTO, saldoDoFundo } from "@/lib/fundos";
 import { data, moeda } from "@/lib/formato";
 import { createClient } from "@/lib/supabase/server";
-import { decidirGasto, excluirGasto, fecharFundo, informarDadosBancarios, lancarGasto, solicitarFechamento } from "../actions";
+import { decidirGasto, excluirGasto, fecharFundo, informarDadosBancarios, lancarGasto, recusarFechamento, solicitarFechamento } from "../actions";
 import { CamposDadosBancarios } from "@/components/campos-dados-bancarios";
 import { AnexosGasto, type AnexoGasto } from "./anexos";
 
@@ -183,7 +183,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
         </div>
 
         <div className="space-y-6">
-          {minhas && !fechado && !assinaturaUrl && (
+          {minhas && !fechado && !f.fechamento_solicitado_em && !assinaturaUrl && (
             <Cartao titulo="Lançar gasto">
               <Aviso tipo="alerta">
                 <span data-sem-assinatura>
@@ -193,7 +193,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
               </Aviso>
             </Cartao>
           )}
-          {minhas && !fechado && !!assinaturaUrl && !informados && (
+          {minhas && !fechado && !f.fechamento_solicitado_em && !!assinaturaUrl && !informados && (
             <Cartao titulo="Seus dados bancários">
               <p className="mb-3 text-sm text-slate-600" data-dados-bancarios-obrigatorio>
                 Antes do primeiro gasto, informe como você recebe o reembolso e a reposição deste fundo: conta bancária ou PIX.
@@ -235,7 +235,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
               <p className="text-sm text-slate-600">A pessoa ainda não informou os dados bancários. Ela informa antes do primeiro gasto; eles vão na OP e no pagamento do fechamento.</p>
             </Cartao>
           )}
-          {minhas && !fechado && !!assinaturaUrl && informados && (
+          {minhas && !fechado && !f.fechamento_solicitado_em && !!assinaturaUrl && informados && (
             <Cartao titulo="Lançar gasto">
               <FormAcao action={lancarGasto.bind(null, f.id)} enviar="Lançar gasto" pendente="Lançando…">
                 <Campo rotulo="Descrição" obrigatorio>
@@ -260,12 +260,12 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
             <Cartao titulo="Fechar o fundo">
               {f.fechamento_solicitado_em ? (
                 <p className="text-sm text-slate-600" data-fechamento-solicitado>
-                  Fechamento solicitado ao Financeiro em {data(f.fechamento_solicitado_em.slice(0, 10))}. Só o Financeiro fecha o fundo; você pode continuar lançando gastos até lá.
+                  Fechamento solicitado ao Financeiro em {data(f.fechamento_solicitado_em.slice(0, 10))}. Enquanto isso você não lança novos gastos: só o Financeiro fecha o fundo (e abre um novo) ou recusa o pedido.
                 </p>
               ) : (
                 <>
                   <p className="mb-3 text-sm text-slate-600">
-                    Acabou a necessidade do fundo ou os gastos passaram do valor? Solicite o fechamento: o Financeiro é avisado, fecha o fundo e paga o reembolso, se houver.
+                    Acabou a necessidade do fundo ou os gastos passaram do valor? Solicite o fechamento: o Financeiro é avisado, fecha o fundo e paga o reembolso, se houver. Depois de solicitar, você não lança novos gastos até ele fechar o fundo ou recusar o pedido.
                   </p>
                   <FormAcao action={solicitarFechamento.bind(null, f.id)} enviar="Solicitar fechamento do fundo" pendente="Solicitando…" confirmar="Solicitar ao Financeiro o fechamento deste fundo?" />
                 </>
@@ -277,8 +277,15 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
             <Cartao titulo="Fechar fundo">
               {f.fechamento_solicitado_em && (
                 <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900" data-fechamento-solicitado>
-                  {f.pessoa?.nome} solicitou o fechamento deste fundo em {data(f.fechamento_solicitado_em.slice(0, 10))}: use &ldquo;Repor e continuar&rdquo; para o fundo seguir ou &ldquo;Encerrar&rdquo; se acabou.
+                  {f.pessoa?.nome} solicitou o fechamento deste fundo em {data(f.fechamento_solicitado_em.slice(0, 10))}: use &ldquo;Repor e continuar&rdquo; para o fundo seguir ou &ldquo;Encerrar&rdquo; se acabou. Enquanto o pedido estiver aberto, a pessoa não lança novos gastos.
                 </p>
+              )}
+              {f.fechamento_solicitado_em && (
+                <FormAcao action={recusarFechamento.bind(null, f.id)} enviar="Recusar pedido de fechamento" variante="secundario" pendente="Recusando…" className="mb-4 space-y-2 rounded-md border border-slate-200 p-3" confirmar="Recusar o pedido? A pessoa volta a poder lançar gastos.">
+                  <p className="font-medium text-slate-800">Recusar o pedido</p>
+                  <p className="text-sm text-slate-600">Use quando o pedido foi feito por engano ou o fundo ainda tem saldo. A pessoa é avisada e volta a lançar gastos.</p>
+                  <input name="motivo" className="campo" maxLength={300} placeholder="Motivo (opcional)" aria-label="Motivo da recusa" />
+                </FormAcao>
               )}
               <div className="space-y-4 text-sm text-slate-700">
                 <FormAcao action={fecharFundo.bind(null, f.id)} enviar="Fechar e repor" pendente="Fechando…" className="space-y-2 rounded-md border border-slate-200 p-3" confirmar="Fechar e repor este fundo?">

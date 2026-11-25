@@ -970,6 +970,18 @@ test('regressão: fundo fixo não limita novos gastos (passa do valor vira reemb
   assert.ok(pedido.length >= 1, 'Financeiro avisado')
   const { data: marcado } = await admin.from('fundos_fixos').select('fechamento_solicitado_em').eq('id', fundo).single()
   assert.ok(marcado.fechamento_solicitado_em, 'pedido registrado no fundo')
+  // Depois de solicitar, a pessoa não lança mais gastos (até o Financeiro recusar ou fechar)
+  await rpcFalha('sup', 'lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Depois do pedido', p_data: '2026-11-06', p_valor: 5 }, /solicitou o fechamento/)
+  // Só o Financeiro recusa; a recusa avisa a pessoa e libera os gastos; dá para solicitar de novo
+  await rpcFalha('sup', 'recusar_fechamento_fundo', { p_fundo_id: fundo, p_motivo: 'x' }, /Somente o Financeiro/)
+  await rpcFalha('adm', 'recusar_fechamento_fundo', { p_fundo_id: fundo }, /Somente o Financeiro/)
+  await rpc('fin', 'recusar_fechamento_fundo', { p_fundo_id: fundo, p_motivo: 'ainda tem saldo' })
+  await rpcFalha('fin', 'recusar_fechamento_fundo', { p_fundo_id: fundo }, /Não há pedido/)
+  const { data: aviso } = await admin.from('notificacoes').select('mensagem').eq('user_id', u.sup.id).eq('titulo', 'Pedido de fechamento do fundo recusado')
+  assert.ok(aviso.length >= 1 && /ainda tem saldo/.test(aviso[0].mensagem), 'pessoa avisada com o motivo')
+  const g4 = await gastoFundo('sup', fundo, 'Quatro (depois da recusa)', '2026-11-06', 5)
+  assert.ok(g4)
+  await rpc('sup', 'solicitar_fechamento_fundo', { p_fundo_id: fundo })
   // Só o Financeiro fecha: a pessoa do fundo e o administrador não
   await rpcFalha('sup', 'fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: '2026-11-20', p_modo: 'encerrar' }, /Financeiro/)
   await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g1, p_aprovar: true })
@@ -978,7 +990,7 @@ test('regressão: fundo fixo não limita novos gastos (passa do valor vira reemb
   await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: '2026-11-20', p_modo: 'encerrar' })
   const { data: f } = await admin.from('fundos_fixos').select('status, reembolso').eq('id', fundo).single()
   assert.equal(f.status, 'fechado')
-  assert.equal(Number(f.reembolso), 60, 'gastos aprovados 160 num fundo de 100 = reembolso de 60')
+  assert.equal(Number(f.reembolso), 60, 'gastos aprovados 160 num fundo de 100 = reembolso de 60 (o gasto de 5 da recusa ficou pendente)')
   await rpcFalha('sup', 'solicitar_fechamento_fundo', { p_fundo_id: fundo }, /já foi fechado/)
 })
 

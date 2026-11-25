@@ -161,6 +161,17 @@ export async function decidirGasto(fundoId: string, gastoId: string, aprovar: bo
   redirect(`/fundos-fixos?decidido=${aprovar ? "aprovado" : "recusado"}`);
 }
 
+/** O Financeiro recusa o pedido de fechamento: a pessoa do fundo volta a poder lançar gastos. */
+export async function recusarFechamento(fundoId: string, _: Estado, fd: FormData): Promise<Estado> {
+  await exigirPerfil("financeiro");
+  if (!UUID.test(fundoId)) return { erro: "Fundo não encontrado." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("recusar_fechamento_fundo", { p_fundo_id: fundoId, p_motivo: t(fd, "motivo") || undefined });
+  if (error) return { erro: mensagemErro(error) };
+  revalidar(fundoId);
+  return { ok: "Pedido de fechamento recusado: a pessoa já pode lançar gastos de novo." };
+}
+
 export async function fecharFundo(fundoId: string, _: Estado, fd: FormData): Promise<Estado> {
   await exigirPerfil("financeiro");
   if (!UUID.test(fundoId)) return { erro: "Fundo não encontrado." };

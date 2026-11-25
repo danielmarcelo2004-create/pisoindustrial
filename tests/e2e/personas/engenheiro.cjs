@@ -813,6 +813,8 @@ rodar('Persona Engenheiro (Carlos)', async ({ b, passo, entrar }) => {
     await p.getByRole('button', { name: 'Solicitar fechamento do fundo' }).click();
     await p.locator('[data-fechamento-solicitado]').waitFor({ timeout: 20000 });
     await falha(eng.rpc('solicitar_fechamento_fundo', { p_fundo_id: fundoId }), /já foi solicitado/, 'solicitar fechamento duas vezes');
+    await falha(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundoId, p_descricao: 'Depois do pedido', p_data: hoje, p_valor: 1 }), /solicitou o fechamento/, 'lançar gasto depois de solicitar o fechamento');
+    confere(await p.getByRole('button', { name: 'Lançar gasto' }).count() === 0, 'ainda oferece lançar gasto depois de solicitar o fechamento');
     await falha(eng.rpc('fechar_fundo_fixo', { p_fundo_id: fundoId, p_vencimento: hoje, p_modo: 'encerrar', p_conta_id: null }), /Financeiro/, 'engenheiro fechar o próprio fundo');
     const aviso = await um(fin.from('notificacoes').select('titulo').ilike('titulo', 'Fechamento de fundo fixo%').limit(1));
     confere(aviso.length === 1, 'o Financeiro não foi avisado');

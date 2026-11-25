@@ -123,11 +123,27 @@ const hoje = new Date().toISOString().slice(0, 10);
   await fin.locator('[data-fechamentos-solicitados]').waitFor({ timeout: 30000 });
   await fin.locator('[data-fechamento-solicitado]').first().waitFor({ timeout: 30000 });
   console.log('✔ pedido de fechamento visível para o Financeiro (aviso na lista)');
+  // Depois de solicitar: a pessoa não lança novos gastos (o formulário some)
+  await engPage.reload();
+  await engPage.locator('[data-fechamento-solicitado]').waitFor({ timeout: 30000 });
+  if (await engPage.locator('button:has-text("Lançar gasto")').count()) throw new Error('regressão: depois de solicitar o fechamento ainda aparece "Lançar gasto"');
+  console.log('✔ depois de solicitar o fechamento, não dá para lançar novo gasto');
+  // O Financeiro recusa o pedido: a pessoa volta a lançar gastos e pode solicitar de novo
+  fin.on('dialog', (d) => d.accept());
+  await fin.click('a:visible:has-text("Ver fundo")');
+  await fin.fill('input[name=motivo]', 'Ainda tem saldo');
+  await fin.click('button:has-text("Recusar pedido de fechamento")');
+  await fin.locator('[data-fechamento-solicitado]').waitFor({ state: 'detached', timeout: 30000 });
+  await engPage.reload();
+  await engPage.locator('button:has-text("Lançar gasto")').first().waitFor({ timeout: 30000 });
+  if (await engPage.locator('[data-fechamento-solicitado]').count()) throw new Error('o pedido continua marcado depois da recusa');
+  await engPage.click('button:has-text("Solicitar fechamento do fundo")');
+  await engPage.locator('[data-fechamento-solicitado]').waitFor({ timeout: 30000 });
+  console.log('✔ Financeiro recusou o pedido: a pessoa voltou a lançar gastos e solicitou de novo');
 
   // 5. Financeiro fecha o fundo: reposição R$ 100,00 + reembolso R$ 20,00 num único pagamento
   await fin.goto(`${APP}/fundos-fixos`);
   await fin.click('a:visible:has-text("Ver fundo")');
-  fin.on('dialog', (d) => d.accept());
   await fin.click('button:has-text("Fechar e repor")');
   await fin.getByText(/Fundo reposto/).waitFor({ timeout: 60000 });
   const { data: ini } = await sb.from('pagamentos').select('valor, status').like('descricao', '%desembolso inicial').single();

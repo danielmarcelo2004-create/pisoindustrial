@@ -61,6 +61,10 @@ rodar('Persona Carlos — fundo estourado e reembolso', async ({ passo, entrar }
     confere(av.length === 1 && av[0].link === `/fundos-fixos/${fundo}`, 'Financeiro não foi avisado');
     const dup = await erroApp(() => um(eng.rpc('solicitar_fechamento_fundo', { p_fundo_id: fundo })));
     confere(dup && /já foi solicitado/.test(dup), `pedido duplicado: ${dup}`);
+    const bloqueado = await erroApp(() => um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Depois do pedido', p_data: hoje, p_valor: 5 })));
+    confere(bloqueado && /solicitou o fechamento/.test(bloqueado), `gasto depois de solicitar o fechamento: ${bloqueado}`);
+    await ir(p, `/fundos-fixos/${fundo}`);
+    confere(await p.locator('input[name=valor]').count() === 0, 'formulário de gasto continua na tela depois de solicitar');
     const sozinho = await erroApp(() => um(eng.rpc('fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: hoje, p_modo: 'repor', p_conta_id: null })));
     confere(sozinho && /Financeiro/.test(sozinho), `engenheiro fechou o próprio fundo: ${sozinho}`);
     await ir(pf, '/fundos-fixos');
@@ -69,6 +73,23 @@ rodar('Persona Carlos — fundo estourado e reembolso', async ({ passo, entrar }
     confere(Number(contador) >= 1, `contador do menu: "${contador}"`);
     await ir(pf, `/fundos-fixos/${fundo}`);
     await pf.getByText(/solicitou o fechamento deste fundo em/).first().waitFor({ timeout: 15000 });
+  });
+
+  await passo('Financeiro recusa o pedido (feito por engano): Carlos é avisado com o motivo, volta a lançar gastos e pode solicitar de novo; só o Financeiro recusa', async () => {
+    const naoFin = await erroApp(() => um(eng.rpc('recusar_fechamento_fundo', { p_fundo_id: fundo, p_motivo: 'eu mesmo' })));
+    confere(naoFin && /Somente o Financeiro/.test(naoFin), `engenheiro recusou o próprio pedido: ${naoFin}`);
+    await ir(pf, `/fundos-fixos/${fundo}`);
+    await pf.fill('input[name=motivo]', 'Pedido feito por engano');
+    await pf.getByRole('button', { name: 'Recusar pedido de fechamento' }).click();
+    // o aviso e o formulário saem da tela quando o pedido é recusado
+    await pf.locator('[data-fechamento-solicitado]').waitFor({ state: 'detached', timeout: 20000 });
+    const av = await um(admin.from('notificacoes').select('mensagem').eq('user_id', carlos.id).eq('titulo', 'Pedido de fechamento do fundo recusado').order('created_at', { ascending: false }).limit(1));
+    confere(av.length === 1 && /Pedido feito por engano/.test(av[0].mensagem), 'Carlos não foi avisado com o motivo');
+    const extra = await um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: `Depois da recusa ${M}`, p_data: hoje, p_valor: 10 }));
+    await um(admin.from('fundo_gastos').delete().eq('id', extra));
+    await ir(p, `/fundos-fixos/${fundo}`);
+    await p.getByRole('button', { name: 'Solicitar fechamento do fundo' }).click();
+    await p.locator('[data-fechamento-solicitado]').waitFor({ timeout: 20000 });
   });
 
   await passo('Financeiro "Fechar e repor": UM pagamento de R$ 1.270,00 (reposição 1.000 + reembolso 270) em PIX com os dados bancários do Carlos e OP FF-xxxx em PDF', async () => {

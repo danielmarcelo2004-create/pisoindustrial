@@ -3,6 +3,8 @@
 --   a diferença vira reembolso quando o Financeiro fecha.
 -- • Ela mesma pode solicitar o fechamento do fundo; só o Financeiro fecha. O pedido avisa o Financeiro (sino) e fica
 --   visível na aba Fundos fixos (aviso na lista e contador no menu).
+-- • Depois de solicitar o fechamento, a pessoa não lança mais gastos até o Financeiro recusar o pedido (pedido por engano
+--   ou fundo ainda com saldo) ou fechar o fundo (o "repor e continuar" abre um fundo novo, já liberado para gastos).
 
 alter table public.fundos_fixos add column if not exists fechamento_solicitado_em timestamptz;
 update public.fundos_fixos set fechamento_solicitado_em = reposicao_pedida_em
@@ -23,6 +25,9 @@ begin
   end if;
   if f.status = 'fechado' then
     raise exception 'Este fundo já foi fechado.';
+  end if;
+  if f.fechamento_solicitado_em is not null then
+    raise exception 'Você solicitou o fechamento deste fundo: aguarde o Financeiro fechar o fundo ou recusar o pedido para lançar novos gastos.';
   end if;
   if f.receb_informado_em is null then
     raise exception 'Informe seus dados bancários (instituição e conta ou chave PIX) antes de lançar o primeiro gasto.';
@@ -76,5 +81,43 @@ end
 $$;
 revoke all on function public.solicitar_fechamento_fundo(uuid) from public, anon;
 grant execute on function public.solicitar_fechamento_fundo(uuid) to authenticated;
+
+-- O Financeiro recusa o pedido (feito por engano ou com o fundo ainda com saldo): a pessoa volta a lançar gastos.
+create or replace function public.recusar_fechamento_fundo(p_fundo_id uuid, p_motivo text default null)
+returns void
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  f public.fundos_fixos;
+  v_motivo text := nullif(trim(p_motivo), '');
+  v_obra text;
+begin
+  if public.meu_perfil() <> 'financeiro' then
+    raise exception 'Somente o Financeiro recusa o pedido de fechamento.' using errcode = '42501';
+  end if;
+  select * into f from public.fundos_fixos where id = p_fundo_id for update;
+  if not found then
+    raise exception 'Fundo não encontrado.';
+  end if;
+  if f.status = 'fechado' then
+    raise exception 'Este fundo já foi fechado.';
+  end if;
+  if f.fechamento_solicitado_em is null then
+    raise exception 'Não há pedido de fechamento para recusar neste fundo.';
+  end if;
+  update public.fundos_fixos set fechamento_solicitado_em = null where id = p_fundo_id;
+  select nome into v_obra from public.obras where id = f.obra_id;
+  perform public._notificar(
+    f.pessoa_id,
+    'Pedido de fechamento do fundo recusado',
+    'O Financeiro recusou o pedido de fechamento do seu fundo em ' || coalesce(v_obra, '') || '.'
+      || coalesce(' Motivo: ' || v_motivo || '.', '') || ' Você já pode lançar gastos de novo.',
+    '/fundos-fixos/' || f.id, null);
+  perform public._auditar('fundo_fixo', p_fundo_id::text, 'recusou_fechamento',
+    'Pedido de fechamento recusado' || coalesce(': ' || v_motivo, ''), f.obra_id, null, null, null);
+end
+$$;
+revoke all on function public.recusar_fechamento_fundo(uuid, text) from public, anon;
+grant execute on function public.recusar_fechamento_fundo(uuid, text) to authenticated;
 
 alter table public.fundos_fixos drop column if exists reposicao_pedida_em;

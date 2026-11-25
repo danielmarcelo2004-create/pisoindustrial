@@ -229,14 +229,13 @@ async function entrar(browser, email) {
   await shot(page, '38-pagamentos-financeiro');
   await ctx.close();
 
-  // 6. Engenheiro não vê Compras; administrador não vê OP de outra obra
+  // 6. Engenheiro consulta Compras (só leitura, sem Excel); administrador não vê OP de outra obra
   ({ ctx, page } = await entrar(browser, 'engenheiro@demo.local'));
   await page.goto(BASE + '/compras');
-  if (!page.url().includes('sem-permissao')) throw new Error('engenheiro acessou Compras');
+  if (page.url().includes('sem-permissao')) throw new Error('engenheiro deveria consultar a Inteligência de Compras (regra atual: aberta a todos, só leitura)');
   const r2 = await ctx.request.get(BASE + '/compras/exportar');
-  const wb3 = new ExcelJS.Workbook(); await wb3.xlsx.load(await r2.body());
-  if (wb3.worksheets[0].rowCount > 1) throw new Error('engenheiro exportou dados de compras');
-  ok('Engenheiro não acessa a Inteligência de Compras (nem pela exportação)');
+  if (r2.status() !== 403) throw new Error('engenheiro não deveria exportar o Excel de compras (status ' + r2.status() + ')');
+  ok('Engenheiro consulta a Inteligência de Compras (só leitura), mas não exporta o Excel');
   await ctx.close();
   ({ ctx, page } = await entrar(browser, 'administrador2@demo.local'));
   const r3 = await page.goto(opUrl);

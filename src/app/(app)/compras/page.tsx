@@ -27,8 +27,10 @@ const preco = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curr
 const qtd = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 
 export default async function ComprasPage({ searchParams }: PageProps<"/compras">) {
-  const u = await exigirPerfil("financeiro", "suprimentos", "administrador", "administrador_master");
+  const u = await exigirPerfil("financeiro", "suprimentos", "engenheiro", "administrador", "administrador_master");
+  // Todos consultam e comparam preços (só leitura). Ler/lançar notas: Financeiro e Suprimentos. CPF/CNPJ e Excel: também o master.
   const podeLer = u.perfil === "financeiro" || u.perfil === "suprimentos";
+  const veDocumento = podeLer || u.perfil === "administrador_master";
   const sp = await searchParams;
   const s = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const filtros: FiltrosCompras = {
@@ -43,11 +45,13 @@ export default async function ComprasPage({ searchParams }: PageProps<"/compras"
   const grupoSel = s("grupo");
 
   const supabase = await createClient();
-  const [todos, { data: obras }, { data: docsNf }] = await Promise.all([
+  const [todos, { data: obrasItens }, { data: docsNf }] = await Promise.all([
     itensCompras(filtros),
-    supabase.from("obras").select("id, nome").order("nome"),
-    supabase.from("documentos").select("id").eq("tipo", "nota_fiscal").eq("ativo", true).limit(2000),
+    // O filtro de obra lista as obras que têm notas na análise (de todas as obras, não só as do usuário)
+    supabase.from("compras_itens").select("obra_id, obra_nome").limit(20000),
+    podeLer ? supabase.from("documentos").select("id").eq("tipo", "nota_fiscal").eq("ativo", true).limit(2000) : Promise.resolve({ data: [] as { id: string }[] }),
   ]);
+  const obras = [...new Map((obrasItens ?? []).map((o) => [o.obra_id, { id: o.obra_id, nome: o.obra_nome }])).values()].sort((a, b) => a.nome.localeCompare(b.nome));
   // Notas anexadas às despesas que ainda não entraram na análise (nem como NF-e, nem como nota de serviço)
   const idsNf = (docsNf ?? []).map((d) => d.id);
   const [{ data: nfLidas }, { data: nfServico }] = idsNf.length
@@ -74,12 +78,16 @@ export default async function ComprasPage({ searchParams }: PageProps<"/compras"
         subtitulo="Análise dos preços extraídos das notas fiscais já anexadas aos pagamentos"
         acoes={
           <div className="flex flex-wrap gap-2">
-            <Link href="/compras/ler-notas" className={classeBotao("secundario")}>
-              Ler notas (PDF)
-            </Link>
-            <a href={`/compras/exportar?${qs}`} className={classeBotao("secundario")}>
-              Exportar para Excel
-            </a>
+            {podeLer && (
+              <Link href="/compras/ler-notas" className={classeBotao("secundario")}>
+                Ler notas (PDF)
+              </Link>
+            )}
+            {veDocumento && (
+              <a href={`/compras/exportar?${qs}`} className={classeBotao("secundario")}>
+                Exportar para Excel
+              </a>
+            )}
           </div>
         }
       />
@@ -101,7 +109,7 @@ export default async function ComprasPage({ searchParams }: PageProps<"/compras"
       <Cartao className="mb-4">
         <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <input name="material" defaultValue={filtros.material} placeholder="Material / produto" className="campo" />
-          <input name="fornecedor" defaultValue={filtros.fornecedor} placeholder="Fornecedor ou CNPJ" className="campo" />
+          <input name="fornecedor" defaultValue={filtros.fornecedor} placeholder={veDocumento ? "Fornecedor ou CNPJ" : "Fornecedor"} className="campo" />
           <select name="obra" defaultValue={filtros.obra} className="campo">
             <option value="">Todas as obras</option>
             {(obras ?? []).map((o) => (

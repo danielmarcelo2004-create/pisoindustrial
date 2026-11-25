@@ -476,8 +476,9 @@ test('NF: registro de itens, duplicidade de chave, acesso e substituição', asy
   assert.equal(vf.length, 1)
   assert.equal(vf[0].cidade, 'Salvador')
   assert.equal(vf[0].unidade, 'M3')
-  const { data: ve } = await u.eng.client.from('compras_itens').select('id')
-  assert.equal(ve.length, 0)
+  // Regra atual: a Inteligência de Compras é aberta a todos (só leitura), mas o CNPJ do fornecedor só sai para quem alimenta o módulo
+  const { data: ve } = await u.eng.client.from('compras_itens').select('fornecedor_nome, fornecedor_cnpj').eq('nota_id', vf[0].nota_id)
+  assert.deepEqual(ve.map((x) => [x.fornecedor_nome, x.fornecedor_cnpj]), [['Concreteira', null]])
 
   await anexar('sup', p, 'nota_fiscal', docId, 'NF cancelada e reemitida')
   const { data: inativa } = await admin.from('nf_notas').select('ativa').eq('chave', chave).single()
@@ -548,6 +549,38 @@ test('administrador master pode ser responsável pela obra', async () => {
 // -----------------------------------------------------------------------------
 // Alteração de pagamento liberado ou pago (sem nova aprovação, com motivo)
 // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Inteligência de Compras aberta a todos (só leitura), com o CPF/CNPJ do fornecedor mascarado
+// -----------------------------------------------------------------------------
+test('regressão: engenheiro e administrador comparam preços de TODAS as obras (só leitura) sem ver o CNPJ do fornecedor', async () => {
+  // Nota registrada numa obra que engenheiro e administradores NÃO acompanham (obra C: sem responsáveis)
+  const pagId = await novoPagamento('fin', obraC.id)
+  const docId = await anexar('fin', await pagamento(pagId), 'nota_fiscal')
+  const descricao = `Item compras para todos ${sufixo}`
+  const nota = { chave: ('2926111234567800019055001' + Date.now() + '0000000000').slice(0, 44), numero: '777', serie: '1', data_emissao: '2026-11-02', emitente_cnpj: '12.345.678/0001-90', emitente_nome: 'Fornecedor Compras Todos', emitente_uf: 'BA', valor_total: 900 }
+  await rpc('fin', 'registrar_nf', { p_documento_id: docId, p_nota: nota, p_itens: [{ numero_item: 1, descricao, descricao_normalizada: descricao.toLowerCase(), unidade: 'm3', quantidade: 3, valor_unitario: 300, valor_total: 900 }], p_origem: 'xml' })
+
+  // Todos leem pela visão, inclusive a obra que não é deles; o CNPJ só aparece para quem alimenta o módulo e para o master
+  for (const chave of ['eng', 'adm', 'adm2']) {
+    const { data, error } = await u[chave].client.from('compras_itens').select('obra_nome, fornecedor_nome, fornecedor_cnpj, valor_unitario').eq('descricao', descricao)
+    assert.ok(!error, error?.message)
+    assert.equal(data.length, 1, `${chave}: vê o item da obra que não acompanha`)
+    assert.deepEqual([data[0].fornecedor_nome, data[0].fornecedor_cnpj, Number(data[0].valor_unitario)], ['Fornecedor Compras Todos', null, 300], `${chave}: vê o nome e o preço, mas não o CNPJ`)
+  }
+  for (const chave of ['fin', 'sup', 'master']) {
+    const { data } = await u[chave].client.from('compras_itens').select('fornecedor_cnpj').eq('descricao', descricao)
+    assert.equal(data[0]?.fornecedor_cnpj, '12345678000190', `${chave}: vê o CNPJ`)
+  }
+  // As tabelas com o CNPJ e os dados fiscais completos não saem para engenheiro e administrador
+  for (const chave of ['eng', 'adm']) {
+    const { data: notas } = await u[chave].client.from('nf_notas').select('id, emitente_cnpj')
+    const { data: itens } = await u[chave].client.from('nf_itens').select('id')
+    assert.equal(notas.length + itens.length, 0, `${chave}: não lê nf_notas/nf_itens direto`)
+    const { error: eIns } = await u[chave].client.from('nf_notas').insert({ obra_id: obraC.id, chave: 'x'.repeat(44), emitente_nome: 'x', emitente_cnpj: '1' })
+    assert.ok(eIns, `${chave}: não grava notas`)
+  }
+})
+
 // -----------------------------------------------------------------------------
 // Privacidade (auditoria A-01, A-02 e A-03): dados pessoais e bancários só saem para quem precisa
 // -----------------------------------------------------------------------------

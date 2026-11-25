@@ -9,24 +9,21 @@ export const metadata: Metadata = { title: "Ler notas fiscais" };
 export default async function LerNotasPage() {
   await exigirPerfil("financeiro", "suprimentos");
   const supabase = await createClient();
-  const { data: docs } = await supabase
-    .from("documentos")
-    .select("id, nome_arquivo, mime_type, created_at, pagamento:pagamentos(numero, favorecido, obra:obras(nome))")
-    .eq("tipo", "nota_fiscal")
-    .eq("ativo", true)
-    .neq("mime_type", "application/xml")
-    .order("created_at", { ascending: false })
-    .limit(300);
-  const { data: jaRegistradas } = await supabase.from("nf_notas").select("documento_id").in("documento_id", (docs ?? []).map((d) => d.id).concat(["00000000-0000-0000-0000-000000000000"]));
-  const registradas = new Set((jaRegistradas ?? []).map((n) => n.documento_id));
-  const pendentes = (docs ?? []).filter((d) => !registradas.has(d.id)).map((d) => ({
-    id: d.id,
+  // Consulta exata no banco (as mais recentes primeiro), sem janela fixa que esconda as antigas
+  const LIMITE = 300;
+  const [{ data: docs }, { data: total }] = await Promise.all([
+    supabase.rpc("notas_fiscais_pendentes", { p_limite: LIMITE }),
+    supabase.rpc("notas_fiscais_pendentes_total"),
+  ]);
+  const pendentes = (docs ?? []).map((d) => ({
+    id: d.documento_id,
     arquivo: d.nome_arquivo,
     mime: d.mime_type ?? "",
-    numero: d.pagamento?.numero !== undefined && d.pagamento?.numero !== null ? String(d.pagamento.numero) : null,
-    favorecido: d.pagamento?.favorecido ?? "",
-    obra: d.pagamento?.obra?.nome ?? "",
+    numero: d.pagamento_numero !== null && d.pagamento_numero !== undefined ? String(d.pagamento_numero) : null,
+    favorecido: d.favorecido ?? "",
+    obra: d.obra_nome ?? "",
   }));
+  const restantes = Math.max(0, (total ?? pendentes.length) - pendentes.length);
   return (
     <>
       <Cabecalho
@@ -34,6 +31,11 @@ export default async function LerNotasPage() {
         subtitulo="A leitura acontece no seu navegador. Só entram na análise as notas nítidas, em que todas as linhas de itens fecham a conta. As demais ficam de fora."
         voltar={{ href: "/compras", rotulo: "Inteligência de Compras" }}
       />
+      {restantes > 0 && (
+        <p className="mb-4 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900" data-notas-restantes>
+          Mostrando as {pendentes.length} mais recentes. Faltam {restantes} nota(s) além destas: leia estas e abra a página de novo para continuar.
+        </p>
+      )}
       <FormLerNotas pendentes={pendentes} />
     </>
   );

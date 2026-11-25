@@ -1387,6 +1387,11 @@ isOneToOne: false
 "arquivar_linhas":
 { Args: { "p_classificacao": string,"p_ids": (string)[],"p_observacao"?: string }; Returns: number
                            },
+"arquivos_orfaos":
+{ Args: { "p_dias"?: number }; Returns: {
+              "caminho": string,"enviado_em": string,"tamanho": number
+            }[]
+                           },
 "atualizar_categoria":
 { Args: { "p_ativo": boolean,"p_id": string,"p_nome": string }; Returns: undefined
                            },
@@ -1614,6 +1619,14 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"notas_fiscais_pendentes":
+{ Args: { "p_limite"?: number,"p_somente_pdf"?: boolean }; Returns: {
+              "documento_id": string,"favorecido": string,"mime_type": string,"nome_arquivo": string,"obra_nome": string,"pagamento_numero": number,"storage_path": string
+            }[]
+                           },
+"notas_fiscais_pendentes_total":
+{ Args: Record<PropertyKey, never>; Returns: number
+                           },
 "pedir_reposicao_fundo":
 { Args: { "p_fundo_id": string }; Returns: undefined
                            },

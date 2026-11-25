@@ -1,3 +1,4 @@
+import { descartarArquivoEnviado } from "@/lib/storage-limpeza";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -69,7 +70,10 @@ export async function enviarDocumento(
     p_substitui_id: substitui?.id ?? undefined,
     p_motivo: substitui?.motivo ?? undefined,
   });
-  if (error) return { erro: mensagemErro(error) };
+  if (error) {
+    await descartarArquivoEnviado(caminho); // o arquivo já subiu: não deixa órfão no Storage
+    return { erro: mensagemErro(error) };
+  }
   const id = data as string;
 
   if (tipo === "nota_fiscal" && ext === "xml") {

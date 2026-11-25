@@ -16,7 +16,7 @@ export function FormLerNotas({ pendentes }: { pendentes: Pendente[] }) {
   const marcar = (id: string, r: Resultado) => setResultados((s) => ({ ...s, [id]: r }));
 
   /** Texto da nota: PDF (todas as páginas) ou imagem. */
-  async function textoDoDocumento(doc: Pendente, worker: Awaited<ReturnType<typeof criarOcr>>) {
+  async function textoDoDocumento(doc: Pendente, obterWorker: () => Promise<Awaited<ReturnType<typeof criarOcr>>>) {
     const resp = await fetch(`/documentos/${doc.id}`, { redirect: "follow" });
     if (!resp.ok) throw new Error("não foi possível abrir o arquivo");
     const blob = await resp.blob();
@@ -28,13 +28,13 @@ export function FormLerNotas({ pendentes }: { pendentes: Pendente[] }) {
       const total = await contarPaginas(arquivo);
       let texto = "";
       for (let n = 1; n <= total; n++) {
-        texto += "\n" + (await lerPaginaNota(worker, await renderizarPagina(arquivo, n, 4)));
+        texto += "\n" + (await lerPaginaNota(await obterWorker(), await renderizarPagina(arquivo, n, 4)));
       }
       return texto;
     }
     const url = URL.createObjectURL(arquivo);
     try {
-      return await lerPaginaNota(worker, url);
+      return await lerPaginaNota(await obterWorker(), url);
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -42,12 +42,15 @@ export function FormLerNotas({ pendentes }: { pendentes: Pendente[] }) {
 
   async function lerTodas() {
     setRodando(true);
-    const worker = await criarOcr();
+    // O OCR só é iniciado se alguma nota precisar (PDF com texto não precisa). Se ele não iniciar, a nota
+    // fica com erro e o botão volta ao normal (antes o botão podia ficar travado em "Lendo…").
+    let worker: Awaited<ReturnType<typeof criarOcr>> | null = null;
+    const obterWorker = async () => (worker ??= await criarOcr());
     try {
       for (const doc of pendentes) {
         marcar(doc.id, { status: "lendo", detalhe: "Lendo…" });
         try {
-          const texto = await textoDoDocumento(doc, worker);
+          const texto = await textoDoDocumento(doc, obterWorker);
           const lida: NotaLidaOcr = lerNotaTexto(texto);
           if (!lida.confiavel) {
             marcar(doc.id, { status: "nao_lida", detalhe: lida.motivos.join("; ") });
@@ -57,11 +60,15 @@ export function FormLerNotas({ pendentes }: { pendentes: Pendente[] }) {
           if (r?.erro) marcar(doc.id, { status: "erro", detalhe: r.erro });
           else marcar(doc.id, { status: "registrada", detalhe: `${lida.itens.length} item(ns) registrados` });
         } catch (e) {
-          marcar(doc.id, { status: "erro", detalhe: (e as Error).message });
+          marcar(doc.id, { status: "erro", detalhe: `${(e as Error).message || "falha na leitura"}. Recarregue a página e tente de novo.` });
         }
       }
     } finally {
-      await worker.terminate();
+      try {
+        await (worker as { terminate: () => Promise<unknown> } | null)?.terminate();
+      } catch {
+        /* o worker já pode ter caído */
+      }
       setRodando(false);
     }
   }

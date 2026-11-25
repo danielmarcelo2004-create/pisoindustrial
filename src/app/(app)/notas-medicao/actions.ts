@@ -1,5 +1,6 @@
 "use server";
 
+import { descartarArquivoEnviado } from "@/lib/storage-limpeza";
 import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { exigirPerfil } from "@/lib/auth";
@@ -68,6 +69,9 @@ export async function registrarNotaMedicao(fd: FormData): Promise<{ id?: string;
       descricao: t(fd, "descricao") || undefined,
     },
   });
-  if (error || !notaId) return { erro: mensagemErro(error) };
+  if (error || !notaId) {
+    await descartarArquivoEnviado(caminho); // o arquivo já subiu: não deixa órfão no Storage
+    return { erro: mensagemErro(error) };
+  }
   return { id: notaId as string };
 }

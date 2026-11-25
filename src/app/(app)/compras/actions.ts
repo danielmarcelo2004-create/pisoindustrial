@@ -88,35 +88,24 @@ export async function lerNotasPendentes(_: Estado, __: FormData): Promise<Estado
   const { extrairTextoPdf } = await import("@/lib/pdf-texto");
   const { lerNotaTexto } = await import("@/lib/ocr/nota-fiscal");
   const supabase = await createClient();
-  const { data: docs } = await supabase
-    .from("documentos")
-    .select("id, storage_path, pagamento:pagamentos(favorecido)")
-    .eq("tipo", "nota_fiscal")
-    .eq("ativo", true)
-    .eq("mime_type", "application/pdf")
-    .order("created_at", { ascending: false })
-    .limit(500);
-  const ids = (docs ?? []).map((d) => d.id);
-  const [{ data: lidas }, { data: contabeis }] = await Promise.all([
-    supabase.from("nf_notas").select("documento_id").in("documento_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
-    supabase.from("notas_contabeis").select("documento_id").in("documento_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
-  ]);
-  const feitas = new Set([...(lidas ?? []), ...(contabeis ?? [])].map((x) => x.documento_id));
+  // Consulta exata no banco: PDFs ainda sem leitura (as mais recentes primeiro), sem janela fixa que esconda as antigas
+  const { data: docs } = await supabase.rpc("notas_fiscais_pendentes", { p_somente_pdf: true, p_limite: 200 });
   let ok = 0;
   let semLeitura = 0;
-  for (const d of (docs ?? []).filter((x) => !feitas.has(x.id)).slice(0, 60)) {
+  for (const d of docs ?? []) {
     const arq = await supabase.storage.from("documentos").download(d.storage_path);
     if (arq.error || !arq.data) { semLeitura++; continue; }
     const texto = await extrairTextoPdf(Buffer.from(await arq.data.arrayBuffer()));
     const lida = texto ? lerNotaTexto(texto) : null;
     if (!lida?.confiavel || !lida.itens.length) { semLeitura++; continue; }
-    if (!lida.nota.emitente_nome) lida.nota.emitente_nome = ((Array.isArray(d.pagamento) ? d.pagamento[0] : d.pagamento) as { favorecido: string } | null)?.favorecido ?? "Fornecedor";
-    const { error } = await supabase.rpc("registrar_nf", { p_documento_id: d.id, p_nota: lida.nota as never, p_itens: lida.itens as never, p_origem: "ocr" });
+    if (!lida.nota.emitente_nome) lida.nota.emitente_nome = d.favorecido ?? "Fornecedor";
+    const { error } = await supabase.rpc("registrar_nf", { p_documento_id: d.documento_id, p_nota: lida.nota as never, p_itens: lida.itens as never, p_origem: "ocr" });
     if (error) semLeitura++;
     else ok++;
   }
   revalidatePath("/compras", "layout");
+  const { data: restam } = await supabase.rpc("notas_fiscais_pendentes_total");
   return {
-    ok: `${ok} nota(s) lida(s) e incluída(s) na análise.${semLeitura ? ` ${semLeitura} não puderam ser lidas automaticamente (imagem, PDF escaneado ou nota de serviço): use "Ler notas (PDF)".` : ""}`,
+    ok: `${ok} nota(s) lida(s) e incluída(s) na análise.${restam ? ` Ainda há ${restam} nota(s) sem leitura no total.` : ""}${semLeitura ? ` ${semLeitura} não puderam ser lidas automaticamente (imagem, PDF escaneado ou nota de serviço): use "Ler notas (PDF)".` : ""}`,
   };
 }

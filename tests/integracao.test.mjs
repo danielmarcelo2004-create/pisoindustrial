@@ -581,6 +581,27 @@ test('regressão: engenheiro e administrador comparam preços de TODAS as obras 
   }
 })
 
+test('regressão: notas sem leitura vêm de consulta exata (sem janela fixa) só para Financeiro/Suprimentos; arquivos órfãos só para o Financeiro', async () => {
+  const nova = async () => anexar('sup', await pagamento(await novoPagamento('sup', obraA.id)), 'nota_fiscal')
+  const [lida, pendente1, pendente2] = [await nova(), await nova(), await nova()]
+  const chave = ('2926111234567800019055001' + Date.now() + '0000000001').slice(0, 44)
+  await rpc('sup', 'registrar_nf', { p_documento_id: lida, p_nota: { chave, numero: '55', serie: '1', data_emissao: '2026-11-03', emitente_cnpj: '12.345.678/0001-90', emitente_nome: 'Fornecedor X', emitente_uf: 'BA', valor_total: 10 }, p_itens: [{ numero_item: 1, descricao: 'Item X', descricao_normalizada: 'item x', unidade: 'un', quantidade: 1, valor_unitario: 10, valor_total: 10 }], p_origem: 'xml' })
+  for (const k of ['sup', 'fin']) {
+    const pend = await rpc(k, 'notas_fiscais_pendentes', { p_limite: 500 })
+    const ids = pend.map((x) => x.documento_id)
+    assert.ok(ids.includes(pendente1) && ids.includes(pendente2) && !ids.includes(lida), `${k}: lista só as notas ainda sem leitura`)
+    assert.ok((await rpc(k, 'notas_fiscais_pendentes_total')) >= 2)
+    assert.equal((await rpc(k, 'notas_fiscais_pendentes', { p_limite: 1 })).length, 1, `${k}: respeita o limite`)
+  }
+  for (const k of ['eng', 'adm']) {
+    assert.equal((await rpc(k, 'notas_fiscais_pendentes', { p_limite: 500 })).length, 0, `${k}: não vê a fila de leitura`)
+    assert.equal(await rpc(k, 'notas_fiscais_pendentes_total'), 0)
+  }
+  // Arquivos órfãos: só o Financeiro enxerga a lista (nada é apagado automaticamente)
+  assert.ok(Array.isArray(await rpc('fin', 'arquivos_orfaos', { p_dias: 2 })))
+  for (const k of ['eng', 'adm', 'sup']) assert.equal((await rpc(k, 'arquivos_orfaos', { p_dias: 2 })).length, 0, `${k}: sem acesso à lista de órfãos`)
+})
+
 // -----------------------------------------------------------------------------
 // Privacidade (auditoria A-01, A-02 e A-03): dados pessoais e bancários só saem para quem precisa
 // -----------------------------------------------------------------------------

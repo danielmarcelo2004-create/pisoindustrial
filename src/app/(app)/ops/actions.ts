@@ -1,5 +1,6 @@
 "use server";
 
+import { descartarArquivoEnviado } from "@/lib/storage-limpeza";
 import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -219,7 +220,10 @@ export async function enviarOP(id: string, _: Estado, _fd?: FormData): Promise<E
         p_tamanho: bytes.length,
         p_sha256: createHash("sha256").update(bytes).digest("hex"),
       });
-      if (reg.error) throw reg.error;
+      if (reg.error) {
+        await descartarArquivoEnviado(caminho);
+        throw reg.error;
+      }
 
       // Engenheiro que criou a OP: a assinatura feita na solicitação é aplicada ao PDF oficial (já numerado).
       if (u.perfil === "engenheiro" && op.assinatura_criador_pos) {
@@ -241,7 +245,10 @@ export async function enviarOP(id: string, _: Estado, _fd?: FormData): Promise<E
           p_tamanho: assinada.length,
           p_sha256: createHash("sha256").update(assinada).digest("hex"),
         });
-        if (conc.error) throw conc.error;
+        if (conc.error) {
+          await descartarArquivoEnviado(caminhoAss);
+          throw conc.error;
+        }
       }
     } catch (e) {
       aviso = `&aviso=${encodeURIComponent("A OP foi enviada, mas o PDF não foi anexado: " + mensagemErro(e as { message?: string }))}`;
@@ -293,19 +300,26 @@ export async function duplicarOP(id: string, _: Estado): Promise<Estado> {
     p_desconto: Number(op.desconto ?? 0),
   });
   if (error) return { erro: mensagemErro(error) };
-  // A cópia leva também categoria, competência e repetição da OP original.
+  // A cópia leva também parcelas, categoria, conta, competência e repetição da OP original.
+  // Se alguma dessas partes não for copiada, o rascunho avisa o que ficou de fora (nada some em silêncio).
   const novaId = data as string;
+  const naoCopiados: string[] = [];
+  const tenta = async (nome: string, chamada: PromiseLike<{ error: { message?: string } | null }>) => {
+    const { error: e } = await chamada;
+    if (e) naoCopiados.push(nome);
+  };
   if ((op.ordem_parcelas?.length ?? 0) >= 2) {
-    await supabase.rpc("definir_parcelas_op", {
+    await tenta("parcelas", supabase.rpc("definir_parcelas_op", {
       p_id: novaId,
       p_parcelas: op.ordem_parcelas.map((pc) => ({ vencimento: pc.vencimento, valor: Number(pc.valor) })),
-    });
+    }));
   }
-  if (op.categoria_id) await supabase.rpc("definir_categoria_op", { p_ordem_id: novaId, p_categoria_id: op.categoria_id });
-  if (op.conta_bancaria_id) await supabase.rpc("definir_conta_bancaria_op", { p_ordem_id: novaId, p_conta_id: op.conta_bancaria_id });
-  if (op.data_competencia) await supabase.rpc("definir_competencia_op", { p_ordem_id: novaId, p_data: op.data_competencia });
+  if (op.categoria_id) await tenta("categoria", supabase.rpc("definir_categoria_op", { p_ordem_id: novaId, p_categoria_id: op.categoria_id }));
+  if (op.conta_bancaria_id) await tenta("conta bancária", supabase.rpc("definir_conta_bancaria_op", { p_ordem_id: novaId, p_conta_id: op.conta_bancaria_id }));
+  if (op.data_competencia) await tenta("competência", supabase.rpc("definir_competencia_op", { p_ordem_id: novaId, p_data: op.data_competencia }));
   if (op.repetir_intervalo && op.repetir_vezes) {
-    await supabase.rpc("definir_repeticao_op", { p_ordem_id: novaId, p_intervalo: op.repetir_intervalo, p_vezes: op.repetir_vezes });
+    await tenta("repetição", supabase.rpc("definir_repeticao_op", { p_ordem_id: novaId, p_intervalo: op.repetir_intervalo, p_vezes: op.repetir_vezes }));
   }
+  if (naoCopiados.length) redirect(`/ops/${novaId}/editar?aviso=${encodeURIComponent(`A cópia foi criada, mas não copiou: ${naoCopiados.join(", ")}. Confira e preencha.`)}`);
   redirect(`/ops/${novaId}/editar`);
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { descartarArquivoEnviado } from "@/lib/storage-limpeza";
 import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -139,7 +140,10 @@ async function anexarOpDoFundo(fundoId: string, pagamentoId: string) {
     p_tamanho: bytes.length,
     p_sha256: createHash("sha256").update(bytes).digest("hex"),
   });
-  if (reg.error) throw reg.error;
+  if (reg.error) {
+    await descartarArquivoEnviado(caminho);
+    throw reg.error;
+  }
 }
 
 export async function decidirGasto(fundoId: string, gastoId: string, aprovar: boolean, _: Estado, fd: FormData): Promise<Estado> {

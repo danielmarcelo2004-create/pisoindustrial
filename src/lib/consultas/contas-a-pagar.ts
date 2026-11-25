@@ -36,6 +36,8 @@ export type LinhaConta = {
   serie?: boolean;
   temAnexo: boolean;
   baixavel: boolean;
+  /** Pago e conciliado com o extrato bancário (✓). Pago sem conciliação = baixa manual. */
+  conciliado?: boolean;
   criadoPor: string | null;
   /** Provisão (para a janela "Lançar despesa"). */
   provisao?: { id: string; descricao: string; obra: string | null; vencimento: string | null; valor: number | null; serie: boolean };
@@ -247,6 +249,16 @@ export async function listarContas(f: FiltrosContas) {
       provisao: { id: v.id, descricao: v.descricao, obra: v.obra?.nome ?? null, vencimento: v.vencimento, valor: v.valor_estimado === null ? null : Number(v.valor_estimado), serie: !!v.pagamento_origem_id || Boolean(m) },
       grupo: "provisao",
     });
+  }
+  // Pago por conciliação com o extrato (✓) ou por baixa manual
+  const idsPagos = [...new Set(linhas.filter((l) => l.situacao === "pago" && l.pagamentoId).map((l) => l.pagamentoId as string))];
+  if (idsPagos.length) {
+    const ligados = new Set<string>();
+    for (let i = 0; i < idsPagos.length; i += 300) {
+      const { data: conc } = await supabase.rpc("conciliados_dos_pagamentos", { p_ids: idsPagos.slice(i, i + 300) });
+      for (const x of conc ?? []) ligados.add(`${x.pagamento_id}|${x.parcela_id ?? ""}`);
+    }
+    for (const l of linhas) if (l.situacao === "pago") l.conciliado = ligados.has(`${l.pagamentoId}|${l.parcelaId ?? ""}`);
   }
   linhas.sort((a, b) => (a.vencimento ?? "9999").localeCompare(b.vencimento ?? "9999") || (a.numero ?? 0) - (b.numero ?? 0));
 

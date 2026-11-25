@@ -1315,6 +1315,25 @@ describe('conciliação bancária', () => {
     void error
   })
 
+  test('regressão: pago por conciliação (com ✓) e baixa manual se distinguem, para quem vê o pagamento', async () => {
+    const conciliada = await liberada(321.45)
+    const manual = await liberada(123.4)
+    await importar('fin', [L('2026-12-11', -321.45, 'PAGTO CONCILIADO MARCA', 'M1')])
+    const [l] = await linhaPor(conta, 'PAGTO CONCILIADO MARCA')
+    await rpc('fin', 'conciliar_linha', { p_linha_id: l.id, p_itens: [{ tipo: 'pagamento', id: conciliada.id }] })
+    await rpc('fin', 'registrar_baixa', { p_id: manual.id, p_pago_em: '2026-12-11' })
+    const ids = [conciliada.id, manual.id]
+    for (const k of ['fin', mst, 'sup']) {
+      const r = await rpc(k, 'conciliados_dos_pagamentos', { p_ids: ids })
+      assert.deepEqual(r.map((x) => x.pagamento_id), [conciliada.id], `${k}: só a conciliada (a baixa manual não entra)`)
+    }
+    // Quem não vê a obra não recebe nada (nem o fato de estar conciliada)
+    for (const k of ['eng', 'adm']) assert.equal((await rpc(k, 'conciliados_dos_pagamentos', { p_ids: ids })).length, 0, `${k}: sem acesso à obra`)
+    // Desfeita a conciliação, volta a ser baixa manual
+    await rpc('fin', 'desfazer_conciliacao', { p_linha_id: l.id, p_voltar_aberto: false, p_motivo: 'teste' })
+    assert.equal((await rpc('fin', 'conciliados_dos_pagamentos', { p_ids: ids })).length, 0)
+  })
+
   test('reimportar não duplica; linhas idênticas legítimas entram na quantidade certa; outra agência = outra conta', async () => {
     let r = await importar('fin', [L('2026-12-01', -100, 'PRIMEIRA', 'A1'), L('2026-12-02', -9.5, 'TAR PIX', 'B2'), L('2026-12-02', -9.5, 'TAR PIX', 'B2')])
     assert.deepEqual([r.novas, r.repetidas], [2, 1])

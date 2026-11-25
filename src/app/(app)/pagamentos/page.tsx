@@ -22,7 +22,19 @@ const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : "
 const semRS = (v: number) => moeda(v).replace("R$", "").trim();
 function Situacao({ l }: { l: LinhaConta }) {
   if (l.situacao === "provisao") return <span className="rounded-full border border-dashed border-slate-300 px-2.5 py-0.5 text-xs font-medium text-slate-500">Provisão</span>;
-  if (l.situacao === "pago") return <Selo cor="verde">Pago ✓</Selo>;
+  if (l.situacao === "pago") {
+    // ✓ = conciliado com o extrato bancário; sem ✓ = baixa manual (ainda não conciliada)
+    return l.conciliado ? (
+      <span title="Conciliado com o extrato bancário" data-pago-via="conciliado">
+        <Selo cor="verde">Pago ✓</Selo>
+      </span>
+    ) : (
+      <span title="Baixa manual: ainda não conciliada com o extrato bancário" data-pago-via="manual">
+        <Selo cor="verde">Pago</Selo>
+        <span className="mt-0.5 block text-[11px] leading-tight text-slate-500">baixa manual</span>
+      </span>
+    );
+  }
   if (l.situacao === "vencido") return <Selo cor="vermelho">Vencido</Selo>;
   if (l.situacao === "hoje") return <Selo cor="vermelho">Vence hoje</Selo>;
   if (l.situacao === "a_pagar") return <Selo cor="azul">A pagar</Selo>;

@@ -1402,6 +1402,11 @@ isOneToOne: false
 "cancelar_serie":
 { Args: { "p_a_partir"?: string,"p_pagamento_id": string }; Returns: number
                            },
+"conciliados_dos_pagamentos":
+{ Args: { "p_ids": (string)[] }; Returns: {
+              "pagamento_id": string,"parcela_id": string
+            }[]
+                           },
 "conciliar_aplicacao":
 { Args: { "p_ids": (string)[] }; Returns: number
                            },

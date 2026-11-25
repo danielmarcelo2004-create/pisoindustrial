@@ -1902,4 +1902,42 @@ describe('conciliação bancária', () => {
     const { data: cb } = await admin.from('contas_bancarias').select('nome').eq('id', conta).single(); assert.equal(cb.nome, 'Caixa Parceria 4')
     await falha('sup', 'renomear_conta_bancaria', { p_id: conta, p_nome: 'X' }, 'Somente o Financeiro')
   })
+
+  test('regressão: fila de avisos — duas reservas não pegam o mesmo aviso; falha volta para a fila com espera e vira "falhou" na 4ª; só o serviço executa', async () => {
+    const mk = async (titulo) => (await admin.from('notificacoes').insert({ user_id: u.fin.id, titulo, mensagem: 'x', email_status: 'pendente', whatsapp_status: 'pendente' }).select('id').single()).data.id
+    const ids = [await mk(`Fila A ${sufixo}`), await mk(`Fila B ${sufixo}`)]
+    // Quem não é o serviço não reserva nem registra resultado
+    const semAcesso = await u.fin.client.rpc('reservar_avisos', { p_canal: 'email', p_limite: 5 })
+    assert.ok(semAcesso.error, 'usuário comum reservou avisos')
+    const [r1, r2] = await Promise.all([admin.rpc('reservar_avisos', { p_canal: 'email', p_limite: 1000 }), admin.rpc('reservar_avisos', { p_canal: 'email', p_limite: 1000 })])
+    assert.ifError(r1.error); assert.ifError(r2.error)
+    const a = new Set(r1.data), b = new Set(r2.data)
+    for (const id of ids) assert.equal([a.has(id), b.has(id)].filter(Boolean).length, 1, 'o mesmo aviso foi reservado duas vezes (ou nenhuma)')
+    const { data: est } = await admin.from('notificacoes').select('email_status').eq('id', ids[0]).single()
+    assert.equal(est.email_status, 'processando')
+    // Falhas: 1ª a 3ª voltam para "pendente" com espera; a 4ª vira "falhou"
+    for (let n = 1; n <= 4; n++) {
+      await admin.from('notificacoes').update({ email_status: 'processando', email_proxima_em: null }).eq('id', ids[0])
+      const { data: res, error } = await admin.rpc('registrar_resultado_aviso', { p_canal: 'email', p_id: ids[0], p_ok: false, p_erro: 'provedor fora do ar' })
+      assert.ifError(error)
+      assert.equal(res, n < 4 ? 'pendente' : 'falhou', `tentativa ${n}`)
+      const { data: x } = await admin.from('notificacoes').select('email_status, email_tentativas, email_proxima_em').eq('id', ids[0]).single()
+      assert.equal(x.email_tentativas, n)
+      if (n < 4) assert.ok(new Date(x.email_proxima_em) > new Date(), 'sem espera antes da nova tentativa')
+    }
+    // Aviso com espera ainda não é reservado; sucesso marca enviado
+    await admin.from('notificacoes').update({ email_status: 'pendente', email_proxima_em: new Date(Date.now() + 3600e3).toISOString() }).eq('id', ids[1])
+    const r3 = await admin.rpc('reservar_avisos', { p_canal: 'email', p_limite: 1000 })
+    assert.ok(!r3.data.includes(ids[1]), 'reservou aviso que ainda está em espera')
+    await admin.from('notificacoes').update({ email_proxima_em: null }).eq('id', ids[1])
+    const r4 = await admin.rpc('reservar_avisos', { p_canal: 'email', p_limite: 1000 })
+    assert.ok(r4.data.includes(ids[1]))
+    await admin.rpc('registrar_resultado_aviso', { p_canal: 'email', p_id: ids[1], p_ok: true })
+    const { data: ok } = await admin.from('notificacoes').select('email_status, email_enviado_em').eq('id', ids[1]).single()
+    assert.equal(ok.email_status, 'enviado'); assert.ok(ok.email_enviado_em)
+    // Reserva esquecida há mais de 15 minutos volta para a fila (execução que caiu no meio)
+    await admin.from('notificacoes').update({ whatsapp_status: 'processando', whatsapp_reservado_em: new Date(Date.now() - 20 * 60e3).toISOString() }).eq('id', ids[0])
+    const w = await admin.rpc('reservar_avisos', { p_canal: 'whatsapp', p_limite: 1000 })
+    assert.ok(w.data.includes(ids[0]), 'reserva esquecida não voltou para a fila')
+  })
 })

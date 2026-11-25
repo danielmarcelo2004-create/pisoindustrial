@@ -645,14 +645,14 @@ isOneToOne: false
                   ]
                 },"notificacoes": {
                   Row: {
-                    "created_at": string,"email_enviado_em": string | null,"email_erro": string | null,"email_status": string | null,"id": string,"lida_em": string | null,"link": string | null,"mensagem": string | null,"pagamento_id": string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em": string | null,"whatsapp_erro": string | null,"whatsapp_status": string | null
+                    "created_at": string,"email_enviado_em": string | null,"email_erro": string | null,"email_proxima_em": string | null,"email_reservado_em": string | null,"email_status": string | null,"email_tentativas": number,"id": string,"lida_em": string | null,"link": string | null,"mensagem": string | null,"pagamento_id": string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em": string | null,"whatsapp_erro": string | null,"whatsapp_proxima_em": string | null,"whatsapp_reservado_em": string | null,"whatsapp_status": string | null,"whatsapp_tentativas": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"email_enviado_em"?: string | null,"email_erro"?: string | null,"email_status"?: string | null,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_status"?: string | null
+                    "created_at"?: string,"email_enviado_em"?: string | null,"email_erro"?: string | null,"email_proxima_em"?: string | null,"email_reservado_em"?: string | null,"email_status"?: string | null,"email_tentativas"?: number,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_proxima_em"?: string | null,"whatsapp_reservado_em"?: string | null,"whatsapp_status"?: string | null,"whatsapp_tentativas"?: number
                   }
                   Update: {
-                    "created_at"?: string,"email_enviado_em"?: string | null,"email_erro"?: string | null,"email_status"?: string | null,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo"?: string,"user_id"?: string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_status"?: string | null
+                    "created_at"?: string,"email_enviado_em"?: string | null,"email_erro"?: string | null,"email_proxima_em"?: string | null,"email_reservado_em"?: string | null,"email_status"?: string | null,"email_tentativas"?: number,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo"?: string,"user_id"?: string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_proxima_em"?: string | null,"whatsapp_reservado_em"?: string | null,"whatsapp_status"?: string | null,"whatsapp_tentativas"?: number
                   }
                   Relationships: [
                     {
@@ -1687,6 +1687,9 @@ isOneToOne: false
 "registrar_nota_medicao":
 { Args: { "p_dados": Json,"p_mime": string,"p_nome": string,"p_obra_id": string,"p_sha256": string,"p_storage_path": string }; Returns: string
                            },
+"registrar_resultado_aviso":
+{ Args: { "p_canal": string,"p_erro"?: string,"p_id": string,"p_ok": boolean }; Returns: string
+                           },
 "remover_anexo_gasto":
 { Args: { "p_anexo_id": string }; Returns: undefined
                            },
@@ -1698,6 +1701,9 @@ isOneToOne: false
                            },
 "renomear_conta_bancaria":
 { Args: { "p_id": string,"p_nome": string }; Returns: undefined
+                           },
+"reservar_avisos":
+{ Args: { "p_canal": string,"p_limite": number }; Returns: string[]
                            },
 "restaurar_linha":
 { Args: { "p_id": string }; Returns: undefined

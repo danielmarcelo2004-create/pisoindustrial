@@ -1,3 +1,4 @@
+import { dadosDeFornecedores } from "@/lib/consultas/fornecedores-dados";
 import "server-only";
 import type { Aberto } from "@/lib/comprovantes-banco";
 import { moeda } from "@/lib/formato";
@@ -18,7 +19,7 @@ export async function abertosParaBaixa(somente?: string[]): Promise<Aberto[]> {
   let consulta = supabase
     .from("pagamentos")
     .select(
-      "id, numero, favorecido, descricao, valor, vencimento, forma_pagamento, obra:obras(nome), fornecedor:fornecedores(cpf_cnpj, chave_pix), ordem:ordens_pagamento!pagamentos_ordem_id_fkey(cpf_cnpj, dados_bancarios)",
+      "id, numero, favorecido, descricao, valor, vencimento, forma_pagamento, fornecedor_id, obra:obras(nome), ordem:ordens_pagamento!pagamentos_ordem_id_fkey(cpf_cnpj, dados_bancarios)",
     )
     .eq("status", "aguardando_pagamento");
   // Só os pagamentos marcados na lista (baixa de um ou de vários)
@@ -32,10 +33,12 @@ export async function abertosParaBaixa(somente?: string[]): Promise<Aberto[]> {
   const porPagamento = new Map<string, NonNullable<typeof parcelas>>();
   for (const pc of parcelas ?? []) porPagamento.set(pc.pagamento_id, [...(porPagamento.get(pc.pagamento_id) ?? []), pc]);
 
+  const docsF = await dadosDeFornecedores(lista.map((p) => p.fornecedor_id));
   const abertos: Aberto[] = [];
   for (const p of lista) {
-    const cpfCnpj = p.fornecedor?.cpf_cnpj || p.ordem?.cpf_cnpj || null;
-    const chavePix = p.fornecedor?.chave_pix || chaveDosDados(p.ordem?.dados_bancarios);
+    const dadosF = p.fornecedor_id ? docsF.get(p.fornecedor_id) : undefined;
+    const cpfCnpj = dadosF?.cpf_cnpj || p.ordem?.cpf_cnpj || null;
+    const chavePix = dadosF?.chave_pix || chaveDosDados(p.ordem?.dados_bancarios);
     const obra = p.obra?.nome ?? "";
     const pcs = porPagamento.get(p.id);
     if (pcs?.length) {

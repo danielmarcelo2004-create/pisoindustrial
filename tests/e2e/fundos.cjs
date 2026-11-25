@@ -12,8 +12,8 @@ const hoje = new Date().toISOString().slice(0, 10);
 (async () => {
   const sb = createClient(URL, PUB, { auth: { persistSession: false } });
   await sb.auth.signInWithPassword({ email: 'financeiro@demo.local', password: SENHA });
-  const { data: eng } = await sb.from('profiles').select('id').eq('email', 'engenheiro@demo.local').single();
-  const { data: adm } = await sb.from('profiles').select('id').eq('email', 'administrador@demo.local').single();
+  const { data: eng } = await sb.from('profiles_completo').select('id').eq('email', 'engenheiro@demo.local').single();
+  const { data: adm } = await sb.from('profiles_completo').select('id').eq('email', 'administrador@demo.local').single();
   const { data: obra } = await sb.from('obras').select('id, nome').eq('administrador_id', adm.id).limit(1).single();
   console.log('✔ obra com administrador:', obra.nome);
 
@@ -172,7 +172,7 @@ const hoje = new Date().toISOString().slice(0, 10);
   console.log('✔ pagamento de fechamento:', pag.descricao, '-', pag.valor);
 
   // Quem não tem assinatura cadastrada não lança gasto: aparece o aviso com o link para cadastrar
-  const { data: sup } = await sb.from('profiles').select('id').eq('email', 'suprimentos@demo.local').single();
+  const { data: sup } = await sb.from('profiles_completo').select('id').eq('email', 'suprimentos@demo.local').single();
   await fin.goto(`${APP}/fundos-fixos`);
   await fin.selectOption('select[name=obra_id]', obra.id);
   await fin.selectOption('select[name=pessoa_id]', sup.id);

@@ -18,7 +18,7 @@ export default async function FornecedorPage({ params, searchParams }: PageProps
   const sp = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const supabase = await createClient();
-  const { data: f } = await supabase.from("fornecedores").select("*").eq("id", id).maybeSingle();
+  const { data: f } = await supabase.from("fornecedores_dados").select("*").eq("id", id).maybeSingle();
   if (!f) notFound();
   const { itens, total } = await listarPagamentos({ fornecedor: id }, 1, 1000);
   const pagos = itens.filter((p) => p.status === "pago");

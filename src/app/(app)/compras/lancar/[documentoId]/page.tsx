@@ -1,3 +1,4 @@
+import { dadosDeFornecedores } from "@/lib/consultas/fornecedores-dados";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { Aviso, Cabecalho, classeBotao } from "@/components/ui";
@@ -15,13 +16,14 @@ export default async function LancarNFPage({ params }: PageProps<"/compras/lanca
   const supabase = await createClient();
   const { data: doc } = await supabase
     .from("documentos")
-    .select("id, tipo, nome_arquivo, pagamento:pagamentos(id, numero, numero_documento, favorecido, fornecedor:fornecedores(nome, cpf_cnpj, uf))")
+    .select("id, tipo, nome_arquivo, pagamento:pagamentos(id, numero, numero_documento, favorecido, fornecedor:fornecedores(id, nome, uf))")
     .eq("id", documentoId)
     .maybeSingle();
   if (!doc || doc.tipo !== "nota_fiscal" || !doc.pagamento) notFound();
   const { data: ja } = await supabase.from("nf_notas").select("id").eq("documento_id", documentoId).maybeSingle();
   if (ja) redirect(`/pagamentos/${doc.pagamento.id}`);
   const f = doc.pagamento.fornecedor;
+  const dadosF = f ? (await dadosDeFornecedores([f.id])).get(f.id) : undefined;
 
   return (
     <>
@@ -43,7 +45,7 @@ export default async function LancarNFPage({ params }: PageProps<"/compras/lanca
       </div>
       <FormLancarNF
         action={lancarNF.bind(null, doc.id, doc.pagamento.id)}
-        padrao={{ emitente_nome: f?.nome ?? doc.pagamento.favorecido, emitente_cnpj: f?.cpf_cnpj ?? "", emitente_uf: f?.uf ?? "", numero: doc.pagamento.numero_documento ?? "" }}
+        padrao={{ emitente_nome: f?.nome ?? doc.pagamento.favorecido, emitente_cnpj: dadosF?.cpf_cnpj ?? "", emitente_uf: f?.uf ?? "", numero: doc.pagamento.numero_documento ?? "" }}
       />
     </>
   );

@@ -82,13 +82,20 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
     .select(
       `*, categoria:categorias(nome), conta_bancaria:contas_bancarias(nome), obra:obras(id, nome, cidade, uf, fluxo, engenheiro_id, administrador_id,
         engenheiro:profiles!obras_engenheiro_id_fkey(nome), administrador:profiles!obras_administrador_id_fkey(nome)),
-       fornecedor:fornecedores(id, nome, cpf_cnpj, chave_pix, banco, agencia, conta),
+       fornecedor:fornecedores(id, nome),
        criador:profiles!pagamentos_created_by_fkey(nome),
        pagador:profiles!pagamentos_pago_por_fkey(nome)`,
     )
     .eq("id", id)
     .maybeSingle();
   if (!p || !p.obra) notFound();
+  // CPF/CNPJ e dados bancários do fornecedor só saem pela visão (Financeiro, Suprimentos e Administrador master)
+  const { data: dadosForn } = p.fornecedor
+    ? await supabase.from("fornecedores_dados").select("cpf_cnpj, chave_pix, banco, agencia, conta").eq("id", p.fornecedor.id).maybeSingle()
+    : { data: null };
+  const forn = p.fornecedor
+    ? { id: p.fornecedor.id, nome: p.fornecedor.nome, cpf_cnpj: dadosForn?.cpf_cnpj ?? null, chave_pix: dadosForn?.chave_pix ?? null, banco: dadosForn?.banco ?? null, agencia: dadosForn?.agencia ?? null, conta: dadosForn?.conta ?? null }
+    : null;
 
   const [{ data: docs }, { data: assinaturas }, { data: eventos }, { data: podeAtuar }, { data: perfis }] = await Promise.all([
     supabase
@@ -237,10 +244,10 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
               <Dado rotulo="Forma de pagamento">{FORMAS_PAGAMENTO[p.forma_pagamento]}</Dado>
               <Dado rotulo="Favorecido">{p.favorecido}</Dado>
               <Dado rotulo="Fornecedor">
-                {p.fornecedor ? (
+                {forn ? (
                   <>
-                    {p.fornecedor.nome}
-                    {p.fornecedor.cpf_cnpj && <div className="text-xs text-slate-500">{cpfCnpj(p.fornecedor.cpf_cnpj)}</div>}
+                    {forn.nome}
+                    {forn.cpf_cnpj && <div className="text-xs text-slate-500">{cpfCnpj(forn.cpf_cnpj)}</div>}
                   </>
                 ) : (
                   "—"
@@ -273,13 +280,13 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
                   <div className="text-xs text-slate-500">por {p.pagador?.nome}</div>
                 </Dado>
               )}
-              {baixa && p.fornecedor && (p.fornecedor.chave_pix || p.fornecedor.banco) && (
+              {baixa && forn && (forn.chave_pix || forn.banco) && (
                 <div className="sm:col-span-3">
                   <Dado rotulo="Dados bancários do fornecedor">
-                    {p.fornecedor.chave_pix && <div>PIX: {p.fornecedor.chave_pix}</div>}
-                    {p.fornecedor.banco && (
+                    {forn.chave_pix && <div>PIX: {forn.chave_pix}</div>}
+                    {forn.banco && (
                       <div>
-                        {p.fornecedor.banco} · Ag. {p.fornecedor.agencia} · CC {p.fornecedor.conta}
+                        {forn.banco} · Ag. {forn.agencia} · CC {forn.conta}
                       </div>
                     )}
                   </Dado>

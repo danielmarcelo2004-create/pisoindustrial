@@ -12,7 +12,7 @@ export default async function FornecedoresPage({ searchParams }: PageProps<"/for
   const sp = await searchParams;
   const busca = typeof sp.busca === "string" ? sp.busca.trim().replace(/[%,()*\\]/g, " ").trim() : "";
   const supabase = await createClient();
-  let q = supabase.from("fornecedores").select("id, nome, cpf_cnpj, cidade, uf, telefone, ativo").order("nome").limit(500);
+  let q = supabase.from("fornecedores_dados").select("id, nome, cpf_cnpj, cidade, uf, telefone, ativo").order("nome").limit(500);
   if (busca) {
     const dig = soDigitos(busca);
     q = q.or(`nome.ilike.%${busca}%${dig.length >= 3 ? `,cpf_cnpj.like.%${dig}%` : ""}`);

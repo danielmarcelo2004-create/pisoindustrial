@@ -122,7 +122,7 @@ const obraC = ok(await F.from("obras").insert({ codigo: "OB-003", nome: "Amplia�
 ok(await F.from("obra_acessos").insert([{ obra_id: obraA.id, user_id: u.suprimentos.id }, { obra_id: obraB.id, user_id: u.suprimentos.id }]));
 
 const forns = ok(
-  await F.from("fornecedores").insert([
+  await admin.from("fornecedores").insert([
     { nome: "Concreteira Baiana Ltda", cpf_cnpj: "12345678000190", cidade: "Salvador", uf: "BA", chave_pix: "financeiro@concreteirabaiana.com.br" },
     { nome: "Aço Forte Distribuidora", cpf_cnpj: "98765432000110", cidade: "Camaçari", uf: "BA", banco: "Banco do Brasil", agencia: "1234", conta: "56789-0" },
     { nome: "Locadora de Máquinas Nordeste", cpf_cnpj: "11222333000144", cidade: "Lauro de Freitas", uf: "BA" },

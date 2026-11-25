@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { STATUS_EM_ABERTO, STATUS_PAGAMENTO, type StatusPagamento } from "@/lib/rotulos";
 import { hojeISO } from "@/lib/formato";
+import { dadosDeFornecedores } from "@/lib/consultas/fornecedores-dados";
 
 export type FiltrosRelatorio = {
   base: "vencimento" | "pago_em" | "criacao" | "data_competencia";
@@ -34,7 +35,7 @@ export async function dadosRelatorio(f: FiltrosRelatorio) {
   let q = supabase
     .from("pagamentos")
     .select(
-      "id, numero, favorecido, descricao, valor, valor_pago, vencimento, data_competencia, pago_em, status, forma_pagamento, numero_documento, created_at, categoria:categorias(id, nome), obra:obras(id, nome, cidade, uf), fornecedor:fornecedores(id, nome, cpf_cnpj), documentos(id, tipo, ativo)",
+      "id, numero, favorecido, descricao, valor, valor_pago, vencimento, data_competencia, pago_em, status, forma_pagamento, numero_documento, created_at, categoria:categorias(id, nome), obra:obras(id, nome, cidade, uf), fornecedor:fornecedores(id, nome), documentos(id, tipo, ativo)",
     )
     .limit(20000);
   if (f.base === "criacao") {
@@ -53,8 +54,11 @@ export async function dadosRelatorio(f: FiltrosRelatorio) {
   if (error) throw new Error(error.message);
   const hoje = hojeISO();
 
+  // CPF/CNPJ só para quem vê os dados fiscais dos fornecedores (a exportação do Excel usa)
+  const docs = await dadosDeFornecedores((data ?? []).map((p) => p.fornecedor?.id));
   const itens = (data ?? []).map((p) => ({
     ...p,
+    fornecedor: p.fornecedor ? { ...p.fornecedor, cpf_cnpj: docs.get(p.fornecedor.id)?.cpf_cnpj ?? null } : null,
     valor: Number(p.valor),
     valor_pago: p.valor_pago === null ? null : Number(p.valor_pago),
     vencido: STATUS_EM_ABERTO.includes(p.status) && p.vencimento < hoje,

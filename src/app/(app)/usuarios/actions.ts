@@ -89,7 +89,7 @@ export async function redefinirSenha(id: string, _: Estado): Promise<Estado> {
   if (id === eu.id) return { erro: "Para alterar a sua própria senha use “Alterar senha”." };
   const senha = gerarSenhaProvisoria();
   const supabase = await createClient();
-  const { data: alvo } = await supabase.from("profiles").select("email").eq("id", id).single();
+  const { data: alvo } = await supabase.from("profiles_completo").select("email").eq("id", id).single();
   if (!alvo) return { erro: "Usuário não encontrado." };
 
   const { error } = await createAdminClient().auth.admin.updateUserById(id, { password: senha });

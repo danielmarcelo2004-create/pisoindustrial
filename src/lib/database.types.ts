@@ -47,6 +47,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "assinaturas_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
     }
                   ]
                 },"auditoria": {
@@ -81,6 +87,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "categorias_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
     }
                   ]
                 },"conciliacao_itens": {
@@ -100,6 +112,12 @@ isOneToOne: false
       columns: ["created_by"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "conciliacao_itens_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "conciliacao_itens_linha_id_fkey"
@@ -139,6 +157,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "contas_bancarias_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
     }
                   ]
                 },"documentos": {
@@ -170,6 +194,12 @@ isOneToOne: false
       columns: ["enviado_por"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "documentos_enviado_por_fkey"
+      columns: ["enviado_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "documentos_obra_id_fkey"
@@ -210,10 +240,22 @@ isOneToOne: false
       referencedRelation: "contas_bancarias"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "extrato_importacoes_conta_id_fkey"
+      columns: ["conta_id"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias_dados"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "extrato_importacoes_created_by_fkey"
       columns: ["created_by"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "extrato_importacoes_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     }
                   ]
@@ -234,6 +276,12 @@ isOneToOne: false
       columns: ["conta_id"]
 isOneToOne: false
       referencedRelation: "contas_bancarias"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "extrato_linhas_conta_id_fkey"
+      columns: ["conta_id"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias_dados"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "extrato_linhas_estorno_linha_fkey"
@@ -265,6 +313,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "extrato_linhas_tratado_por_fkey"
+      columns: ["tratado_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
     }
                   ]
                 },"fornecedores": {
@@ -285,6 +339,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fornecedores_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
     }
                   ]
                 },"fundo_gasto_anexos": {
@@ -304,6 +364,12 @@ isOneToOne: false
       columns: ["enviado_por"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fundo_gasto_anexos_enviado_por_fkey"
+      columns: ["enviado_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "fundo_gasto_anexos_gasto_id_fkey"
@@ -332,6 +398,12 @@ isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "fundo_gastos_decidido_por_fkey"
+      columns: ["decidido_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "fundo_gastos_fundo_id_fkey"
       columns: ["fundo_id"]
 isOneToOne: false
@@ -342,6 +414,12 @@ isOneToOne: false
       columns: ["lancado_por"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fundo_gastos_lancado_por_fkey"
+      columns: ["lancado_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     }
                   ]
@@ -364,10 +442,22 @@ isOneToOne: false
       referencedRelation: "contas_bancarias"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "fundos_fixos_conta_bancaria_id_fkey"
+      columns: ["conta_bancaria_id"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias_dados"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "fundos_fixos_criado_por_fkey"
       columns: ["criado_por"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fundos_fixos_criado_por_fkey"
+      columns: ["criado_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "fundos_fixos_fundo_anterior_id_fkey"
@@ -398,6 +488,12 @@ isOneToOne: false
       columns: ["pessoa_id"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fundos_fixos_pessoa_id_fkey"
+      columns: ["pessoa_id"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "fundos_fixos_recebimento_devolucao_id_fkey"
@@ -446,6 +542,12 @@ isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "nf_notas_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "nf_notas_documento_id_fkey"
       columns: ["documento_id"]
 isOneToOne: true
@@ -490,6 +592,12 @@ isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "notas_contabeis_enviada_por_fkey"
+      columns: ["enviada_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "notas_contabeis_obra_id_fkey"
       columns: ["obra_id"]
 isOneToOne: false
@@ -520,6 +628,12 @@ isOneToOne: false
       columns: ["criada_por"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "notas_medicao_criada_por_fkey"
+      columns: ["criada_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "notas_medicao_obra_id_fkey"
@@ -553,6 +667,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
+    },{
+      foreignKeyName: "notificacoes_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
     }
                   ]
                 },"obra_acessos": {
@@ -574,6 +694,12 @@ isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "obra_acessos_concedido_por_fkey"
+      columns: ["concedido_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "obra_acessos_obra_id_fkey"
       columns: ["obra_id"]
 isOneToOne: false
@@ -584,6 +710,12 @@ isOneToOne: false
       columns: ["user_id"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "obra_acessos_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     }
                   ]
@@ -606,8 +738,26 @@ isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "obras_administrador_id_fkey"
+      columns: ["administrador_id"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "obras_created_by_fkey"
       columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "obras_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "obras_engenheiro_id_fkey"
+      columns: ["engenheiro_id"]
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
@@ -615,7 +765,7 @@ isOneToOne: false
       foreignKeyName: "obras_engenheiro_id_fkey"
       columns: ["engenheiro_id"]
 isOneToOne: false
-      referencedRelation: "profiles"
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     }
                   ]
@@ -636,6 +786,12 @@ isOneToOne: false
       columns: ["enviado_por"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "ordem_anexos_enviado_por_fkey"
+      columns: ["enviado_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "ordem_anexos_ordem_id_fkey"
@@ -710,10 +866,22 @@ isOneToOne: false
       referencedRelation: "contas_bancarias"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "ordens_pagamento_conta_bancaria_id_fkey"
+      columns: ["conta_bancaria_id"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias_dados"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "ordens_pagamento_fornecedor_id_fkey"
       columns: ["fornecedor_id"]
 isOneToOne: false
       referencedRelation: "fornecedores"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "ordens_pagamento_fornecedor_id_fkey"
+      columns: ["fornecedor_id"]
+isOneToOne: false
+      referencedRelation: "fornecedores_dados"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "ordens_pagamento_obra_id_fkey"
@@ -732,6 +900,12 @@ isOneToOne: false
       columns: ["solicitante_id"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "ordens_pagamento_solicitante_id_fkey"
+      columns: ["solicitante_id"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     }
                   ]
@@ -758,6 +932,12 @@ isOneToOne: false
       columns: ["pago_por"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pagamento_parcelas_pago_por_fkey"
+      columns: ["pago_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     }
                   ]
@@ -786,16 +966,34 @@ isOneToOne: false
       referencedRelation: "contas_bancarias"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "pagamentos_conta_bancaria_id_fkey"
+      columns: ["conta_bancaria_id"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias_dados"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "pagamentos_created_by_fkey"
       columns: ["created_by"]
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "pagamentos_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "pagamentos_fornecedor_id_fkey"
       columns: ["fornecedor_id"]
 isOneToOne: false
       referencedRelation: "fornecedores"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pagamentos_fornecedor_id_fkey"
+      columns: ["fornecedor_id"]
+isOneToOne: false
+      referencedRelation: "fornecedores_dados"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "pagamentos_obra_id_fkey"
@@ -814,6 +1012,12 @@ isOneToOne: true
       columns: ["pago_por"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "pagamentos_pago_por_fkey"
+      columns: ["pago_por"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "pagamentos_recebimento_id_fkey"
@@ -862,6 +1066,12 @@ isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "provisoes_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "provisoes_obra_id_fkey"
       columns: ["obra_id"]
 isOneToOne: false
@@ -906,10 +1116,22 @@ isOneToOne: false
       referencedRelation: "contas_bancarias"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "recebimentos_conta_bancaria_id_fkey"
+      columns: ["conta_bancaria_id"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias_dados"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "recebimentos_created_by_fkey"
       columns: ["created_by"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "recebimentos_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "recebimentos_nota_medicao_id_fkey"
@@ -944,16 +1166,34 @@ isOneToOne: false
       referencedRelation: "contas_bancarias"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "transferencias_conta_destino_fkey"
+      columns: ["conta_destino"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias_dados"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "transferencias_conta_origem_fkey"
       columns: ["conta_origem"]
 isOneToOne: false
       referencedRelation: "contas_bancarias"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "transferencias_conta_origem_fkey"
+      columns: ["conta_origem"]
+isOneToOne: false
+      referencedRelation: "contas_bancarias_dados"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "transferencias_created_by_fkey"
       columns: ["created_by"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "transferencias_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "transferencias_linha_destino_fkey"
@@ -1003,6 +1243,60 @@ isOneToOne: false
       referencedRelation: "pagamentos"
       referencedColumns: ["id"]
     }
+                  ]
+                },"contas_bancarias_dados": {
+                  Row: {
+                    "agencia": string,"ativa": boolean,"banco": string,"conta": string,"created_at": string,"id": string,"nome": string,"tipo": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "agencia"?: string | null,"ativa"?: boolean | null,"banco"?: string | null,"conta"?: string | null,"created_at"?: string | null,"id"?: string | null,"nome"?: string | null,"tipo"?: string | null
+                         }
+                        Update: {
+                           "agencia"?: string | null,"ativa"?: boolean | null,"banco"?: string | null,"conta"?: string | null,"created_at"?: string | null,"id"?: string | null,"nome"?: string | null,"tipo"?: string | null
+                         }
+                        Relationships: [
+                    
+                  ]
+                },"fornecedores_dados": {
+                  Row: {
+                    "agencia": string | null,"ativo": boolean,"banco": string | null,"chave_pix": string | null,"cidade": string | null,"conta": string | null,"cpf_cnpj": string | null,"created_at": string,"created_by": string | null,"email": string | null,"id": string,"nome": string,"observacoes": string | null,"telefone": string | null,"uf": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "agencia"?: string | null,"ativo"?: boolean | null,"banco"?: string | null,"chave_pix"?: string | null,"cidade"?: string | null,"conta"?: string | null,"cpf_cnpj"?: string | null,"created_at"?: string | null,"created_by"?: string | null,"email"?: string | null,"id"?: string | null,"nome"?: string | null,"observacoes"?: string | null,"telefone"?: string | null,"uf"?: string | null,"updated_at"?: string | null
+                         }
+                        Update: {
+                           "agencia"?: string | null,"ativo"?: boolean | null,"banco"?: string | null,"chave_pix"?: string | null,"cidade"?: string | null,"conta"?: string | null,"cpf_cnpj"?: string | null,"created_at"?: string | null,"created_by"?: string | null,"email"?: string | null,"id"?: string | null,"nome"?: string | null,"observacoes"?: string | null,"telefone"?: string | null,"uf"?: string | null,"updated_at"?: string | null
+                         }
+                        Relationships: [
+                    {
+      foreignKeyName: "fornecedores_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fornecedores_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles_completo"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"profiles_completo": {
+                  Row: {
+                    "assinatura_path": string | null,"ativo": boolean,"created_at": string,"email": string,"id": string,"nome": string,"perfil": Database["public"]['Enums']["perfil_usuario"],"telefone": string | null,"troca_senha_pendente": boolean,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "assinatura_path"?: string | null,"ativo"?: boolean | null,"created_at"?: string | null,"email"?: string | null,"id"?: string | null,"nome"?: string | null,"perfil"?: Database["public"]['Enums']["perfil_usuario"] | null,"telefone"?: string | null,"troca_senha_pendente"?: boolean | null,"updated_at"?: string | null
+                         }
+                        Update: {
+                           "assinatura_path"?: string | null,"ativo"?: boolean | null,"created_at"?: string | null,"email"?: string | null,"id"?: string | null,"nome"?: string | null,"perfil"?: Database["public"]['Enums']["perfil_usuario"] | null,"telefone"?: string | null,"troca_senha_pendente"?: boolean | null,"updated_at"?: string | null
+                         }
+                        Relationships: [
+                    
                   ]
                 }
           }

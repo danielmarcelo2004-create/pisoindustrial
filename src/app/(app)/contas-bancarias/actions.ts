@@ -27,7 +27,7 @@ export async function importarExtrato(_: Resultado | null, fd: FormData): Promis
   const supabase = await createClient();
   let esperada: { banco: string; agencia: string; conta: string; nome: string } | null = null;
   if (UUID.test(contaEsperada)) {
-    const { data } = await supabase.from("contas_bancarias").select("banco, agencia, conta, nome").eq("id", contaEsperada).maybeSingle();
+    const { data } = await supabase.from("contas_bancarias_dados").select("banco, agencia, conta, nome").eq("id", contaEsperada).maybeSingle();
     esperada = data;
   }
   const resumo: string[] = [];

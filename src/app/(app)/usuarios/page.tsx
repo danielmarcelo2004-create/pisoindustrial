@@ -10,11 +10,17 @@ export const metadata: Metadata = { title: "Usuários e permissões" };
 export default async function UsuariosPage() {
   await exigirPerfil("financeiro");
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("id, nome, email, telefone, perfil, ativo, troca_senha_pendente, obra_acessos!obra_acessos_user_id_fkey(obra_id)")
-    .order("ativo", { ascending: false })
-    .order("nome");
+  const [{ data: base }, { data: contatos }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, nome, perfil, ativo, troca_senha_pendente, obra_acessos!obra_acessos_user_id_fkey(obra_id)")
+      .order("ativo", { ascending: false })
+      .order("nome"),
+    // E-mail e telefone saem só pela visão liberada ao Financeiro
+    supabase.from("profiles_completo").select("id, email, telefone"),
+  ]);
+  const contato = new Map((contatos ?? []).map((c) => [c.id, c]));
+  const data = (base ?? []).map((p) => ({ ...p, email: contato.get(p.id)?.email ?? "", telefone: contato.get(p.id)?.telefone ?? null }));
 
   return (
     <>
@@ -36,7 +42,7 @@ export default async function UsuariosPage() {
               </tr>
             </thead>
             <tbody>
-              {(data ?? []).map((p) => (
+              {data.map((p) => (
                 <tr key={p.id} className={p.ativo ? "" : "opacity-60"}>
                   <td>
                     <Link href={`/usuarios/${p.id}`} className="font-medium text-marca-700 hover:underline">

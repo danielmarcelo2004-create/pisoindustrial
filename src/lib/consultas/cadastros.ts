@@ -4,8 +4,11 @@ import type { Usuario } from "@/lib/auth";
 
 export async function fornecedoresAtivos() {
   const supabase = await createClient();
-  const { data } = await supabase.from("fornecedores").select("id, nome, cpf_cnpj").eq("ativo", true).order("nome");
-  return data ?? [];
+  // CPF/CNPJ só pela visão liberada ao Financeiro/Suprimentos/master; quem não a vê escolhe o fornecedor pelo nome
+  const { data } = await supabase.from("fornecedores_dados").select("id, nome, cpf_cnpj").eq("ativo", true).order("nome");
+  if (data?.length) return data;
+  const { data: nomes } = await supabase.from("fornecedores").select("id, nome").eq("ativo", true).order("nome");
+  return (nomes ?? []).map((f) => ({ ...f, cpf_cnpj: null as string | null }));
 }
 
 /** Obras ativas em que o usuário pode cadastrar pagamentos. */

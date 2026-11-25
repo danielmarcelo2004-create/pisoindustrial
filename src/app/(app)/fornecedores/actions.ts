@@ -55,7 +55,7 @@ export async function criarFornecedorRapido(nome: string, cpfCnpj: string): Prom
   if (doc && doc.length !== 11 && doc.length !== 14) return { erro: "CPF deve ter 11 dígitos e CNPJ 14 dígitos." };
   const supabase = await createClient();
   if (doc) {
-    const { data: existe } = await supabase.from("fornecedores").select("id, nome").eq("cpf_cnpj", doc).maybeSingle();
+    const { data: existe } = await supabase.from("fornecedores_dados").select("id, nome").eq("cpf_cnpj", doc).maybeSingle();
     if (existe) return { id: existe.id, nome: existe.nome };
   }
   const { data, error } = await supabase.from("fornecedores").insert({ nome: n.slice(0, 200), cpf_cnpj: doc || null, ativo: true }).select("id, nome").single();

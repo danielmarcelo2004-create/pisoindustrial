@@ -23,8 +23,9 @@ export const getUsuario = cache(async (): Promise<Usuario> => {
   const id = data?.claims?.sub;
   if (!id) redirect("/login");
 
+  // "profiles_completo": e-mail e telefone só saem pela visão (o próprio usuário e o Financeiro)
   const { data: p } = await supabase
-    .from("profiles")
+    .from("profiles_completo")
     .select("id, nome, email, telefone, perfil, ativo, troca_senha_pendente")
     .eq("id", id)
     .maybeSingle();

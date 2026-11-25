@@ -280,7 +280,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
             <Cartao titulo="Fechar fundo">
               {f.reposicao_pedida_em && (
                 <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900" data-reposicao-pedida>
-                  {f.pessoa?.nome} pediu a reposição em {data(f.reposicao_pedida_em.slice(0, 10))}: use "Repor e continuar" para ele seguir lançando gastos.
+                  {f.pessoa?.nome} pediu a reposição em {data(f.reposicao_pedida_em.slice(0, 10))}: use &ldquo;Repor e continuar&rdquo; para ele seguir lançando gastos.
                 </p>
               )}
               <div className="space-y-4 text-sm text-slate-700">

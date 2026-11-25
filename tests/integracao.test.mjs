@@ -548,6 +548,60 @@ test('administrador master pode ser responsável pela obra', async () => {
 // -----------------------------------------------------------------------------
 // Alteração de pagamento liberado ou pago (sem nova aprovação, com motivo)
 // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Privacidade (auditoria A-01, A-02 e A-03): dados pessoais e bancários só saem para quem precisa
+// -----------------------------------------------------------------------------
+test('regressão: e-mail/telefone, dados fiscais e bancários de fornecedores e agência/conta da empresa não saem para qualquer usuário logado', async () => {
+  const doc = String(Date.now()).padStart(14, '0').slice(-14)
+  const { data: forn } = await admin.from('fornecedores').insert({ nome: `Forn Privado ${sufixo}`, cpf_cnpj: doc, email: 'forn@privado.com', telefone: '71999990000', chave_pix: `pix-${sufixo}@privado.com`, banco: 'Banco Privado', agencia: '4321', conta: '98765-4' }).select('id').single()
+  const { data: cta } = await admin.from('contas_bancarias').insert({ nome: `Conta Privada ${sufixo}`, banco: '999', agencia: '7777', conta: String(Date.now()).slice(-8), created_by: u.fin.id }).select('id').single()
+  const negado = (error) => { assert.ok(error, 'esperava erro de permissão'); assert.match(error.message, /permission denied/i) }
+
+  for (const chave of ['eng', 'adm', 'sup']) {
+    const c = u[chave].client
+    // A-01: nomes continuam visíveis (aparecem nas telas); e-mail e telefone não
+    const { data: nomes, error: e0 } = await c.from('profiles').select('id, nome, perfil, ativo')
+    assert.ok(!e0 && nomes.length > 1, `${chave}: deve ver os nomes`)
+    negado((await c.from('profiles').select('email')).error)
+    negado((await c.from('profiles').select('telefone')).error)
+    negado((await c.from('profiles').select('*')).error)
+    const { data: proprio } = await c.from('profiles_completo').select('id, email')
+    assert.deepEqual(proprio.map((x) => x.id), [u[chave].id], `${chave}: a visão completa só mostra o próprio perfil`)
+    assert.ok(proprio[0].email, `${chave}: vê o próprio e-mail`)
+  }
+  const { data: todos } = await u.fin.client.from('profiles_completo').select('id, email, telefone')
+  assert.ok(todos.length >= 5 && todos.every((x) => x.email), 'o Financeiro vê o e-mail de todos')
+
+  // A-02: fornecedores
+  for (const chave of ['eng', 'adm', 'adm2']) {
+    const c = u[chave].client
+    const { data: nome } = await c.from('fornecedores').select('id, nome, cidade, uf').eq('id', forn.id)
+    assert.equal(nome.length, 1, `${chave}: vê o nome do fornecedor`)
+    for (const col of ['cpf_cnpj', 'chave_pix', 'banco', 'agencia', 'conta', 'email', 'telefone']) negado((await c.from('fornecedores').select(col)).error)
+    negado((await c.from('fornecedores').select('*')).error)
+    const { data: v } = await c.from('fornecedores_dados').select('id').eq('id', forn.id)
+    assert.equal(v.length, 0, `${chave}: a visão de dados do fornecedor vem vazia`)
+  }
+  for (const chave of ['fin', 'sup', 'master']) {
+    const { data: v } = await u[chave].client.from('fornecedores_dados').select('cpf_cnpj, chave_pix, banco, agencia, conta').eq('id', forn.id)
+    assert.deepEqual([v[0]?.cpf_cnpj, v[0]?.banco, v[0]?.agencia], [doc, 'Banco Privado', '4321'], `${chave}: vê os dados do fornecedor`)
+  }
+
+  // A-03: contas bancárias da empresa
+  for (const chave of ['eng', 'adm', 'sup']) {
+    const c = u[chave].client
+    const { data: nome } = await c.from('contas_bancarias').select('id, nome').eq('id', cta.id)
+    assert.equal(nome.length, 1, `${chave}: vê o nome da conta (lista de escolha)`)
+    for (const col of ['banco', 'agencia', 'conta']) negado((await c.from('contas_bancarias').select(col)).error)
+    const { data: v } = await c.from('contas_bancarias_dados').select('id').eq('id', cta.id)
+    assert.equal(v.length, 0, `${chave}: a visão da conta vem vazia`)
+  }
+  for (const chave of ['fin', 'master']) {
+    const { data: v } = await u[chave].client.from('contas_bancarias_dados').select('banco, agencia').eq('id', cta.id)
+    assert.deepEqual([v[0]?.banco, v[0]?.agencia], ['999', '7777'], `${chave}: vê a agência e a conta`)
+  }
+})
+
 test('pagamento pago: Financeiro altera obra e valor com motivo, sem nova aprovação', async () => {
   const id = await novoPagamento('fin', obraC.id, 500) // fluxo C: já liberado para pagamento
   const antes = await pagamento(id)

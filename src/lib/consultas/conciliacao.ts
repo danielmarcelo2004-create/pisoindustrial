@@ -1,4 +1,5 @@
 // Conciliação bancária: contas, linhas do extrato, contas a pagar candidatas e a sugestão automática.
+import { dadosDeFornecedores } from "@/lib/consultas/fornecedores-dados";
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 
@@ -9,7 +10,7 @@ export type { Candidato, Classificacao, Historico, HistoricoReceita, LinhaExtrat
 export async function contasBancarias() {
   const supabase = await createClient();
   const [{ data: contas }, { data: saldos }, { data: aplic }, { data: pend }] = await Promise.all([
-    supabase.from("contas_bancarias").select("id, nome, banco, agencia, conta, tipo").eq("ativa", true).neq("tipo", "manual").order("nome"), // "Baixa manual" não tem extrato
+    supabase.from("contas_bancarias_dados").select("id, nome, banco, agencia, conta, tipo").eq("ativa", true).neq("tipo", "manual").order("nome"), // "Baixa manual" não tem extrato
     supabase.rpc("saldos_contas_bancarias"), // saldo: só Financeiro/master
     supabase.rpc("aplicado_nas_contas"), // aplicado no Rende Fácil (aplicações − resgates conciliados)
     supabase.from("extrato_linhas").select("conta_id, valor").eq("situacao", "pendente").limit(50000),
@@ -77,7 +78,7 @@ export async function contagemPorSituacao(contaId: string) {
 /** Contas a pagar que podem ser conciliadas: liberadas em aberto (e parcelas) e as já pagas ainda sem conciliação. */
 export async function candidatos(periodo: { de: string; ate: string } | null): Promise<Candidato[]> {
   const supabase = await createClient();
-  const SEL = "id, numero, favorecido, descricao, valor, vencimento, status, forma_pagamento, conta_bancaria_id, conta_bancaria:contas_bancarias(nome), pago_em, valor_pago, obra:obras(nome), categoria:categorias(nome), fornecedor:fornecedores(nome, cpf_cnpj), parcelas:pagamento_parcelas(id, numero, valor_base, multa, juros, desconto, vencimento, status, pago_em, valor_pago)";
+  const SEL = "id, numero, favorecido, descricao, valor, vencimento, status, forma_pagamento, conta_bancaria_id, conta_bancaria:contas_bancarias(nome), pago_em, valor_pago, obra:obras(nome), categoria:categorias(nome), fornecedor:fornecedores(id, nome), parcelas:pagamento_parcelas(id, numero, valor_base, multa, juros, desconto, vencimento, status, pago_em, valor_pago)";
   const de = periodo ? new Date(new Date(periodo.de + "T12:00:00Z").getTime() - 60 * 86400000).toISOString().slice(0, 10) : null;
   const ate = periodo ? new Date(new Date(periodo.ate + "T12:00:00Z").getTime() + 60 * 86400000).toISOString().slice(0, 10) : null;
   // Impostos da medição ficam fora: o retido é baixado com a receita e o devido já nasce pago (baixa manual)
@@ -88,19 +89,20 @@ export async function candidatos(periodo: { de: string; ate: string } | null): P
     qPago.limit(3000),
     supabase.from("conciliacao_itens").select("pagamento_id, parcela_id").limit(50000),
   ]);
+  const docs = await dadosDeFornecedores([...(abertos ?? []), ...(pagos ?? [])].map((p) => (p.fornecedor as { id: string } | { id: string }[] | null && (Array.isArray(p.fornecedor) ? p.fornecedor[0]?.id : (p.fornecedor as { id: string }).id))));
   const pagLigado = new Set((ligados ?? []).filter((x) => !x.parcela_id).map((x) => x.pagamento_id));
   const parcLigada = new Set((ligados ?? []).filter((x) => x.parcela_id).map((x) => x.parcela_id as string));
   const um = <T,>(x: T | T[] | null) => (Array.isArray(x) ? (x[0] ?? null) : x);
   const lista: Candidato[] = [];
   for (const p of [...(abertos ?? []), ...(pagos ?? [])]) {
     const obra = um(p.obra as { nome: string } | { nome: string }[] | null);
-    const forn = um(p.fornecedor as { nome: string; cpf_cnpj: string | null } | { nome: string; cpf_cnpj: string | null }[] | null);
+    const forn = um(p.fornecedor as { id: string; nome: string } | { id: string; nome: string }[] | null);
     const base = {
       pagamentoId: p.id,
       numero: Number(p.numero),
       favorecido: p.favorecido,
       fornecedor: forn?.nome ?? null,
-      documento: forn?.cpf_cnpj ? forn.cpf_cnpj.replace(/\D/g, "") : null,
+      documento: forn && docs.get(forn.id)?.cpf_cnpj ? docs.get(forn.id)!.cpf_cnpj!.replace(/\D/g, "") : null,
       descricao: p.descricao,
       obra: obra?.nome ?? "",
       categoria: um(p.categoria as { nome: string } | { nome: string }[] | null)?.nome ?? null,
@@ -163,26 +165,28 @@ export async function historicoLancamentos(): Promise<Historico[]> {
   const [{ data: pags }, { data: conc }] = await Promise.all([
     supabase
       .from("pagamentos")
-      .select("id, favorecido, fornecedor_id, categoria_id, obra_id, created_at, fornecedor:fornecedores(nome, cpf_cnpj)")
+      .select("id, favorecido, fornecedor_id, categoria_id, obra_id, created_at, fornecedor:fornecedores(nome)")
       .neq("status", "cancelado")
       .order("created_at", { ascending: false })
       .limit(3000),
     supabase.from("conciliacao_itens").select("pagamento_id, created_at, linha:extrato_linhas(descricao)").order("created_at", { ascending: false }).limit(3000),
   ]);
+  const docsH = await dadosDeFornecedores((pags ?? []).map((p) => p.fornecedor_id));
   const memo = new Map<string, { descricao: string; data: string }>();
   for (const c of conc ?? []) {
     const l = (Array.isArray(c.linha) ? c.linha[0] : c.linha) as { descricao: string } | null;
     if (l && !memo.has(c.pagamento_id)) memo.set(c.pagamento_id, { descricao: l.descricao, data: c.created_at });
   }
   return (pags ?? []).map((p) => {
-    const f = (Array.isArray(p.fornecedor) ? p.fornecedor[0] : p.fornecedor) as { nome: string; cpf_cnpj: string | null } | null;
+    const f = (Array.isArray(p.fornecedor) ? p.fornecedor[0] : p.fornecedor) as { nome: string } | null;
+    const docF = p.fornecedor_id ? docsH.get(p.fornecedor_id)?.cpf_cnpj : null;
     const m = memo.get(p.id);
     return {
       memo: m?.descricao ?? null,
       favorecido: p.favorecido,
       fornecedorId: p.fornecedor_id,
       fornecedor: f?.nome ?? null,
-      documento: f?.cpf_cnpj ? f.cpf_cnpj.replace(/\D/g, "") : null,
+      documento: docF ? docF.replace(/\D/g, "") : null,
       categoriaId: p.categoria_id,
       obraId: p.obra_id,
       data: m?.data ?? p.created_at,

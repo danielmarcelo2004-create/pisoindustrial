@@ -17,7 +17,7 @@ export default async function UsuarioPage({ params }: PageProps<"/usuarios/[id]"
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const supabase = await createClient();
-  const { data: p } = await supabase.from("profiles").select("*").eq("id", id).maybeSingle();
+  const { data: p } = await supabase.from("profiles_completo").select("*").eq("id", id).maybeSingle();
   if (!p) notFound();
 
   const [{ data: obras }, { data: acessos }, { data: eventos }] = await Promise.all([

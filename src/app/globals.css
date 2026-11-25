@@ -65,6 +65,29 @@ input[type="file"].campo {
   @apply bg-slate-50/70;
 }
 
+/* Celular: a tabela de Contas a pagar vira uma lista de cartões (sem rolagem lateral). */
+@media (max-width: 767px) {
+  .tabela-cartoes,
+  .tabela-cartoes tbody { display: block; width: 100%; }
+  .tabela-cartoes thead { display: none; }
+  .tabela-cartoes tbody tr {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+    padding: 12px; border-bottom: 1px solid var(--color-slate-100, #f1f5f9);
+  }
+  .tabela-cartoes tbody td { display: block; border: 0; padding: 0; min-width: 0 !important; }
+  .tabela-cartoes .c-marcar { order: 0; }
+  .tabela-cartoes .c-venc { order: 1; }
+  .tabela-cartoes .c-situacao { order: 2; margin-left: auto; }
+  .tabela-cartoes .c-resumo { order: 3; flex: 1 0 100%; overflow-wrap: anywhere; }
+  .tabela-cartoes .c-valor { order: 4; }
+  .tabela-cartoes .c-apagar { order: 5; }
+  .tabela-cartoes .c-pago-em { order: 6; }
+  .tabela-cartoes .c-acoes { order: 7; margin-left: auto; }
+  .tabela-cartoes td[data-rotulo]::before {
+    content: attr(data-rotulo) " "; font-size: 11px; font-weight: 400; color: #64748b; text-transform: uppercase;
+  }
+}
+
 /* Janelas (role="dialog") nunca herdam "sem quebra de linha" da célula de onde foram abertas
    e nunca passam da largura da tela (conferido em tests/e2e/janelas.cjs).
    Fica na camada "base" para não anular as larguras das classes (max-w-md, max-w-lg...). */

@@ -605,6 +605,33 @@ test('regressão: usuário novo = perfil + acessos numa transação só (se os a
   await admin.auth.admin.deleteUser(falha.id)
 })
 
+test('regressão: duas séries de provisões com a mesma descrição e o mesmo total não se confundem (auditoria A-11)', async () => {
+  const mes = (i) => `2027-${String(i).padStart(2, '0')}`
+  const serie = async (sid) => {
+    const linhas = [1, 2, 3].map((k) => ({ obra_id: obraC.id, descricao: `Aluguel igual ${sufixo} (${k}/3)`, mes_referencia: mes(k), vencimento: `${mes(k)}-10`, valor_estimado: 1000, serie_id: sid }))
+    const { data, error } = await u.fin.client.from('provisoes').insert(linhas).select('id, descricao').order('descricao')
+    if (error) throw error
+    return data
+  }
+  const [s1, s2] = [randomUUID(), randomUUID()]
+  const a = await serie(s1)
+  const b = await serie(s2)
+  // Estende só a série A (a partir da última parcela dela): +2 parcelas
+  assert.equal(await rpc('fin', 'estender_serie_provisao', { p_provisao_id: a[2].id, p_quantidade: 2 }), 2)
+  const { data: linhasA } = await admin.from('provisoes').select('descricao').eq('serie_id', s1)
+  const { data: linhasB } = await admin.from('provisoes').select('descricao').eq('serie_id', s2)
+  assert.equal(linhasA.length, 5, 'a série A ganhou 2 parcelas')
+  assert.ok(linhasA.every((x) => /\(\d\/5\)$/.test(x.descricao)), 'a série A foi renumerada (k/5)')
+  assert.equal(linhasB.length, 3, 'a série B não foi tocada')
+  assert.ok(linhasB.every((x) => /\(\d\/3\)$/.test(x.descricao)), 'a série B continua (k/3)')
+  // Repetição de despesa: cada chamada cria uma série própria (serie_id) para as suas provisões
+  const pag = await novoPagamento('fin', obraC.id, 300)
+  await rpc('fin', 'criar_repeticoes', { p_pagamento_id: pag, p_intervalo: 1, p_vezes: 3 })
+  const { data: rep } = await admin.from('provisoes').select('serie_id').eq('pagamento_origem_id', pag)
+  assert.equal(rep.length, 2)
+  assert.ok(rep[0].serie_id && rep.every((x) => x.serie_id === rep[0].serie_id), 'as repetições da despesa compartilham um serie_id')
+})
+
 // -----------------------------------------------------------------------------
 // Inteligência de Compras aberta a todos (só leitura), com o CPF/CNPJ do fornecedor mascarado
 // -----------------------------------------------------------------------------
@@ -1832,6 +1859,12 @@ describe('conciliação bancária', () => {
     const rec2 = await rpc('fin', 'lancar_medicao', { ...args, p_nota_id: nota2.id, p_retido: 1150, p_devido: 1630.5 })
     const { data: imp2b } = await admin.from('pagamentos').select('imposto_medicao, valor').eq('recebimento_id', rec2)
     assert.deepEqual(imp2b.map((i) => `${i.imposto_medicao}:${Number(i.valor)}`).sort(), ['devido:1630.5', 'retido:1150'])
+    // A nota guarda o que foi de fato lançado (alíquota e valores editados): o resumo da tela não usa mais só 14% fixos
+    const { data: gravada } = await admin.from('notas_medicao').select('aliquota_aplicada, retido_lancado, devido_lancado, impostos_lancados_em').eq('id', nota2.id).single()
+    assert.deepEqual([Number(gravada.aliquota_aplicada), Number(gravada.retido_lancado), Number(gravada.devido_lancado)], [14, 1150, 1630.5])
+    assert.ok(gravada.impostos_lancados_em, 'data do lançamento dos impostos')
+    const { data: gravada1 } = await admin.from('notas_medicao').select('retido_lancado, devido_lancado').eq('id', nota.id).single()
+    assert.deepEqual([Number(gravada1.retido_lancado), Number(gravada1.devido_lancado)], [600, 800], 'sem edição: guarda o calculado')
     await falha('fin', 'lancar_medicao', { ...args, p_nota_id: (await admin.from('notas_medicao').insert({ obra_id: obraA.id, storage_path: `${obraA.id}/medicoes/${randomUUID()}.pdf`, nome_arquivo: 'm3.pdf', sha256: '1'.repeat(64), valor: 100, valor_liquido: 90, criada_por: u.fin.id }).select('id').single()).data.id, p_retido: 100 }, 'Imposto retido inválido')
     // Conciliação: entra o líquido (9.400)
     await importar('fin', [L('2026-12-22', 9400, 'TED RECEBIDA MEDICAO 12', 'MD1'), L('2026-12-22', 9999, 'TED OUTRA', 'MD2')])

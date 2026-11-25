@@ -196,6 +196,60 @@ export async function assinarOPCriador(ordemId: string, pos: PosAssinatura): Pro
   return { ok: true };
 }
 
+type ClienteSupabase = Awaited<ReturnType<typeof createClient>>;
+type UsuarioOP = Awaited<ReturnType<typeof exigirPerfil>>;
+type OPCarregada = NonNullable<Awaited<ReturnType<typeof carregarOP>>>;
+
+/**
+ * Gera o PDF oficial da OP (já numerada) e anexa ao pagamento. Se quem envia é o engenheiro que criou a OP e
+ * assinou na solicitação, a assinatura é aplicada ao PDF. Lança erro se algum passo falhar (quem chama decide o aviso).
+ */
+async function anexarPdfOficialDaOP(supabase: ClienteSupabase, u: UsuarioOP, op: OPCarregada, pagId: string): Promise<void> {
+  const bytes = Buffer.from(await gerarPdfOP(dadosPdf(op)));
+  const caminho = `${op.obra_id}/${pagId}/${randomUUID()}.pdf`;
+  const up = await supabase.storage.from("documentos").upload(caminho, bytes, { contentType: "application/pdf" });
+  if (up.error) throw up.error;
+  const reg = await supabase.rpc("registrar_documento", {
+    p_pagamento_id: pagId,
+    p_tipo: "ordem_pagamento",
+    p_nome_arquivo: `${op.numero}.pdf`,
+    p_storage_path: caminho,
+    p_mime_type: "application/pdf",
+    p_tamanho: bytes.length,
+    p_sha256: createHash("sha256").update(bytes).digest("hex"),
+  });
+  if (reg.error) {
+    await descartarArquivoEnviado(caminho);
+    throw reg.error;
+  }
+
+  // Engenheiro que criou a OP: a assinatura feita na solicitação é aplicada ao PDF oficial (já numerado).
+  if (u.perfil === "engenheiro" && op.assinatura_criador_pos) {
+    const { data: perfil } = await supabase.from("profiles").select("assinatura_path").eq("id", u.id).single();
+    if (!perfil?.assinatura_path) throw new Error("cadastre sua assinatura em Minha assinatura");
+    const dl = await supabase.storage.from("assinaturas").download(perfil.assinatura_path);
+    if (dl.error || !dl.data) throw new Error("não foi possível ler sua assinatura");
+    const assinada = Buffer.from(
+      await sobreporAssinatura(new Uint8Array(bytes), new Uint8Array(await dl.data.arrayBuffer()), op.assinatura_criador_pos as PosAssinatura),
+    );
+    const caminhoAss = `${op.obra_id}/${pagId}/${randomUUID()}.pdf`;
+    const upAss = await supabase.storage.from("documentos").upload(caminhoAss, assinada, { contentType: "application/pdf" });
+    if (upAss.error) throw upAss.error;
+    const conc = await supabase.rpc("concluir_criacao_assinada", {
+      p_pagamento_id: pagId,
+      p_storage_path: caminhoAss,
+      p_nome: `${op.numero}-assinado.pdf`,
+      p_mime: "application/pdf",
+      p_tamanho: assinada.length,
+      p_sha256: createHash("sha256").update(assinada).digest("hex"),
+    });
+    if (conc.error) {
+      await descartarArquivoEnviado(caminhoAss);
+      throw conc.error;
+    }
+  }
+}
+
 export async function enviarOP(id: string, _: Estado, _fd?: FormData): Promise<Estado> {
   const u = await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const supabase = await createClient();
@@ -207,51 +261,9 @@ export async function enviarOP(id: string, _: Estado, _fd?: FormData): Promise<E
   let aviso = "";
   if (op) {
     try {
-      const bytes = Buffer.from(await gerarPdfOP(dadosPdf(op)));
-      const caminho = `${op.obra_id}/${pagId}/${randomUUID()}.pdf`;
-      const up = await supabase.storage.from("documentos").upload(caminho, bytes, { contentType: "application/pdf" });
-      if (up.error) throw up.error;
-      const reg = await supabase.rpc("registrar_documento", {
-        p_pagamento_id: pagId as string,
-        p_tipo: "ordem_pagamento",
-        p_nome_arquivo: `${op.numero}.pdf`,
-        p_storage_path: caminho,
-        p_mime_type: "application/pdf",
-        p_tamanho: bytes.length,
-        p_sha256: createHash("sha256").update(bytes).digest("hex"),
-      });
-      if (reg.error) {
-        await descartarArquivoEnviado(caminho);
-        throw reg.error;
-      }
-
-      // Engenheiro que criou a OP: a assinatura feita na solicitação é aplicada ao PDF oficial (já numerado).
-      if (u.perfil === "engenheiro" && op.assinatura_criador_pos) {
-        const { data: perfil } = await supabase.from("profiles").select("assinatura_path").eq("id", u.id).single();
-        if (!perfil?.assinatura_path) throw new Error("cadastre sua assinatura em Minha assinatura");
-        const dl = await supabase.storage.from("assinaturas").download(perfil.assinatura_path);
-        if (dl.error || !dl.data) throw new Error("não foi possível ler sua assinatura");
-        const assinada = Buffer.from(
-          await sobreporAssinatura(new Uint8Array(bytes), new Uint8Array(await dl.data.arrayBuffer()), op.assinatura_criador_pos as PosAssinatura),
-        );
-        const caminhoAss = `${op.obra_id}/${pagId}/${randomUUID()}.pdf`;
-        const upAss = await supabase.storage.from("documentos").upload(caminhoAss, assinada, { contentType: "application/pdf" });
-        if (upAss.error) throw upAss.error;
-        const conc = await supabase.rpc("concluir_criacao_assinada", {
-          p_pagamento_id: pagId as string,
-          p_storage_path: caminhoAss,
-          p_nome: `${op.numero}-assinado.pdf`,
-          p_mime: "application/pdf",
-          p_tamanho: assinada.length,
-          p_sha256: createHash("sha256").update(assinada).digest("hex"),
-        });
-        if (conc.error) {
-          await descartarArquivoEnviado(caminhoAss);
-          throw conc.error;
-        }
-      }
+      await anexarPdfOficialDaOP(supabase, u, op, pagId as string);
     } catch (e) {
-      aviso = `&aviso=${encodeURIComponent("A OP foi enviada, mas o PDF não foi anexado: " + mensagemErro(e as { message?: string }))}`;
+      aviso = `&aviso=${encodeURIComponent("A OP foi enviada, mas o PDF não foi anexado (use \"Gerar PDF da OP\" no pagamento): " + mensagemErro(e as { message?: string }))}`;
     }
   }
   // Repetição configurada na OP: as próximas ocorrências viram provisões
@@ -322,4 +334,27 @@ export async function duplicarOP(id: string, _: Estado): Promise<Estado> {
   }
   if (naoCopiados.length) redirect(`/ops/${novaId}/editar?aviso=${encodeURIComponent(`A cópia foi criada, mas não copiou: ${naoCopiados.join(", ")}. Confira e preencha.`)}`);
   redirect(`/ops/${novaId}/editar`);
+}
+
+/**
+ * OP enviada sem o PDF oficial (o envio vale, mas a geração/anexo do PDF falhou): gera e anexa de novo, sem duplicar
+ * (se o pagamento já tem o PDF da OP, não faz nada). Quem envia a OP é quem pode refazer, e o Financeiro/Suprimentos.
+ */
+export async function gerarPdfDaOP(ordemId: string, _: Estado): Promise<Estado> {
+  const u = await exigirPerfil("engenheiro", "financeiro", "suprimentos");
+  if (!UUID.test(ordemId)) return { erro: "OP não encontrada." };
+  const op = await carregarOP(ordemId);
+  const pag = Array.isArray(op?.pagamento) ? op?.pagamento[0] : op?.pagamento;
+  if (!op || !pag) return { erro: "OP não encontrada ou ainda sem pagamento." };
+  if (op.status === "em_elaboracao") return { erro: "A OP ainda é um rascunho: envie antes de gerar o PDF." };
+  const supabase = await createClient();
+  const { data: ja } = await supabase.from("documentos").select("id").eq("pagamento_id", pag.id).eq("tipo", "ordem_pagamento").eq("ativo", true).limit(1);
+  if (ja?.length) return { ok: "A OP já tem o PDF oficial anexado." };
+  try {
+    await anexarPdfOficialDaOP(supabase, u, op, pag.id);
+  } catch (e) {
+    return { erro: "Não foi possível gerar o PDF da OP: " + mensagemErro(e as { message?: string }) };
+  }
+  revalidatePath("/", "layout");
+  return { ok: "PDF oficial da OP gerado e anexado ao pagamento." };
 }

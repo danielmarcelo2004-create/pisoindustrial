@@ -21,7 +21,7 @@ export default async function NotasMedicaoPage() {
   const [{ data: notas }, { data: obras }, { data: recs }, { data: contas }, catReceita, catDespesa] = await Promise.all([
     supabase
       .from("notas_medicao")
-      .select("id, nome_arquivo, numero, prestador_nome, prestador_documento, data_emissao, valor, valor_liquido, descricao, obra:obras(nome, cliente)")
+      .select("id, nome_arquivo, numero, prestador_nome, prestador_documento, data_emissao, valor, valor_liquido, descricao, aliquota_aplicada, retido_lancado, devido_lancado, impostos_lancados_em, obra:obras(nome, cliente)")
       .order("criada_em", { ascending: false })
       .limit(500),
     supabase.from("obras").select("id, nome").order("nome"),
@@ -32,11 +32,25 @@ export default async function NotasMedicaoPage() {
   ]);
   const recDaNota = new Map((recs ?? []).map((r) => [r.nota_medicao_id as string, r]));
 
-  const linhas = (notas ?? []).map((n) => ({ n, calc: calcularImpostosMedicao(Number(n.valor), Number(n.valor_liquido)) }));
-  const calculadas = linhas.flatMap((l) => (l.calc ? [l.calc] : []));
-  const totalValor = calculadas.reduce((s, c) => s + c.total, 0);
-  const totalRetido = calculadas.reduce((s, c) => s + c.retido, 0);
-  const totalDevido = calculadas.reduce((s, c) => s + c.devido, 0);
+  // Nota já lançada como receita: vale o imposto que foi de fato lançado (alíquota e valores que o Financeiro confirmou).
+  // Nota ainda não lançada: é só uma estimativa (14% do total − retido).
+  const linhas = (notas ?? []).map((n) => {
+    const calc = calcularImpostosMedicao(Number(n.valor), Number(n.valor_liquido));
+    const lancada = Boolean(n.impostos_lancados_em && recDaNota.has(n.id));
+    const total = Number(n.valor);
+    const ef = lancada
+      ? { retido: Number(n.retido_lancado ?? 0), devido: Number(n.devido_lancado ?? 0), lancado: true as const, aliquota: n.aliquota_aplicada === null ? null : Number(n.aliquota_aplicada) }
+      : calc
+        ? { retido: calc.retido, devido: calc.devido, lancado: false as const, aliquota: TAXA_IMPOSTO_DEVIDO * 100 }
+        : null;
+    return { n, calc, ef: ef ? { ...ef, percRetido: total ? Math.round((ef.retido / total) * 10000) / 100 : 0, percDevido: total ? Math.round((ef.devido / total) * 10000) / 100 : 0 } : null };
+  });
+  const comValores = linhas.flatMap((l) => (l.ef ? [{ total: Number(l.n.valor), ...l.ef }] : []));
+  const totalValor = comValores.reduce((s, c) => s + c.total, 0);
+  const totalRetido = comValores.reduce((s, c) => s + c.retido, 0);
+  const totalDevido = comValores.reduce((s, c) => s + c.devido, 0);
+  const qtdLancadas = comValores.filter((c) => c.lancado).length;
+  const qtdEstimadas = comValores.length - qtdLancadas;
 
   return (
     <>
@@ -84,9 +98,12 @@ export default async function NotasMedicaoPage() {
               <p className="text-lg font-semibold whitespace-nowrap tabular-nums">{moeda(totalRetido)}</p>
               <p className="text-xs text-slate-500">{totalValor ? pct((totalRetido / totalValor) * 100) : "—"}</p>
             </Cartao>
-            <Cartao titulo={`Imposto devido (${Math.round(TAXA_IMPOSTO_DEVIDO * 100)}%)`}>
+            <Cartao titulo="Imposto devido">
               <p className={`text-lg font-semibold whitespace-nowrap tabular-nums ${totalDevido < 0 ? "text-red-600" : ""}`}>{moeda(totalDevido)}</p>
-              <p className="text-xs text-slate-500">{totalValor ? pct((totalDevido / totalValor) * 100) : "—"}</p>
+              <p className="text-xs text-slate-500" data-resumo-devido>
+                {totalValor ? pct((totalDevido / totalValor) * 100) : "—"} · {qtdLancadas} lançada(s)
+                {qtdEstimadas > 0 ? ` e ${qtdEstimadas} estimada(s) a ${Math.round(TAXA_IMPOSTO_DEVIDO * 100)}%` : ""}
+              </p>
             </Cartao>
           </div>
 
@@ -109,7 +126,7 @@ export default async function NotasMedicaoPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {linhas.map(({ n, calc }) => (
+                    {linhas.map(({ n, calc, ef }) => (
                       <tr key={n.id}>
                         <td className="whitespace-nowrap">
                           {n.numero ?? "—"}
@@ -123,10 +140,13 @@ export default async function NotasMedicaoPage() {
                         </td>
                         <td className="text-right whitespace-nowrap tabular-nums">{moeda(Number(n.valor))}</td>
                         <td className="text-right whitespace-nowrap tabular-nums">{moeda(Number(n.valor_liquido))}</td>
-                        {calc ? (
+                        {ef ? (
                           <>
-                            <td className="text-right whitespace-nowrap tabular-nums">{moeda(calc.retido)}<div className="text-xs text-slate-500">{pct(calc.percRetido)}</div></td>
-                            <td className={`text-right whitespace-nowrap tabular-nums ${calc.devido < 0 ? "text-red-600" : ""}`}>{moeda(calc.devido)}<div className="text-xs text-slate-500">{pct(calc.percDevido)}</div></td>
+                            <td className="text-right whitespace-nowrap tabular-nums">{moeda(ef.retido)}<div className="text-xs text-slate-500">{pct(ef.percRetido)}</div></td>
+                            <td className={`text-right whitespace-nowrap tabular-nums ${ef.devido < 0 ? "text-red-600" : ""}`} data-imposto-devido={ef.lancado ? "lancado" : "estimado"}>
+                              {moeda(ef.devido)}
+                              <div className="text-xs text-slate-500">{pct(ef.percDevido)} · {ef.lancado ? `lançado${ef.aliquota !== null ? ` a ${pct(ef.aliquota)}` : ""}` : "estimado"}</div>
+                            </td>
                           </>
                         ) : (
                           <td colSpan={2} className="text-xs text-slate-500">Valores inválidos.</td>

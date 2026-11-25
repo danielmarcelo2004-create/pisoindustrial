@@ -26,7 +26,7 @@ export default async function PainelPage({ searchParams }: PageProps<"/">) {
     // Provisões vencidas que ainda não viraram pagamento (Financeiro e Suprimentos acompanham)
     supabase.from("provisoes").select("valor_estimado").eq("status", "provisionada").lt("vencimento", hoje),
     // Séries de provisões (para avisar quando chegam na última parcela)
-    supabase.from("provisoes").select("id, descricao, status, vencimento, created_by, pagamento_origem_id, obra:obras(id)").like("descricao", "%(%/%)").limit(1000),
+    supabase.from("provisoes").select("id, descricao, status, vencimento, created_by, pagamento_origem_id, serie_id, obra:obras(id)").like("descricao", "%(%/%)").limit(1000),
   ]);
   const seriesNaUltima = analisarSeries(provSerieRes.data ?? []).naUltima;
 

@@ -613,14 +613,14 @@ isOneToOne: false
                   ]
                 },"notas_medicao": {
                   Row: {
-                    "criada_em": string,"criada_por": string,"data_emissao": string | null,"descricao": string | null,"id": string,"mime_type": string | null,"nome_arquivo": string,"numero": string | null,"obra_id": string,"prestador_documento": string | null,"prestador_nome": string | null,"sha256": string,"storage_path": string,"valor": number,"valor_liquido": number
+                    "aliquota_aplicada": number | null,"criada_em": string,"criada_por": string,"data_emissao": string | null,"descricao": string | null,"devido_lancado": number | null,"id": string,"impostos_lancados_em": string | null,"mime_type": string | null,"nome_arquivo": string,"numero": string | null,"obra_id": string,"prestador_documento": string | null,"prestador_nome": string | null,"retido_lancado": number | null,"sha256": string,"storage_path": string,"valor": number,"valor_liquido": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "criada_em"?: string,"criada_por"?: string,"data_emissao"?: string | null,"descricao"?: string | null,"id"?: string,"mime_type"?: string | null,"nome_arquivo": string,"numero"?: string | null,"obra_id": string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"sha256": string,"storage_path": string,"valor": number,"valor_liquido": number
+                    "aliquota_aplicada"?: number | null,"criada_em"?: string,"criada_por"?: string,"data_emissao"?: string | null,"descricao"?: string | null,"devido_lancado"?: number | null,"id"?: string,"impostos_lancados_em"?: string | null,"mime_type"?: string | null,"nome_arquivo": string,"numero"?: string | null,"obra_id": string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"retido_lancado"?: number | null,"sha256": string,"storage_path": string,"valor": number,"valor_liquido": number
                   }
                   Update: {
-                    "criada_em"?: string,"criada_por"?: string,"data_emissao"?: string | null,"descricao"?: string | null,"id"?: string,"mime_type"?: string | null,"nome_arquivo"?: string,"numero"?: string | null,"obra_id"?: string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"sha256"?: string,"storage_path"?: string,"valor"?: number,"valor_liquido"?: number
+                    "aliquota_aplicada"?: number | null,"criada_em"?: string,"criada_por"?: string,"data_emissao"?: string | null,"descricao"?: string | null,"devido_lancado"?: number | null,"id"?: string,"impostos_lancados_em"?: string | null,"mime_type"?: string | null,"nome_arquivo"?: string,"numero"?: string | null,"obra_id"?: string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"retido_lancado"?: number | null,"sha256"?: string,"storage_path"?: string,"valor"?: number,"valor_liquido"?: number
                   }
                   Relationships: [
                     {
@@ -1043,14 +1043,14 @@ isOneToOne: false
                   ]
                 },"provisoes": {
                   Row: {
-                    "categoria_id": string | null,"created_at": string,"created_by": string,"descricao": string,"id": string,"mes_referencia": string | null,"obra_id": string,"observacoes": string | null,"pagamento_id": string | null,"pagamento_origem_id": string | null,"status": string,"updated_at": string,"valor_estimado": number | null,"vencimento": string | null,"_pode_agir_provisao": boolean | null
+                    "categoria_id": string | null,"created_at": string,"created_by": string,"descricao": string,"id": string,"mes_referencia": string | null,"obra_id": string,"observacoes": string | null,"pagamento_id": string | null,"pagamento_origem_id": string | null,"serie_id": string | null,"status": string,"updated_at": string,"valor_estimado": number | null,"vencimento": string | null,"_pode_agir_provisao": boolean | null
                   }
                   ComputedFields: "_pode_agir_provisao"
                   Insert: {
-                    "categoria_id"?: string | null,"created_at"?: string,"created_by"?: string,"descricao": string,"id"?: string,"mes_referencia"?: string | null,"obra_id": string,"observacoes"?: string | null,"pagamento_id"?: string | null,"pagamento_origem_id"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
+                    "categoria_id"?: string | null,"created_at"?: string,"created_by"?: string,"descricao": string,"id"?: string,"mes_referencia"?: string | null,"obra_id": string,"observacoes"?: string | null,"pagamento_id"?: string | null,"pagamento_origem_id"?: string | null,"serie_id"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
                   }
                   Update: {
-                    "categoria_id"?: string | null,"created_at"?: string,"created_by"?: string,"descricao"?: string,"id"?: string,"mes_referencia"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"pagamento_id"?: string | null,"pagamento_origem_id"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
+                    "categoria_id"?: string | null,"created_at"?: string,"created_by"?: string,"descricao"?: string,"id"?: string,"mes_referencia"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"pagamento_id"?: string | null,"pagamento_origem_id"?: string | null,"serie_id"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
                   }
                   Relationships: [
                     {

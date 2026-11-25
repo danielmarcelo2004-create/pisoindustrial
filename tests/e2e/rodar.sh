@@ -4,7 +4,7 @@
 # com as variáveis de teste do WhatsApp e do Resend (veja o README). Recria o banco local!
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-for t in nucleo modulos baixa-lote assinatura assinatura-fluxo assinatura-anexos assinatura-pagina assinatura-cadeia assinatura-substituicao fundos avisos-email notas-contabeis funcoes-apoio regressoes conciliacao-lancamento conciliacao-receber fluxo-provisao persona-financeiro medicao-receita compras-notas janelas conciliacao-ajuste excluir-lancamento relatorios situacao-pago importacao-lote; do
+for t in nucleo modulos baixa-lote assinatura assinatura-fluxo assinatura-anexos assinatura-pagina assinatura-cadeia assinatura-substituicao fundos avisos-email notas-contabeis funcoes-apoio regressoes conciliacao-lancamento conciliacao-receber fluxo-provisao persona-financeiro medicao-receita compras-notas janelas conciliacao-ajuste excluir-lancamento relatorios situacao-pago importacao-lote op-pdf-pendente; do
   npx supabase db reset >/dev/null
   npm run seed:demo >/dev/null
   echo "== $t"

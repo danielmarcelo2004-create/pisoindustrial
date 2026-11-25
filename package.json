@@ -15,7 +15,10 @@
     "test:nfe": "node --test tests/nfe.test.mts tests/notas-contabeis.test.mts tests/notas-pdf.test.mts tests/comprovantes-banco.test.mts tests/conciliacao.test.mts",
     "test:unit": "node --test tests/*.test.mts tests/nota/*.test.mts",
     "test:gremlins": "node tests/e2e/gremlins.cjs",
-    "test:e2e": "bash tests/e2e/rodar.sh"
+    "test:e2e": "bash tests/e2e/rodar.sh",
+    "test:personas": "for f in tests/e2e/personas/[a-z]*.cjs; do node $f || exit 1; done",
+    "pre-producao": "bash scripts/pre-producao.sh",
+    "pre-producao:rapido": "bash scripts/pre-producao.sh --rapido"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

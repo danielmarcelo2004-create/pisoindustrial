@@ -55,15 +55,15 @@ export async function lancarGasto(fundoId: string, _: Estado, fd: FormData): Pro
   return { ok: "Gasto lançado. Agora anexe o comprovante e assine: o gasto só conta no saldo com o comprovante assinado." };
 }
 
-/** Fundo esgotado: a pessoa pede a reposição ao Financeiro (avisa na hora; um pedido por fundo). */
-export async function pedirReposicao(fundoId: string, _: Estado, __: FormData): Promise<Estado> {
+/** A pessoa do fundo solicita o fechamento ao Financeiro (avisa na hora; um pedido por fundo). Só o Financeiro fecha. */
+export async function solicitarFechamento(fundoId: string, _: Estado, __: FormData): Promise<Estado> {
   await exigirPerfil("engenheiro", "suprimentos", "administrador", "administrador_master", "financeiro");
   if (!UUID.test(fundoId)) return { erro: "Fundo não encontrado." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("pedir_reposicao_fundo", { p_fundo_id: fundoId });
+  const { error } = await supabase.rpc("solicitar_fechamento_fundo", { p_fundo_id: fundoId });
   if (error) return { erro: mensagemErro(error) };
   revalidar(fundoId);
-  return { ok: "Reposição solicitada ao Financeiro." };
+  return { ok: "Fechamento solicitado ao Financeiro." };
 }
 
 /** A pessoa do fundo informa instituição e conta (agência + conta) ou chave PIX, antes do primeiro gasto. */

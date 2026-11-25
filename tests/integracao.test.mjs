@@ -954,31 +954,32 @@ test('regressão: gasto de fundo fixo sem comprovante assinado não conta nem po
   await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: fundoC, p_vencimento: '2026-11-20', p_modo: 'encerrar' })
 })
 
-test('regressão: fundo esgotado não aceita novos gastos; o último pode passar do valor (antes dava para lançar sem limite)', async () => {
+test('regressão: fundo fixo não limita novos gastos (passa do valor vira reembolso); a pessoa solicita o fechamento, só o Financeiro fecha (antes bloqueava o gasto e só dava "pedir reposição")', async () => {
   const fundo = await rpc('fin', 'criar_fundo_fixo', { p_obra_id: obraA.id, p_pessoa_id: u.sup.id, p_valor: 100 })
-  // 60 + 20 + 70: o último passa de 100, mas ainda havia saldo (20) quando foi lançado
   const g1 = await gastoFundo('sup', fundo, 'Um', '2026-11-06', 60)
-  await rpcFalha('sup', 'pedir_reposicao_fundo', { p_fundo_id: fundo }, /ainda tem saldo/)
-  await gastoFundo('sup', fundo, 'Dois', '2026-11-06', 20)
-  const g3 = await gastoFundo('sup', fundo, 'Três (passa do valor)', '2026-11-06', 70)
-  // Já cobriu o fundo (mesmo com tudo aguardando aprovação): bloqueia
-  await rpcFalha('sup', 'lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Quatro', p_data: '2026-11-06', p_valor: 5 }, /Fundo esgotado/)
-  // Pedir reposição: só a pessoa do fundo, só esgotado, uma vez; avisa o Financeiro
-  await rpcFalha('adm', 'pedir_reposicao_fundo', { p_fundo_id: fundo }, /Somente a pessoa do fundo/)
-  await rpc('sup', 'pedir_reposicao_fundo', { p_fundo_id: fundo })
-  await rpcFalha('sup', 'pedir_reposicao_fundo', { p_fundo_id: fundo }, /já foi solicitada/)
-  const { data: pedido } = await admin.from('notificacoes').select('mensagem').eq('user_id', u.fin.id).eq('titulo', 'Reposição de fundo fixo solicitada')
+  const g2 = await gastoFundo('sup', fundo, 'Dois (passa do valor)', '2026-11-06', 70)
+  // Já cobriu o fundo, mas continua podendo lançar (sem limite)
+  const g3 = await gastoFundo('sup', fundo, 'Três (depois de passar)', '2026-11-06', 30)
+  assert.ok(g1 && g2 && g3)
+  // Solicitar fechamento: só a pessoa do fundo, uma vez; avisa o Financeiro; quem não é do fundo não pede
+  await rpcFalha('adm', 'solicitar_fechamento_fundo', { p_fundo_id: fundo }, /Somente a pessoa do fundo/)
+  await rpcFalha('fin', 'solicitar_fechamento_fundo', { p_fundo_id: fundo }, /Somente a pessoa do fundo/)
+  await rpc('sup', 'solicitar_fechamento_fundo', { p_fundo_id: fundo })
+  await rpcFalha('sup', 'solicitar_fechamento_fundo', { p_fundo_id: fundo }, /já foi solicitado/)
+  const { data: pedido } = await admin.from('notificacoes').select('mensagem').eq('user_id', u.fin.id).eq('titulo', 'Fechamento de fundo fixo solicitado')
   assert.ok(pedido.length >= 1, 'Financeiro avisado')
-  // Recusado libera o saldo de novo
-  await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g3, p_aprovar: false, p_motivo: 'não era do fundo' })
-  const g4 = await gastoFundo('sup', fundo, 'Quatro', '2026-11-06', 15)
+  const { data: marcado } = await admin.from('fundos_fixos').select('fechamento_solicitado_em').eq('id', fundo).single()
+  assert.ok(marcado.fechamento_solicitado_em, 'pedido registrado no fundo')
+  // Só o Financeiro fecha: a pessoa do fundo e o administrador não
+  await rpcFalha('sup', 'fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: '2026-11-20', p_modo: 'encerrar' }, /Financeiro/)
   await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g1, p_aprovar: true })
-  await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g4, p_aprovar: true })
-  // Aprovados 75: ainda tem saldo e um gasto 2 aguardando; esgota quando passa de 100
-  const g5 = await gastoFundo('sup', fundo, 'Cinco', '2026-11-06', 5)
-  assert.ok(g5)
-  await rpcFalha('sup', 'lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Seis', p_data: '2026-11-06', p_valor: 5 }, /Fundo esgotado/)
+  await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g2, p_aprovar: true })
+  await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g3, p_aprovar: true })
   await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: '2026-11-20', p_modo: 'encerrar' })
+  const { data: f } = await admin.from('fundos_fixos').select('status, reembolso').eq('id', fundo).single()
+  assert.equal(f.status, 'fechado')
+  assert.equal(Number(f.reembolso), 60, 'gastos aprovados 160 num fundo de 100 = reembolso de 60')
+  await rpcFalha('sup', 'solicitar_fechamento_fundo', { p_fundo_id: fundo }, /já foi fechado/)
 })
 
 test('regressão: fundo fixo exige os dados bancários antes do primeiro gasto; o pagamento do fechamento nasce com a forma e os dados', async () => {

@@ -13,12 +13,16 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   if (u.trocaSenhaPendente) redirect("/trocar-senha");
 
   const supabase = await createClient();
-  const [{ count: naoLidas }, pend] = await Promise.all([
+  const [{ count: naoLidas }, pend, { count: fechamentosPedidos }] = await Promise.all([
     supabase.from("notificacoes").select("id", { count: "exact", head: true }).is("lida_em", null),
     u.perfil === "engenheiro" || u.perfil === "administrador" || u.perfil === "administrador_master"
       ? supabase
           .rpc("minhas_pendencias", undefined, { count: "exact", head: true })
           .in("status", ["aguardando_engenheiro", "aguardando_administrador"])
+      : Promise.resolve({ count: 0 }),
+    // Financeiro: fundos com fechamento solicitado pela pessoa, aguardando ele (contador no menu "Fundos fixos")
+    u.perfil === "financeiro"
+      ? supabase.from("fundos_fixos").select("id", { count: "exact", head: true }).not("fechamento_solicitado_em", "is", null).neq("status", "fechado")
       : Promise.resolve({ count: 0 }),
   ]);
 
@@ -36,7 +40,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     ...(fin || u.perfil === "administrador_master" ? [{ href: "/contas-bancarias", rotulo: "Contas bancárias", icone: Icones.banco }] : []),
     { href: "/obras", rotulo: "Centros de custo", icone: Icones.obras },
     { href: "/provisoes", rotulo: "Provisões", icone: Icones.agenda },
-    { href: "/fundos-fixos", rotulo: "Fundos fixos", icone: Icones.pagamentos },
+    { href: "/fundos-fixos", rotulo: "Fundos fixos", icone: Icones.pagamentos, contador: fechamentosPedidos ?? 0 },
     ...(fin || sup ? [{ href: "/notas-contabeis", rotulo: "Notas para contabilidade", icone: Icones.relatorios }] : []),
     ...(fin ? [{ href: "/notas-medicao", rotulo: "Notas de medição", icone: Icones.relatorios }] : []),
     ...(fin || sup ? [{ href: "/fornecedores", rotulo: "Fornecedores", icone: Icones.fornecedores }] : []),

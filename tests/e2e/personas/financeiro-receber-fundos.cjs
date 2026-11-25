@@ -214,8 +214,9 @@ rodar('Persona Marina — Receber, medição, fundos, relatórios, usuários', a
   await passo('gastos de R$ 60,00 + R$ 60,00 esgotam o fundo (120 de 100); "Fechar e repor" gera UM pagamento "reposição de R$ 100,00 + reembolso de R$ 20,00" com OP FF-xxxx em PDF e abre novo fundo de R$ 100,00', async () => {
     await prepararGastos('suprimentos', fundoX, [['Combustível', 60], ['Material', 60]]);
     const sup = await cliente('suprimentos');
-    const e = await erroApp(() => um(sup.rpc('lancar_gasto_fundo', { p_fundo_id: fundoX, p_descricao: 'Depois de esgotar', p_data: hoje, p_valor: 1 })));
-    confere(e && /esgotado/i.test(e), `gasto com fundo esgotado: ${e}`);
+    // Sem limite: depois de esgotar o fundo ainda aceita gasto (pendente, não conta até o comprovante assinado)
+    const extra = await um(sup.rpc('lancar_gasto_fundo', { p_fundo_id: fundoX, p_descricao: 'Depois de esgotar', p_data: hoje, p_valor: 1 }));
+    await um(admin.from('fundo_gastos').delete().eq('id', extra));
     await ir(p, `/fundos-fixos/${fundoX}`);
     await p.getByRole('button', { name: 'Fechar e repor' }).click();
     await p.waitForURL(/\/fundos-fixos\?fechado=/, { timeout: 60000 });

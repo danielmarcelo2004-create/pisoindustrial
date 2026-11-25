@@ -329,10 +329,12 @@ rodar('Persona Engenheiro (Carlos)', async ({ b, passo, entrar }) => {
     await p.getByLabel('Descrição do item 1').fill('Cimento CP-II');
     await p.getByLabel('Valor unitário do item 1').fill('35,50');
     await p.getByLabel('Quantidade do item 1').fill('10');
+    // o formulário lembra a última conta usada: limpa para testar o campo obrigatório
+    await p.locator('select[name=conta_bancaria_id]').selectOption('');
     await p.getByRole('button', { name: 'Salvar e enviar' }).click();
     await p.waitForTimeout(800);
     const invalidos = await p.evaluate(() => [...document.querySelectorAll(':invalid')].length);
-    confere(invalidos > 0, 'sem categoria/conta o formulário foi enviado');
+    confere(invalidos > 0, `sem categoria/conta o formulário foi enviado: url=${p.url()} conta=${await p.locator('select[name=conta_bancaria_id]').inputValue()} texto=${(await p.locator('main').innerText()).replace(/\s+/g,' ').slice(0,300)}`);
     confere((await um(admin.from('ordens_pagamento').select('id').eq('favorecido', nomeUI))).length === 0, 'criou rascunho com campos obrigatórios faltando');
     await p.click('button[aria-label="Categoria"]'); await p.locator('[role=option]').first().click();
     await p.locator('select[name=conta_bancaria_id]').selectOption(conta);
@@ -694,7 +696,7 @@ rodar('Persona Engenheiro (Carlos)', async ({ b, passo, entrar }) => {
     if (!ja.receb_informado_em) await um(sup.rpc('informar_dados_bancarios_fundo', { p_fundo_id: fundoSup, p_forma: 'pix', p_banco: 'Banco do Colega', p_favorecido: 'Sérgio Teste', p_chave_pix: 'chave-do-colega@exemplo.com' }));
     await falha(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundoSup, p_descricao: 'Invasão', p_data: hoje, p_valor: 10 }), /Somente a pessoa do fundo/, 'lançar no fundo alheio');
     await falha(eng.rpc('informar_dados_bancarios_fundo', { p_fundo_id: fundoSup, p_forma: 'pix', p_banco: 'Meu banco', p_favorecido: 'Carlos', p_chave_pix: 'minha@chave.com' }), /Somente a pessoa do fundo/, 'trocar os dados bancários do colega');
-    await falha(eng.rpc('pedir_reposicao_fundo', { p_fundo_id: fundoSup }), /Somente a pessoa do fundo/, 'pedir reposição do fundo do colega');
+    await falha(eng.rpc('solicitar_fechamento_fundo', { p_fundo_id: fundoSup }), /Somente a pessoa do fundo/, 'solicitar fechamento do fundo do colega');
     const fz = await um(admin.from('fundos_fixos').select('receb_banco, receb_chave_pix').eq('id', fundoSup).single());
     confere(fz.receb_banco !== 'Meu banco' && fz.receb_chave_pix !== 'minha@chave.com', 'os dados bancários do colega foram trocados');
   });
@@ -799,21 +801,21 @@ rodar('Persona Engenheiro (Carlos)', async ({ b, passo, entrar }) => {
     await p.getByText(/Recusado: Sem nota fiscal/).waitFor({ timeout: 15000 });
   });
 
-  await passo('Fundo fixo (esgotar): último gasto pode passar do saldo; depois não lança mais; pede reposição uma única vez', async () => {
+  await passo('Fundo fixo (sem limite): passa do valor e continua lançando; solicita o fechamento uma única vez e só o Financeiro fecha', async () => {
     const f = await um(admin.from('fundos_fixos').select('valor').eq('id', fundoId).single());
     const comp = (await um(admin.from('fundo_gastos').select('valor').eq('fundo_id', fundoId).in('status', ['aprovado', 'pendente']))).reduce((s, x) => s + Number(x.valor), 0);
     const resto = Math.round((Number(f.valor) - comp) * 100) / 100;
-    await falha(eng.rpc('pedir_reposicao_fundo', { p_fundo_id: fundoId }), /ainda tem saldo/, 'pedir reposição com saldo');
-    const ultimo = await um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundoId, p_descricao: marca('Ultimo'), p_data: hoje, p_valor: resto + 20 }));
-    await falha(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundoId, p_descricao: 'Depois do limite', p_data: hoje, p_valor: 1 }), /Fundo esgotado/, 'lançar com fundo esgotado');
+    await um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundoId, p_descricao: marca('Passa-do-valor'), p_data: hoje, p_valor: resto + 20 }));
+    // Depois de cobrir todo o valor, novos gastos continuam sendo aceitos (sem limite)
+    await um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundoId, p_descricao: marca('Depois-do-valor'), p_data: hoje, p_valor: 1 }));
     await ir(p, `/fundos-fixos/${fundoId}`);
-    await p.locator('[data-fundo-esgotado]').waitFor({ timeout: 15000 });
-    confere(!(await p.getByRole('button', { name: 'Lançar gasto' }).count()), 'oferece lançar gasto com o fundo esgotado');
-    await um(eng.rpc('pedir_reposicao_fundo', { p_fundo_id: fundoId }));
-    await falha(eng.rpc('pedir_reposicao_fundo', { p_fundo_id: fundoId }), /já foi solicitada/, 'pedir reposição duas vezes');
-    const aviso = await um(fin.from('notificacoes').select('titulo').ilike('titulo', 'Reposição de fundo fixo%').limit(1));
+    confere(await p.getByRole('button', { name: 'Lançar gasto' }).count() > 0, 'some o formulário de gasto depois de passar do valor');
+    await p.getByRole('button', { name: 'Solicitar fechamento do fundo' }).click();
+    await p.locator('[data-fechamento-solicitado]').waitFor({ timeout: 20000 });
+    await falha(eng.rpc('solicitar_fechamento_fundo', { p_fundo_id: fundoId }), /já foi solicitado/, 'solicitar fechamento duas vezes');
+    await falha(eng.rpc('fechar_fundo_fixo', { p_fundo_id: fundoId, p_vencimento: hoje, p_modo: 'encerrar', p_conta_id: null }), /Financeiro/, 'engenheiro fechar o próprio fundo');
+    const aviso = await um(fin.from('notificacoes').select('titulo').ilike('titulo', 'Fechamento de fundo fixo%').limit(1));
     confere(aviso.length === 1, 'o Financeiro não foi avisado');
-    void ultimo;
   });
 
   // ---------- anexos, assinatura e escopo do histórico ----------
@@ -1267,10 +1269,11 @@ rodar('Persona Engenheiro (Carlos)', async ({ b, passo, entrar }) => {
       } else {
         throw new Error('a tela do pagamento não oferece "Abrir e posicionar a assinatura" ao engenheiro da etapa');
       }
-      const g = await um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundoId, p_descricao: marca('Jan-gasto'), p_data: hoje, p_valor: 1 }).then((r) => ({ data: r.data, error: r.error?.message?.includes('esgotado') ? null : r.error })));
+      const descJan = marca('Jan-gasto');
+      const g = await um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundoId, p_descricao: descJan, p_data: hoje, p_valor: 1 }));
       if (g) {
         await ir(pj, `/fundos-fixos/${fundoId}`);
-        const li = pj.locator('li', { hasText: 'Jan-gasto' });
+        const li = pj.locator('li', { hasText: descJan });
         await li.locator('input[type=file]').setInputFiles(pdfUI);
         await pj.getByText('Posicione sua assinatura').waitFor({ timeout: 60000 });
         const ms = await medirJanelas(pj, largura);

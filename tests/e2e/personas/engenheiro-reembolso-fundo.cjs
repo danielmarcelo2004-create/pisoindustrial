@@ -1,6 +1,6 @@
 // Persona Carlos (engenheiro): o fundo fixo estoura o valor e ele precisa ser reembolsado.
-// Fundo de R$ 1.000,00; gastos de R$ 600,00 e R$ 670,00 (o último pode passar do valor); a partir daí não lança mais;
-// pede a reposição; o Financeiro fecha e repõe (pagamento de R$ 1.270,00 = reposição 1.000 + reembolso 270) e o novo fundo abre.
+// Fundo de R$ 1.000,00; gastos de R$ 600,00 e R$ 670,00 (sem limite: pode passar do valor e seguir lançando);
+// solicita o fechamento; o Financeiro fecha e repõe (pagamento de R$ 1.270,00 = reposição 1.000 + reembolso 270) e o novo fundo abre.
 // Também cobre o "Encerrar fundo" com gasto acima do valor (só reembolso, sem devolução). Dados fictícios.
 const { admin, um, hoje, marca, confere, cliente, rodar, ir } = require('./_util.cjs');
 
@@ -42,24 +42,33 @@ rodar('Persona Carlos — fundo estourado e reembolso', async ({ passo, entrar }
     confere(s.reduce((t, g) => t + Number(g.valor), 0) === 1270, 'gastos não somam 1.270');
   });
 
-  await passo('depois de esgotar: novo gasto é recusado (API) e a tela avisa "Fundo esgotado" com "Pedir reposição ao Financeiro"; não há formulário de gasto', async () => {
-    const e = await erroApp(() => um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Mais um', p_data: hoje, p_valor: 10 })));
-    confere(e && /esgotado/i.test(e), `gasto com fundo esgotado: ${e}`);
+  await passo('depois de passar do valor: o engenheiro continua lançando gastos (API e tela) — sem limite — e a tela oferece "Solicitar fechamento do fundo"', async () => {
+    const extra = await um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: `Mais um ${M}`, p_data: hoje, p_valor: 10 }));
+    await um(admin.from('fundo_gastos').delete().eq('id', extra));
     await ir(p, `/fundos-fixos/${fundo}`);
-    await p.locator('[data-fundo-esgotado]').waitFor({ timeout: 15000 });
-    confere(await p.getByRole('button', { name: 'Pedir reposição ao Financeiro' }).count() === 1, 'sem o botão de pedir reposição');
-    confere(await p.locator('input[name=valor]').count() === 0, 'formulário de gasto continua na tela');
+    // O formulário depende da assinatura cadastrada (o Carlos de teste não tem); o que não pode existir é o bloqueio por saldo
+    const bloqueado = await p.getByText(/Fundo esgotado|Não dá para lançar novos gastos/).count();
+    confere(bloqueado === 0, 'a tela ainda bloqueia gastos por saldo esgotado');
+    confere(await p.locator('input[name=valor], [data-sem-assinatura]').count() >= 1, 'nem formulário de gasto nem aviso de assinatura');
+    confere(await p.getByRole('button', { name: 'Solicitar fechamento do fundo' }).count() === 1, 'sem o botão de solicitar fechamento');
   });
 
-  await passo('Carlos pede a reposição: o Financeiro é avisado na hora, o pedido aparece para os dois e não dá para pedir duas vezes', async () => {
-    await p.getByRole('button', { name: 'Pedir reposição ao Financeiro' }).click();
-    await p.locator('[data-reposicao-pedida]').waitFor({ timeout: 20000 });
-    const av = await um(admin.from('notificacoes').select('titulo, link').eq('user_id', finId).eq('titulo', 'Reposição de fundo fixo solicitada').order('created_at', { ascending: false }).limit(1));
+  await passo('Carlos solicita o fechamento: Financeiro avisado (sino), aviso na lista e contador no menu "Fundos fixos"; não dá para solicitar duas vezes e ele não fecha sozinho', async () => {
+    p.on('dialog', (d) => d.accept());
+    await p.getByRole('button', { name: 'Solicitar fechamento do fundo' }).click();
+    await p.locator('[data-fechamento-solicitado]').waitFor({ timeout: 20000 });
+    const av = await um(admin.from('notificacoes').select('titulo, link').eq('user_id', finId).eq('titulo', 'Fechamento de fundo fixo solicitado').order('created_at', { ascending: false }).limit(1));
     confere(av.length === 1 && av[0].link === `/fundos-fixos/${fundo}`, 'Financeiro não foi avisado');
-    const dup = await erroApp(() => um(eng.rpc('pedir_reposicao_fundo', { p_fundo_id: fundo })));
-    confere(dup && /já foi solicitada/.test(dup), `pedido duplicado: ${dup}`);
+    const dup = await erroApp(() => um(eng.rpc('solicitar_fechamento_fundo', { p_fundo_id: fundo })));
+    confere(dup && /já foi solicitado/.test(dup), `pedido duplicado: ${dup}`);
+    const sozinho = await erroApp(() => um(eng.rpc('fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: hoje, p_modo: 'repor', p_conta_id: null })));
+    confere(sozinho && /Financeiro/.test(sozinho), `engenheiro fechou o próprio fundo: ${sozinho}`);
+    await ir(pf, '/fundos-fixos');
+    await pf.locator('[data-fechamentos-solicitados]').waitFor({ timeout: 15000 });
+    const contador = await pf.locator('nav a[href="/fundos-fixos"] span.rounded-full').first().innerText();
+    confere(Number(contador) >= 1, `contador do menu: "${contador}"`);
     await ir(pf, `/fundos-fixos/${fundo}`);
-    await pf.getByText(/pediu a reposição em/).first().waitFor({ timeout: 15000 });
+    await pf.getByText(/solicitou o fechamento deste fundo em/).first().waitFor({ timeout: 15000 });
   });
 
   await passo('Financeiro "Fechar e repor": UM pagamento de R$ 1.270,00 (reposição 1.000 + reembolso 270) em PIX com os dados bancários do Carlos e OP FF-xxxx em PDF', async () => {
@@ -84,10 +93,10 @@ rodar('Persona Carlos — fundo estourado e reembolso', async ({ passo, entrar }
     await um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: novoFundo, p_descricao: `Volta a lançar ${M}`, p_data: hoje, p_valor: 50 }));
     const antigo = await erroApp(() => um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'No fechado', p_data: hoje, p_valor: 1 })));
     confere(antigo && /já foi fechado/.test(antigo), `gasto em fundo fechado: ${antigo}`);
-    const pedido = await erroApp(() => um(eng.rpc('pedir_reposicao_fundo', { p_fundo_id: fundo })));
+    const pedido = await erroApp(() => um(eng.rpc('solicitar_fechamento_fundo', { p_fundo_id: fundo })));
     confere(pedido && /já foi fechado/.test(pedido), `pedido em fundo fechado: ${pedido}`);
     await ir(p, `/fundos-fixos/${novoFundo}`);
-    confere(await p.locator('[data-fundo-esgotado]').count() === 0, 'novo fundo aparece como esgotado');
+    confere(await p.locator('[data-fechamento-solicitado]').count() === 0, 'novo fundo já aparece com fechamento solicitado');
   });
 
   await passo('"Encerrar fundo" com gasto acima do valor (R$ 300 de R$ 200): paga só o reembolso de R$ 100,00 e não gera devolução de saldo', async () => {

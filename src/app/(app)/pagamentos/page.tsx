@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Aviso, Cabecalho, LinkBotao, Selo, Vazio, classeBotao, cx } from "@/components/ui";
 import { getUsuario } from "@/lib/auth";
-import { listarContas, type FiltroCartao, type LinhaConta } from "@/lib/consultas/contas-a-pagar";
+import { LIMITE_CONSULTA, listarContas, type FiltroCartao, type LinhaConta } from "@/lib/consultas/contas-a-pagar";
 import { categoriasAtivas } from "@/lib/consultas/categorias";
 import { contasBancariasAtivas } from "@/lib/consultas/contas-bancarias";
 import { data, hojeISO, moeda } from "@/lib/formato";
@@ -73,7 +73,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
   };
 
   const supabase = await createClient();
-  const [{ linhas, totais }, { data: obras }, categorias, { data: fornecedores }, { data: rascunhos }, contasBanc] = await Promise.all([
+  const [{ linhas, totais, truncado }, { data: obras }, categorias, { data: fornecedores }, { data: rascunhos }, contasBanc] = await Promise.all([
     listarContas({ ...filtros, mes: periodo.tipo === "todos" ? "todos" : periodo.de.slice(0, 7), cartao }),
     supabase.from("obras").select("id, nome").order("nome"),
     categoriasAtivas(),
@@ -140,6 +140,11 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
       {typeof sp.baixados === "string" && (
         <div className="mb-4">
           <Aviso tipo="sucesso">{sp.baixados} conta(s) baixada(s) com sucesso.</Aviso>
+        </div>
+      )}
+      {truncado && (
+        <div className="mb-4" data-lista-truncada>
+          <Aviso tipo="alerta">A lista mostra só os primeiros {LIMITE_CONSULTA} lançamentos do filtro: os totais podem estar incompletos. Reduza o período ou use os filtros (obra, fornecedor, busca).</Aviso>
         </div>
       )}
       {sp.excluida && (

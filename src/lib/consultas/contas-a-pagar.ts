@@ -3,6 +3,9 @@ import { hojeISO } from "@/lib/formato";
 import { createClient } from "@/lib/supabase/server";
 import type { FormaPagamento, StatusPagamento } from "@/lib/rotulos";
 
+/** Máximo de lançamentos lidos por consulta; passando disso a tela avisa que a lista está incompleta. */
+export const LIMITE_CONSULTA = 2000;
+
 // Lista de "Contas a pagar": uma linha por conta — pagamento à vista ou cada parcela no seu vencimento —
 // mais as provisões do período (só informativas). Os cartões de totais usam as mesmas linhas.
 
@@ -109,7 +112,7 @@ export async function listarContas(f: FiltrosContas) {
   if (f.lancados) qp = qp.eq("lancado_conciliacao", true);
   if (f.fornecedor) qp = qp.eq("fornecedor_id", f.fornecedor);
   if (busca) qp = qp.or(numBusca !== null ? `numero.eq.${numBusca},favorecido.ilike.%${busca}%,descricao.ilike.%${busca}%` : `favorecido.ilike.%${busca}%,descricao.ilike.%${busca}%`);
-  const consultaPags = qp.order("vencimento").limit(2000);
+  const consultaPags = qp.order("vencimento").limit(LIMITE_CONSULTA);
 
   // 2) Parcelas com vencimento no período
   let qc = supabase
@@ -127,7 +130,7 @@ export async function listarContas(f: FiltrosContas) {
   if (f.lancados) qc = qc.eq("pagamento.lancado_conciliacao", true);
   if (f.fornecedor) qc = qc.eq("pagamento.fornecedor_id", f.fornecedor);
   if (busca) qc = qc.or(numBusca !== null ? `numero.eq.${numBusca},favorecido.ilike.%${busca}%,descricao.ilike.%${busca}%` : `favorecido.ilike.%${busca}%,descricao.ilike.%${busca}%`, { referencedTable: "pagamentos" });
-  const consultaParcs = qc.order("vencimento").limit(2000);
+  const consultaParcs = qc.order("vencimento").limit(LIMITE_CONSULTA);
 
   // 3) Provisões do período (não entram nos totais)
   let qv = supabase.from("provisoes").select("id, descricao, vencimento, valor_estimado, obra_id, created_by, pagamento_origem_id, obra:obras(nome), categoria:categorias(nome)").eq("status", "provisionada");
@@ -284,5 +287,7 @@ export async function listarContas(f: FiltrosContas) {
     : cartao === "liberados" ? linhas.filter((l) => l.baixavel)
     : cartao === "abertos" ? linhas.filter((l) => !["pagos", "cancelado", "provisao"].includes(l.grupo))
     : linhas;
-  return { linhas: filtradas, totais, periodo: { de, ate } };
+  // Se uma das consultas bateu no limite, a lista e os totais estão incompletos: a tela avisa para filtrar mais.
+  const truncado = (pags?.length ?? 0) >= LIMITE_CONSULTA || (pcs?.length ?? 0) >= LIMITE_CONSULTA;
+  return { linhas: filtradas, totais, periodo: { de, ate }, truncado };
 }

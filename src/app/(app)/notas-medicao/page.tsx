@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { FormAcao } from "@/components/form-acao";
-import { Campo, Cabecalho, Cartao, Vazio } from "@/components/ui";
+import { Aviso, Campo, Cabecalho, Cartao, Vazio } from "@/components/ui";
 import { exigirPerfil } from "@/lib/auth";
 import { calcularImpostosMedicao, TAXA_IMPOSTO_DEVIDO } from "@/lib/impostos-medicao";
 import { data, moeda } from "@/lib/formato";
@@ -58,6 +58,11 @@ export default async function NotasMedicaoPage() {
         titulo="Notas de medição"
         subtitulo="Notas emitidas pela empresa para recebimento. Não são pagamentos: o cálculo mostra o imposto retido pelo cliente e o imposto devido."
       />
+      {(notas ?? []).length >= 500 && (
+        <div className="mb-4" data-lista-truncada>
+          <Aviso tipo="alerta">Mostrando só as 500 notas mais recentes: as mais antigas não aparecem aqui nem entram no resumo.</Aviso>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 2xl:grid-cols-3">
         <Cartao titulo="Anexar nota de medição" className="2xl:col-span-1">

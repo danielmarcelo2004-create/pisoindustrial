@@ -97,7 +97,7 @@ export default async function NotasContabeisPage({ searchParams }: PageProps<"/n
                     <tr key={n.id}>
                       <td className="whitespace-nowrap tabular-nums">{n.data_emissao ? data(n.data_emissao) : "—"}</td>
                       <td><Selo cor={COR[n.categoria]}>{ROTULO_CATEGORIA[n.categoria]}</Selo></td>
-                      <td className="min-w-48">
+                      <td className="min-w-32">
                         <div className="font-medium">{n.prestador_nome ?? "—"}</div>
                         <div className="text-xs text-slate-500 tabular-nums">{cpfCnpj(n.prestador_documento)}</div>
                       </td>
@@ -106,7 +106,7 @@ export default async function NotasContabeisPage({ searchParams }: PageProps<"/n
                       <td className="text-xs">
                         {retidos.length ? retidos.map((r) => `${r.rotulo} ${moeda(n.retencoes[r.chave] ?? 0)}`).join(" · ") : <span className="text-slate-400">—</span>}
                       </td>
-                      <td className="min-w-44 text-xs">
+                      <td className="min-w-32 text-xs">
                         <div>{n.obra?.nome}</div>
                         {n.pagamento && (
                           <Link href={`/pagamentos/${n.pagamento.id}`} className="text-marca-700 hover:underline">
@@ -121,7 +121,7 @@ export default async function NotasContabeisPage({ searchParams }: PageProps<"/n
                           </div>
                         )}
                       </td>
-                      <td className="min-w-40">
+                      <td className="min-w-32">
                         {n.enviada_em ? (
                           <div className="space-y-1">
                             <Selo cor="verde">Enviada em {data(n.enviada_em)}</Selo>

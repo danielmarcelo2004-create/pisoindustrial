@@ -120,7 +120,7 @@ export default async function OPPage({ params, searchParams }: PageProps<"/ops/[
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <Cartao titulo="Dados">
-            <dl className="grid gap-4 sm:grid-cols-3">
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Dado rotulo="Valor total">
                 <span className="text-lg font-semibold tabular-nums">{moeda(total)}</span>
               </Dado>

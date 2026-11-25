@@ -232,7 +232,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <Cartao titulo={parcelas && parcelas.length > 1 ? `Informações do lançamento · parcelado em ${parcelas.length}x` : "Informações do lançamento"}>
-            <dl className="grid gap-4 sm:grid-cols-3">
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Dado rotulo="Valor">
                 <span className="text-lg font-semibold tabular-nums">{moeda(p.valor)}</span>
               </Dado>

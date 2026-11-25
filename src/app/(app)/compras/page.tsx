@@ -184,7 +184,7 @@ export default async function ComprasPage({ searchParams }: PageProps<"/compras"
                   <tbody>
                     {grupos.slice(0, 200).map((g) => (
                       <tr key={g.chave}>
-                        <td className="min-w-60">
+                        <td className="min-w-44">
                           <Link href={linkGrupo(g.chave)} className="font-medium text-marca-700 hover:underline">
                             {g.descricao}
                           </Link>

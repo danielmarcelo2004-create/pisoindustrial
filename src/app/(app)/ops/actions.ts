@@ -32,7 +32,7 @@ function lerItens(fd: FormData): ItemOP[] | string {
     const it = b as Record<string, unknown>;
     const descricao = String(it.descricao ?? "").trim();
     const quantidade = Number(it.quantidade);
-    const valor = Number(it.valor_unitario);
+    const valor = it.valor_unitario === null || it.valor_unitario === "" || it.valor_unitario === undefined ? Number.NaN : Number(it.valor_unitario);
     if (!descricao) return `Item ${i + 1}: informe a descrição.`;
     if (!(quantidade > 0)) return `Item ${i + 1}: quantidade inválida.`;
     if (!(valor >= 0)) return `Item ${i + 1}: valor unitário inválido.`;
@@ -180,7 +180,16 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
   const r = await gravarRascunho(id ?? (UUID.test(idAtual) ? idAtual : null), fd, fd.get("acao") === "enviar");
   if (r.erro) return { erro: r.erro };
   revalidatePath("/ops");
-  if (fd.get("acao") === "enviar") return enviarOP(r.id as string, null, fd);
+  if (fd.get("acao") === "enviar") {
+    const resultado = await enviarOP(r.id as string, null, fd);
+    // "Salvar e enviar" que falhou depois de gravar um rascunho NOVO: o formulário não guarda o id e, ao tentar de novo,
+    // criaria outro rascunho (o primeiro ficaria órfão). Remove o rascunho criado agora; um rascunho já existente é mantido.
+    if (resultado?.erro && !id && !UUID.test(idAtual)) {
+      const supabase = await createClient();
+      await supabase.rpc("excluir_op", { p_id: r.id as string });
+    }
+    return resultado;
+  }
   // Rascunho salvo: segue para a edição, onde ficam os anexos e a assinatura.
   redirect(`/ops/${r.id}/editar?salva=1`);
 }

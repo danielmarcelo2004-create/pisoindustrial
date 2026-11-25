@@ -52,7 +52,7 @@ export default async function RecebimentoPage({ params, searchParams }: PageProp
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-4">
           <Cartao titulo="Dados">
-            <dl className="grid gap-4 sm:grid-cols-3">
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Dado rotulo="Situação">
                 <Selo cor={sit.c}>{sit.r}</Selo>
               </Dado>

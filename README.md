@@ -42,14 +42,14 @@ Sistema web interno para centralizar a rotina financeira das obras: pagamentos e
 | Área | Engenheiro | Administrador | Suprimentos | Financeiro | Administrador master |
 |---|---|---|---|---|---|
 | Obras | só as suas | só as suas | todas (leitura) | todas | todas |
-| Criar despesa / OP | sim (suas obras) | sim (suas obras) | OP | sim | sim |
+| Criar despesa / OP | OP (suas obras) | não | despesa e OP | despesa e OP | não |
 | Assinar / aprovar | etapa dele | etapa dele | não | não assina como engenheiro | etapa dele |
 | Baixa, conciliação, contas bancárias | não | não | não | sim | conciliação e dados da conta |
 | Contas a receber, notas de medição | leitura | leitura | leitura | lança e edita | lança e edita |
 | Compras (preços e histórico) | leitura, CNPJ oculto | leitura, CNPJ oculto | completo | completo | completo |
 | Fornecedores (CPF/CNPJ, PIX, banco) | só nomes | só nomes | completo | completo | completo |
 | E-mail e telefone dos usuários | só o próprio | só o próprio | só o próprio | todos | só o próprio |
-| Usuários e perfis | não | não | não | não | sim |
+| Usuários e perfis | não | não | não | sim (somente o Financeiro cria e gerencia) | não |
 | Fundo fixo | o seu | o seu | o seu | todos (fecha e repõe) | leitura |
 
 Os dados pessoais e bancários só saem por visões do banco que devolvem linhas apenas para quem pode ver (`profiles_completo`, `fornecedores_dados`, `contas_bancarias_dados`); a tela esconder o menu não é a proteção. Na dúvida, o banco é a fonte da verdade (`supabase/migrations`).

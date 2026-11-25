@@ -11,7 +11,13 @@ export type FiltrosCompras = {
   ate?: string;
 };
 
-const limpo = (s?: string) => (s ?? "").trim().replace(/[%,()*\\]/g, " ").trim();
+// Textos de busca: sem caracteres especiais do filtro e com tamanho máximo (busca enorme derrubava a tela).
+const limpo = (s?: string) => (s ?? "").trim().replace(/[%,()*\\]/g, " ").slice(0, 80).trim();
+const dataValida = (d?: string) => {
+  if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const x = new Date(d + "T12:00:00Z");
+  return !Number.isNaN(x.getTime()) && x.toISOString().slice(0, 10) === d;
+};
 
 export async function itensCompras(f: FiltrosCompras) {
   const supabase = await createClient();
@@ -27,8 +33,8 @@ export async function itensCompras(f: FiltrosCompras) {
   const cid = limpo(f.cidade);
   if (cid) q = q.ilike("cidade", `%${cid}%`);
   if (f.uf && /^[A-Z]{2}$/.test(f.uf)) q = q.eq("uf", f.uf);
-  if (f.de && /^\d{4}-\d{2}-\d{2}$/.test(f.de)) q = q.gte("data_emissao", f.de);
-  if (f.ate && /^\d{4}-\d{2}-\d{2}$/.test(f.ate)) q = q.lte("data_emissao", f.ate);
+  if (dataValida(f.de) && f.de) q = q.gte("data_emissao", f.de);
+  if (dataValida(f.ate) && f.ate) q = q.lte("data_emissao", f.ate);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []).map((i) => ({

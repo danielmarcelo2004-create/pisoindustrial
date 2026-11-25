@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Navegacao, type ItemMenu } from "@/components/navegacao";
 import { Icones } from "@/components/icones";
+import { RotulosTabela } from "@/components/rotulos-tabela";
 import { getUsuario } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PERFIS } from "@/lib/rotulos";
@@ -94,7 +95,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
             <div className="text-xs text-slate-500">{PERFIS[u.perfil]}</div>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <RotulosTabela />
+          {children}
+        </main>
       </div>
     </div>
   );

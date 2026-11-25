@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getUsuario } from "@/lib/auth";
-import { arquivosDoForm, enviarDocumento, validarArquivo } from "@/lib/documentos";
+import { arquivosDoForm, enviarDocumento, validarArquivo, validarArquivoCompleto } from "@/lib/documentos";
 import { mensagemErro, type Estado } from "@/lib/erros";
 import { lerValor } from "@/lib/formato";
 import { FORMAS_PAGAMENTO, TIPOS_DOCUMENTO, type FormaPagamento, type TipoDocumento } from "@/lib/rotulos";
@@ -29,6 +29,11 @@ function lerDadosPagamento(fd: FormData) {
   if (!descricao) return { erro: "Informe a descrição." } as const;
   if (valor === null) return { erro: "Informe um valor válido (ex.: 1.250,00)." } as const;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento)) return { erro: "Informe a data de vencimento." } as const;
+  // Vencimento absurdo (ex.: ano 2999) não é aceito: no máximo 10 anos à frente.
+  const limiteVenc = new Date(Date.now() + 10 * 365 * 86400000).toISOString().slice(0, 10);
+  if (Number.isNaN(new Date(vencimento + "T12:00:00Z").getTime()) || vencimento > limiteVenc) {
+    return { erro: "Data de vencimento inválida: confira o ano (máximo de 10 anos à frente)." } as const;
+  }
   if (!(forma in FORMAS_PAGAMENTO)) return { erro: "Forma de pagamento inválida." } as const;
 
   return {
@@ -94,7 +99,7 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
     ...arquivosDoForm(fd, "outros").map((arquivo) => ({ tipo: "outro" as const, arquivo })),
   ];
   for (const a of anexos) {
-    const e = validarArquivo(a.arquivo);
+    const e = await validarArquivoCompleto(a.arquivo);
     if (e) return { erro: e };
   }
   // O engenheiro assina boleto ou nota fiscal (comprovante não entra na assinatura): sem um deles não há o que aprovar.
@@ -169,7 +174,7 @@ export async function atualizarPagamento(id: string, _: Estado, fd: FormData): P
 
   const [novoBoleto] = arquivosDoForm(fd, "novo_boleto");
   if (novoBoleto) {
-    const e = validarArquivo(novoBoleto);
+    const e = await validarArquivoCompleto(novoBoleto);
     if (e) return { erro: e };
   }
   const supabase = await createClient();

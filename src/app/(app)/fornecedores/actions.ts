@@ -15,7 +15,9 @@ export async function salvarFornecedor(id: string | null, _: Estado, fd: FormDat
   const doc = soDigitos(t(fd, "cpf_cnpj"));
   const uf = t(fd, "uf").toUpperCase();
   if (!t(fd, "nome")) return { erro: "Informe o nome / razão social." };
+  if (t(fd, "cpf_cnpj") && !doc) return { erro: "CPF/CNPJ deve ter só números (11 dígitos para CPF, 14 para CNPJ)." };
   if (doc && doc.length !== 11 && doc.length !== 14) return { erro: "CPF deve ter 11 dígitos e CNPJ 14 dígitos." };
+  if (t(fd, "email") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t(fd, "email"))) return { erro: "E-mail inválido." };
   if (uf && !UFS.includes(uf)) return { erro: "UF inválida." };
 
   const dados = {

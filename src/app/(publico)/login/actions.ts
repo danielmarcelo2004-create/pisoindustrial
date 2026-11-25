@@ -18,5 +18,7 @@ export async function entrar(_: Estado, fd: FormData): Promise<Estado> {
 
   const voltar = String(fd.get("voltar") ?? "");
   // Evita redirecionamento para fora do sistema.
-  redirect(voltar.startsWith("/") && !voltar.startsWith("//") ? voltar : "/");
+  // Só caminhos internos simples: barra inicial, sem "//", sem "\\" (o navegador a trata como "/") e sem caracteres de controle.
+  const seguro = voltar.startsWith("/") && !voltar.startsWith("//") && !/[\\\u0000-\u001f\u007f]/.test(voltar);
+  redirect(seguro ? voltar : "/");
 }

@@ -1940,4 +1940,13 @@ describe('conciliação bancária', () => {
     const w = await admin.rpc('reservar_avisos', { p_canal: 'whatsapp', p_limite: 1000 })
     assert.ok(w.data.includes(ids[0]), 'reserva esquecida não voltou para a fila')
   })
+
+  test('regressão: fornecedor não aceita autor forjado (created_by = quem cadastrou) e função interna de receita não é chamável sem login', async () => {
+    const { data, error } = await u.sup.client.from('fornecedores').insert({ nome: `Forn autor ${sufixo}`, created_by: u.fin.id }).select('id, created_by').single()
+    assert.ifError(error)
+    assert.equal(data.created_by, u.sup.id, 'o autor foi forjado')
+    const anon = createClient(URL, PUB, { auth: { persistSession: false, autoRefreshToken: false } })
+    const r = await anon.rpc('_validar_receita', { p_obra_id: randomUUID(), p_categoria_id: randomUUID(), p_cliente: 'x', p_descricao: 'x', p_valor: 1, p_vencimento: '2026-12-01' })
+    assert.ok(r.error, 'anônimo conseguiu chamar a função interna')
+  })
 })

@@ -17,7 +17,7 @@ export async function trocarSenha(_: Estado, fd: FormData): Promise<Estado> {
   const supabase = await createClient();
   const { error } = await supabase.auth.updateUser({ password: senha });
   if (error) {
-    if (/same/i.test(error.message)) return { erro: "A nova senha deve ser diferente da senha provisória." };
+    if (/same|different from the old/i.test(error.message)) return { erro: "A nova senha deve ser diferente da senha provisória." };
     return { erro: mensagemErro(error) };
   }
   await supabase.rpc("confirmar_troca_senha");

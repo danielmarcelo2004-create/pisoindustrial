@@ -48,7 +48,7 @@ rodar('Persona Joana (novata): entradas inválidas e comportamentos inesperados'
   /** Remove a validação nativa para o servidor responder (a mensagem que a Joana veria sem os campos obrigatórios). */
   const semValidacao = (p) => p.evaluate(() => document.querySelectorAll('form').forEach((f) => { f.noValidate = true; }));
   /** Lê alertas de erro/aviso visíveis na tela. */
-  const avisos = (p) => p.locator('[role=alert], main form .text-xs.text-red-600, main form .text-xs.text-red-700').allInnerTexts().then((t) => t.join(' | '));
+  const avisos = (p) => p.locator('main [role=alert], main form .text-xs.text-red-600, main form .text-xs.text-red-700').allInnerTexts().then((t) => t.join(' | '));
   const semTelaQuebrada = async (p, ctx) => {
     const t = await p.locator('body').innerText();
     confere(!/Application error|Internal Server Error|This page could not be found|Unhandled Runtime Error|digest/i.test(t.replace(/não foi encontrada/i, '')) || /404|não encontrad/i.test(t), `${ctx}: tela quebrada: ${t.slice(0, 160)}`);
@@ -82,7 +82,7 @@ rodar('Persona Joana (novata): entradas inválidas e comportamentos inesperados'
     confere(invalidos >= 3, `só ${invalidos} campos marcados como obrigatórios`);
     confere(await contar('pagamentos', { favorecido: '' }) === antes, 'gravou pagamento vazio');
     await semValidacao(joana); await enviarDespesa(joana);
-    await joana.waitForSelector('[role=alert]', { timeout: 15000 });
+    await joana.waitForSelector('main [role=alert]', { timeout: 15000 });
     const msg = await avisos(joana);
     confere(/Selecione a obra|Informe|Escolha|Anexe/.test(msg), `mensagem pouco clara: "${msg}"`);
     confere(await contar('pagamentos', { favorecido: '' }) === antes, 'gravou pagamento vazio sem validação do navegador');

@@ -14,7 +14,12 @@ const num = (s: string) => (s.includes(",") ? Number(s.replace(/\./g, "").replac
 export async function lancarNF(documentoId: string, pagamentoId: string, _: Estado, fd: FormData): Promise<Estado> {
   await exigirPerfil("financeiro", "suprimentos");
   const emissao = t(fd, "data_emissao");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(emissao)) return { erro: "Informe a data de emissão." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(emissao) || Number.isNaN(new Date(emissao + "T12:00:00Z").getTime())) return { erro: "Informe a data de emissão." };
+  // Data de emissão plausível: de 2000 até amanhã (nota com data absurda estraga o histórico e a evolução mensal).
+  const amanha = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  if (emissao < "2000-01-01" || emissao > amanha) return { erro: "A data de emissão está fora do período aceito (de 2000 até hoje)." };
+  const chaveDigitada = t(fd, "chave");
+  if (chaveDigitada && !/^\d{44}$/.test(chaveDigitada.replace(/\s/g, ""))) return { erro: "A chave da nota deve ter 44 números (ou deixe em branco)." };
   if (!t(fd, "emitente_nome")) return { erro: "Informe o fornecedor (emitente)." };
   let brutos: Record<string, string>[];
   try {
@@ -44,6 +49,7 @@ export async function lancarNF(documentoId: string, pagamentoId: string, _: Esta
   }
   if (!itens.length) return { erro: "Informe ao menos um item." };
   const frete = t(fd, "valor_frete") ? num(t(fd, "valor_frete")) : null;
+  if (frete !== null && !(frete >= 0)) return { erro: "Valor do frete inválido." };
   const produtos = itens.reduce((s, i) => s + i.valor_total, 0);
 
   const supabase = await createClient();
@@ -52,7 +58,7 @@ export async function lancarNF(documentoId: string, pagamentoId: string, _: Esta
     p_origem: "manual",
     p_itens: itens,
     p_nota: {
-      chave: t(fd, "chave") || null,
+      chave: chaveDigitada.replace(/\s/g, "") || null,
       numero: t(fd, "numero") || null,
       serie: null,
       data_emissao: emissao,

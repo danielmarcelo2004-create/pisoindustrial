@@ -182,12 +182,9 @@ export async function salvarOP(id: string | null, _: Estado, fd: FormData): Prom
   revalidatePath("/ops");
   if (fd.get("acao") === "enviar") {
     const resultado = await enviarOP(r.id as string, null, fd);
-    // "Salvar e enviar" que falhou depois de gravar um rascunho NOVO: o formulário não guarda o id e, ao tentar de novo,
-    // criaria outro rascunho (o primeiro ficaria órfão). Remove o rascunho criado agora; um rascunho já existente é mantido.
-    if (resultado?.erro && !id && !UUID.test(idAtual)) {
-      const supabase = await createClient();
-      await supabase.rpc("excluir_op", { p_id: r.id as string });
-    }
+    // "Salvar e enviar" que falhou depois de gravar o rascunho: devolve o id para o formulário reaproveitar o mesmo
+    // rascunho na próxima tentativa (senão cada tentativa criaria um rascunho novo e os anteriores ficariam órfãos).
+    if (resultado?.erro) return { ...resultado, dados: { ...(resultado.dados ?? {}), ordem_id: r.id as string } };
     return resultado;
   }
   // Rascunho salvo: segue para a edição, onde ficam os anexos e a assinatura.

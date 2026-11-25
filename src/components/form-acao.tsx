@@ -49,6 +49,7 @@ export function FormAcao({
   semBotao,
   limparAoConcluir,
   limparErroAoMudar,
+  aoResponder,
 }: {
   action: Acao;
   children?: ReactNode;
@@ -62,6 +63,8 @@ export function FormAcao({
   limparAoConcluir?: boolean;
   /** Esconde o erro quando um destes campos muda e o erro contém o trecho (ex.: anexar o documento que faltava). */
   limparErroAoMudar?: { campos: string[]; trecho: string };
+  /** Chamada a cada resposta nova da ação (ex.: guardar um id devolvido pelo servidor). */
+  aoResponder?: (estado: Estado) => void;
 }) {
   const [estado, formAction, enviando] = useActionState(action, null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -71,6 +74,11 @@ export function FormAcao({
   useEffect(() => {
     if (limparAoConcluir && estado?.ok) formRef.current?.reset();
   }, [estado, limparAoConcluir]);
+  useEffect(() => {
+    if (estado) aoResponder?.(estado);
+    // Só reage a respostas novas; o callback costuma ser recriado a cada renderização.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estado]);
   return (
     <PendenteCtx value={enviando}>
       <form

@@ -1398,6 +1398,9 @@ isOneToOne: false
 "atualizar_pagamento":
 { Args: { "p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_id": string,"p_motivo"?: string,"p_numero_documento": string,"p_obra_id"?: string,"p_observacoes": string,"p_valor": number,"p_vencimento": string }; Returns: undefined
                            },
+"atualizar_pagamento_completo":
+{ Args: { "p_categoria_id"?: string,"p_competencia"?: string,"p_conta_id"?: string,"p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_id": string,"p_motivo"?: string,"p_numero_documento": string,"p_obra_id"?: string,"p_observacoes": string,"p_parcelas_editadas"?: Json,"p_reajustar_serie"?: boolean,"p_valor": number,"p_vencimento": string }; Returns: undefined
+                           },
 "cancelar_pagamento":
 { Args: { "p_id": string,"p_motivo": string }; Returns: undefined
                            },
@@ -1456,6 +1459,12 @@ isOneToOne: false
                            },
 "criar_pagamento":
 { Args: { "p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_numero_documento"?: string,"p_obra_id": string,"p_observacoes"?: string,"p_valor": number,"p_vencimento": string }; Returns: string
+                           },
+"criar_pagamento_completo":
+{ Args: { "p_categoria_id": string,"p_competencia"?: string,"p_conta_id": string,"p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_numero_documento"?: string,"p_obra_id": string,"p_observacoes"?: string,"p_parcelas"?: Json,"p_provisao_id"?: string,"p_repetir_intervalo"?: number,"p_repetir_vezes"?: number,"p_valor": number,"p_vencimento": string }; Returns: string
+                           },
+"criar_perfil_completo":
+{ Args: { "p_email": string,"p_id": string,"p_nome": string,"p_obras": (string)[],"p_perfil": Database["public"]['Enums']["perfil_usuario"],"p_telefone": string }; Returns: undefined
                            },
 "criar_recebimento":
 { Args: { "p_categoria_id": string,"p_cliente": string,"p_competencia"?: string,"p_conta_id"?: string,"p_descricao": string,"p_nota_id"?: string,"p_obra_id": string,"p_observacoes"?: string,"p_valor": number,"p_vencimento": string }; Returns: string

@@ -550,6 +550,62 @@ test('administrador master pode ser responsável pela obra', async () => {
 // Alteração de pagamento liberado ou pago (sem nova aprovação, com motivo)
 // -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
+// Cadastro e edição de despesa numa única transação (auditoria A-05 e A-06)
+// -----------------------------------------------------------------------------
+test('regressão: despesa cadastrada/editada numa transação só: se algo for recusado, nada fica pela metade', async () => {
+  const cat = await rpc('fin', 'criar_categoria', { p_nome: `Cat completo ${sufixo}` })
+  const conta = await rpc('fin', 'criar_conta_bancaria', { p_nome: `Conta completo ${sufixo}`, p_banco: '237', p_agencia: '8', p_conta: String(Date.now()).slice(-8) })
+  const { data: prov } = await u.fin.client.from('provisoes').insert({ obra_id: obraC.id, descricao: `Prov completo ${sufixo}`, vencimento: '2027-01-10', valor_estimado: 1000 }).select().single()
+  const base = {
+    p_obra_id: obraC.id, p_fornecedor_id: null, p_favorecido: `Fornecedor completo ${sufixo}`, p_descricao: `Despesa completa ${sufixo}`, p_valor: 1000,
+    p_vencimento: '2026-12-10', p_forma_pagamento: 'pix', p_categoria_id: cat, p_conta_id: conta, p_numero_documento: '', p_observacoes: '',
+  }
+  const contar = async (desc) => (await admin.from('pagamentos').select('id').eq('descricao', desc)).data.length
+  // Recusada no meio (categoria que não existe): antes a despesa já tinha sido criada; agora nada é criado
+  await rpcFalha('fin', 'criar_pagamento_completo', { ...base, p_descricao: `Rejeitada ${sufixo}`, p_categoria_id: randomUUID() })
+  assert.equal(await contar(`Rejeitada ${sufixo}`), 0, 'nada foi criado')
+  // Parcelas que não somam o valor também desfazem tudo
+  await rpcFalha('fin', 'criar_pagamento_completo', { ...base, p_descricao: `Rejeitada ${sufixo}`, p_parcelas: [{ valor: 100, vencimento: '2026-12-10' }, { valor: 100, vencimento: '2027-01-10' }] })
+  assert.equal(await contar(`Rejeitada ${sufixo}`), 0, 'parcelas inválidas também não deixam resíduo')
+  // Caminho feliz: competência, categoria, conta, parcelas, repetições e provisão juntas
+  const id = await rpc('fin', 'criar_pagamento_completo', { ...base, p_competencia: '2026-11-30', p_parcelas: [{ valor: 600, vencimento: '2026-12-10' }, { valor: 400, vencimento: '2027-01-10' }], p_repetir_intervalo: 1, p_repetir_vezes: 3, p_provisao_id: prov.id })
+  const p = await pagamento(id)
+  assert.deepEqual([p.categoria_id, p.conta_bancaria_id, p.data_competencia], [cat, conta, '2026-11-30'])
+  assert.equal((await admin.from('pagamento_parcelas').select('id').eq('pagamento_id', id)).data.length, 2)
+  assert.equal((await admin.from('provisoes').select('id').eq('pagamento_origem_id', id)).data.length, 2, 'duas repetições')
+  const { data: pv } = await admin.from('provisoes').select('status, pagamento_id').eq('id', prov.id).single()
+  assert.deepEqual([pv.status, pv.pagamento_id], ['convertida', id], 'provisão ligada')
+
+  // Edição: recusada no meio, o valor NÃO pode ter mudado (antes o valor era gravado e só depois vinha o erro)
+  const ed = await novoPagamento('fin', obraC.id, 500)
+  await rpcFalha('fin', 'atualizar_pagamento_completo', { p_id: ed, p_fornecedor_id: null, p_favorecido: 'Concreteira Teste', p_descricao: 'Concreto usinado', p_valor: 777, p_vencimento: '2026-12-10', p_forma_pagamento: 'boleto', p_numero_documento: '', p_observacoes: '', p_motivo: 'teste', p_categoria_id: randomUUID() })
+  assert.equal(Number((await pagamento(ed)).valor), 500, 'a edição recusada não alterou o valor')
+  await rpc('fin', 'atualizar_pagamento_completo', { p_id: ed, p_fornecedor_id: null, p_favorecido: 'Concreteira Teste', p_descricao: 'Concreto usinado', p_valor: 777, p_vencimento: '2026-12-10', p_forma_pagamento: 'boleto', p_numero_documento: '', p_observacoes: '', p_motivo: 'teste', p_categoria_id: cat, p_conta_id: conta, p_competencia: '2026-11-15' })
+  const e2 = await pagamento(ed)
+  assert.deepEqual([Number(e2.valor), e2.categoria_id, e2.conta_bancaria_id, e2.data_competencia], [777, cat, conta, '2026-11-15'])
+})
+
+test('regressão: usuário novo = perfil + acessos numa transação só (se os acessos falharem, o perfil não fica)', async () => {
+  const novoLogin = async () => {
+    const { data, error } = await admin.auth.admin.createUser({ email: `novo-${randomUUID().slice(0, 8)}@teste.local`, password: SENHA, email_confirm: true })
+    if (error) throw error
+    return { id: data.user.id, email: data.user.email }
+  }
+  const ok = await novoLogin()
+  await rpcFalha('sup', 'criar_perfil_completo', { p_id: ok.id, p_nome: 'Sem permissão', p_email: ok.email, p_telefone: '', p_perfil: 'engenheiro', p_obras: [] }, /Somente o Financeiro/)
+  await rpc('fin', 'criar_perfil_completo', { p_id: ok.id, p_nome: 'Usuário Atômico', p_email: ok.email.toUpperCase(), p_telefone: '71988887777', p_perfil: 'suprimentos', p_obras: [obraA.id, obraB.id, obraA.id] })
+  const { data: pf } = await admin.from('profiles').select('nome, email, perfil, troca_senha_pendente').eq('id', ok.id).single()
+  assert.deepEqual([pf.nome, pf.email, pf.perfil, pf.troca_senha_pendente], ['Usuário Atômico', ok.email, 'suprimentos', true])
+  assert.equal((await admin.from('obra_acessos').select('obra_id').eq('user_id', ok.id)).data.length, 2, 'dois acessos (o repetido é ignorado)')
+
+  // Acesso a uma obra que não existe: o perfil NÃO pode ter ficado (antes o usuário ficava criado sem os acessos)
+  const falha = await novoLogin()
+  await rpcFalha('fin', 'criar_perfil_completo', { p_id: falha.id, p_nome: 'Não deve existir', p_email: falha.email, p_telefone: '', p_perfil: 'engenheiro', p_obras: [obraA.id, randomUUID()] })
+  assert.equal((await admin.from('profiles').select('id').eq('id', falha.id)).data.length, 0, 'nenhum perfil ficou pela metade')
+  await admin.auth.admin.deleteUser(falha.id)
+})
+
+// -----------------------------------------------------------------------------
 // Inteligência de Compras aberta a todos (só leitura), com o CPF/CNPJ do fornecedor mascarado
 // -----------------------------------------------------------------------------
 test('regressão: engenheiro e administrador comparam preços de TODAS as obras (só leitura) sem ver o CNPJ do fornecedor', async () => {

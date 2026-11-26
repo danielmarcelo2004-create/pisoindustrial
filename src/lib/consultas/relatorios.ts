@@ -12,6 +12,10 @@ export type FiltrosRelatorio = {
   fornecedor?: string;
   categoria?: string;
   status?: string;
+  /** Busca por descrição, favorecido/cliente ou nº. */
+  busca?: string;
+  /** Extrato: só receitas, só despesas ou ambos (vazio). */
+  tipo?: "receitas" | "despesas" | "";
 };
 
 const dataOk = (s?: string | null) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
@@ -27,6 +31,8 @@ export function lerFiltros(get: (k: string) => string | null): FiltrosRelatorio 
     fornecedor: get("fornecedor") ?? "",
     categoria: get("categoria") ?? "",
     status: get("status") ?? "",
+    busca: (get("busca") ?? "").slice(0, 80),
+    tipo: get("tipo") === "receitas" || get("tipo") === "despesas" ? (get("tipo") as "receitas" | "despesas") : "",
   };
 }
 
@@ -48,7 +54,10 @@ export async function dadosRelatorio(f: FiltrosRelatorio) {
   if (f.categoria === "sem") q = q.is("categoria_id", null);
   else if (f.categoria && /^[0-9a-f-]{36}$/i.test(f.categoria)) q = q.eq("categoria_id", f.categoria);
   if (f.status === "abertos") q = q.in("status", STATUS_EM_ABERTO);
+  else if (f.status === "realizados") q = q.eq("status", "pago");
   else if (f.status && f.status in STATUS_PAGAMENTO) q = q.eq("status", f.status as StatusPagamento);
+  const busca = (f.busca ?? "").trim().replace(/[%,()*\\]/g, " ").trim();
+  if (busca) q = q.or(`favorecido.ilike.%${busca}%,descricao.ilike.%${busca}%`);
   q = q.order(f.base === "criacao" ? "created_at" : f.base, { ascending: true }).order("numero");
   const { data, error } = await q;
   if (error) throw new Error(error.message);

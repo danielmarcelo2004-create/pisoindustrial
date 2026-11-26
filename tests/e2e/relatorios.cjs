@@ -40,13 +40,14 @@ const semRolagem = (p) => p.evaluate(() => document.documentElement.scrollWidth 
   }
   const p = await entrar(1280);
 
-  await passo('abre no mês inteiro, com períodos prontos, filtros recolhidos e 4 indicadores', async () => {
+  await passo('abre no extrato do mês inteiro, com períodos prontos, filtros recolhidos, busca e 5 indicadores (receitas e despesas)', async () => {
     await p.goto(BASE + '/relatorios'); await p.waitForLoadState('networkidle');
-    const chips = await p.locator('[data-filtros-relatorio] > div:first-child > a').allInnerTexts();
+    const chips = await p.locator('[data-filtros-relatorio] > div:nth-of-type(1) > a').allInnerTexts();
     confere(['Este mês', 'Mês passado', 'Últimos 3 meses', 'Este ano'].every((t, i) => chips[i] === t), chips.join(' | '));
     confere(await p.locator('[data-filtros-relatorio] a[aria-current="true"]').innerText() === 'Este mês', 'período ativo');
     confere((await p.locator('[data-filtros-relatorio] details').getAttribute('open')) === null, 'filtros deveriam estar recolhidos');
-    confere(await p.locator('[data-indicadores-relatorio] > *').count() === 4, 'indicadores');
+    confere(await p.locator('[data-indicadores-extrato] > *').count() === 5, 'indicadores do extrato');
+    confere(await p.locator('[data-busca-relatorio] input[name=busca]').count() === 1, 'sem a busca');
     const sub = await p.locator('main h1 + p, main header p').first().innerText().catch(() => '');
     const fimMes = new Date(Date.UTC(+hoje.slice(0, 4), +hoje.slice(5, 7), 0)).toISOString().slice(8, 10);
     confere(new RegExp(`${fimMes}/${hoje.slice(5, 7)}/${hoje.slice(0, 4)}`).test(await p.locator('body').innerText()), 'o mês vai até o último dia (antes parava em hoje)');
@@ -54,10 +55,12 @@ const semRolagem = (p) => p.evaluate(() => document.documentElement.scrollWidth 
   });
 
   await passo('uma visão por vez: Resumo mostra os maiores; cada aba traz uma tabela só', async () => {
+    await p.goto(BASE + '/relatorios?ver=resumo'); await p.waitForLoadState('networkidle');
+    confere(await p.locator('[data-indicadores-relatorio] > *').count() === 4, 'indicadores das despesas');
     confere(await p.locator('table').count() === 0, 'o Resumo não deve ter tabelas empilhadas');
     confere(await p.getByText('Maiores centros de custo').count() === 1 && await p.getByText('Maiores categorias').count() === 1, 'listas dos maiores');
     const abas = await p.locator('[data-abas-relatorio] a').allInnerTexts();
-    confere(abas.join('|') === 'Resumo|Centro de custo|Categoria|Fornecedor|Situação|Lançamentos', abas.join('|'));
+    confere(abas.join('|') === 'Extrato|Resumo das despesas|Centro de custo|Categoria|Fornecedor|Situação|Lançamentos', abas.join('|'));
     for (const nome of ['Centro de custo', 'Categoria', 'Fornecedor', 'Situação']) {
       await p.locator('[data-abas-relatorio]').getByRole('link', { name: nome, exact: true }).click();
       await p.locator('[data-abas-relatorio] a[aria-current="page"]', { hasText: nome }).waitFor({ timeout: 15000 });

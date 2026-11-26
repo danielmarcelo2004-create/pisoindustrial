@@ -5,6 +5,7 @@ import { SeloStatus } from "@/components/pagamentos";
 import { Cabecalho, Cartao, Indicador, Vazio, classeBotao, cx } from "@/components/ui";
 import { getUsuario } from "@/lib/auth";
 import { dadosRelatorio, lerFiltros, type FiltrosRelatorio } from "@/lib/consultas/relatorios";
+import { extratoRelatorio } from "@/lib/consultas/extrato";
 import { data, hojeISO, moeda } from "@/lib/formato";
 import { STATUS_PAGAMENTO } from "@/lib/rotulos";
 import { createClient } from "@/lib/supabase/server";
@@ -12,10 +13,11 @@ import { createClient } from "@/lib/supabase/server";
 export const metadata: Metadata = { title: "Relatórios" };
 
 type Linha = { chave: string; rotulo: string; qtd: number; total: number; pago: number; aberto: number; vencido: number };
-type Ver = "resumo" | "centro" | "categoria" | "fornecedor" | "situacao" | "lancamentos";
+type Ver = "extrato" | "resumo" | "centro" | "categoria" | "fornecedor" | "situacao" | "lancamentos";
 
 const ABAS: { id: Ver; rotulo: string }[] = [
-  { id: "resumo", rotulo: "Resumo" },
+  { id: "extrato", rotulo: "Extrato" },
+  { id: "resumo", rotulo: "Resumo das despesas" },
   { id: "centro", rotulo: "Centro de custo" },
   { id: "categoria", rotulo: "Categoria" },
   { id: "fornecedor", rotulo: "Fornecedor" },
@@ -140,14 +142,15 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
   const f: FiltrosRelatorio = lerFiltros(texto);
   if (!texto("de")) f.de = prontos[0].de;
   if (!texto("ate")) f.ate = prontos[0].ate;
-  const ver = (ABAS.find((a) => a.id === texto("ver"))?.id ?? "resumo") as Ver;
+  const ver = (ABAS.find((a) => a.id === texto("ver"))?.id ?? "extrato") as Ver;
 
   const supabase = await createClient();
-  const [r, { data: obras }, { data: fornecedores }, { data: categorias }] = await Promise.all([
+  const [r, ex, { data: obras }, { data: fornecedores }, { data: categorias }] = await Promise.all([
     dadosRelatorio(f),
+    extratoRelatorio(f),
     supabase.from("obras").select("id, nome").order("nome"),
     supabase.from("fornecedores").select("id, nome").order("nome"),
-    supabase.from("categorias").select("id, nome").eq("tipo", "despesa").order("nome"),
+    supabase.from("categorias").select("id, nome, tipo").order("nome"),
   ]);
 
   const filtros = Object.entries(f).filter(([, v]) => v) as [string, string][];
@@ -158,7 +161,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
       if (v) q.set(k, v);
       else q.delete(k);
     }
-    if (destino !== "resumo") q.set("ver", destino);
+    if (destino !== "extrato") q.set("ver", destino);
     else q.delete("ver");
     return `/relatorios?${q}`;
   };
@@ -170,9 +173,11 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
   if (f.obra) ativos.push({ rotulo: `Centro de custo: ${(obras ?? []).find((o) => o.id === f.obra)?.nome ?? "—"}`, sem: { obra: null } });
   if (f.fornecedor) ativos.push({ rotulo: `Fornecedor: ${(fornecedores ?? []).find((o) => o.id === f.fornecedor)?.nome ?? "—"}`, sem: { fornecedor: null } });
   if (f.categoria) ativos.push({ rotulo: `Categoria: ${f.categoria === "sem" ? "sem categoria" : ((categorias ?? []).find((o) => o.id === f.categoria)?.nome ?? "—")}`, sem: { categoria: null } });
-  if (f.status) ativos.push({ rotulo: `Situação: ${f.status === "abertos" ? "em aberto" : (STATUS_PAGAMENTO[f.status as keyof typeof STATUS_PAGAMENTO]?.rotulo ?? f.status)}`, sem: { status: null } });
-  const linkObra = (l: Linha) => (l.chave ? url({ obra: l.chave }, "resumo") : null);
-  const linkCategoria = (l: Linha) => url({ categoria: l.chave }, "resumo");
+  if (f.busca) ativos.push({ rotulo: `Busca: ${f.busca}`, sem: { busca: null } });
+  if (f.tipo) ativos.push({ rotulo: `Tipo: ${f.tipo === "receitas" ? "receitas" : "despesas"}`, sem: { tipo: null } });
+  if (f.status) ativos.push({ rotulo: `Situação: ${f.status === "abertos" ? "em aberto" : f.status === "realizados" ? "realizados" : (STATUS_PAGAMENTO[f.status as keyof typeof STATUS_PAGAMENTO]?.rotulo ?? f.status)}`, sem: { status: null } });
+  const linkObra = (l: Linha) => (l.chave ? url({ obra: l.chave }, "extrato") : null);
+  const linkCategoria = (l: Linha) => url({ categoria: l.chave }, "extrato");
 
   const exportar = new URLSearchParams(qs);
   const totalGeral = r.totais.total;
@@ -181,7 +186,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
     <>
       <Cabecalho
         titulo="Relatórios"
-        subtitulo={`Despesas por ${baseRotulo} · ${data(f.de)} a ${data(f.ate)}`}
+        subtitulo={`${ver === "extrato" ? "Receitas e despesas" : "Despesas"} por ${baseRotulo} · ${data(f.de)} a ${data(f.ate)}`}
         acoes={
           <>
             <a href={`/relatorios/exportar?${exportar}`} className={classeBotao("secundario")}>
@@ -196,6 +201,14 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
 
       {/* Período e filtros: linha única de períodos prontos; o resto fica recolhido */}
       <div className="mb-5 space-y-3" data-filtros-relatorio>
+        <form method="get" className="flex max-w-xl gap-2" role="search" data-busca-relatorio>
+          {filtros.filter(([k]) => k !== "busca").map(([k, v]) => (
+            <input key={k} type="hidden" name={k} value={v} />
+          ))}
+          {ver !== "extrato" && <input type="hidden" name="ver" value={ver} />}
+          <input name="busca" defaultValue={f.busca ?? ""} placeholder="Buscar por descrição, favorecido, cliente ou nº" aria-label="Buscar no relatório" className="campo min-w-0 flex-1" maxLength={80} />
+          <button className={classeBotao("secundario")}>Buscar</button>
+        </form>
         <div className="flex flex-wrap items-center gap-2">
           {prontos.map((p) => (
             <Link
@@ -219,7 +232,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
                 Considerar a data de
                 <select name="base" defaultValue={f.base} className="campo mt-1">
                   <option value="vencimento">Vencimento</option>
-                  <option value="pago_em">Pagamento</option>
+                  <option value="pago_em">Pagamento / recebimento</option>
                   <option value="criacao">Cadastro</option>
                   <option value="data_competencia">Competência</option>
                 </select>
@@ -244,6 +257,18 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
                 </select>
               </label>
               <label className="text-xs font-medium text-slate-600">
+                Tipo
+                <select name="tipo" defaultValue={f.tipo ?? ""} className="campo mt-1">
+                  <option value="">Receitas e despesas</option>
+                  <option value="receitas">Somente receitas</option>
+                  <option value="despesas">Somente despesas</option>
+                </select>
+              </label>
+              <label className="text-xs font-medium text-slate-600">
+                Buscar
+                <input name="busca" defaultValue={f.busca ?? ""} className="campo mt-1" maxLength={80} placeholder="Descrição, favorecido, cliente" />
+              </label>
+              <label className="text-xs font-medium text-slate-600">
                 Fornecedor
                 <select name="fornecedor" defaultValue={f.fornecedor} className="campo mt-1">
                   <option value="">Todos</option>
@@ -261,7 +286,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
                   <option value="sem">Sem categoria</option>
                   {(categorias ?? []).map((o) => (
                     <option key={o.id} value={o.id}>
-                      {o.nome}
+                      {o.nome}{o.tipo === "receita" ? " (receita)" : ""}
                     </option>
                   ))}
                 </select>
@@ -271,6 +296,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
                 <select name="status" defaultValue={f.status} className="campo mt-1">
                   <option value="">Todas</option>
                   <option value="abertos">Em aberto</option>
+                  <option value="realizados">Realizados (pagos/recebidos)</option>
                   {Object.entries(STATUS_PAGAMENTO).map(([v, s]) => (
                     <option key={v} value={v}>
                       {s.rotulo}
@@ -299,12 +325,22 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
         )}
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" data-indicadores-relatorio>
-        <Indicador rotulo="Valor total" valor={moeda(r.totais.total)} detalhe={`${r.totais.qtd} pagamento(s), exceto cancelados`} cor="azul" />
-        <Indicador rotulo="Pago" valor={moeda(r.totais.pago)} cor="verde" />
-        <Indicador rotulo="Em aberto" valor={moeda(r.totais.aberto)} cor="amarelo" />
-        <Indicador rotulo="Vencido" valor={moeda(r.totais.vencido)} cor="vermelho" />
-      </div>
+      {ver === "extrato" ? (
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5" data-indicadores-extrato>
+          <Indicador rotulo="Receitas em aberto" valor={moeda(ex.totais.receitasAbertas)} cor="azul" />
+          <Indicador rotulo="Receitas realizadas" valor={moeda(ex.totais.receitasRealizadas)} cor="verde" />
+          <Indicador rotulo="Despesas em aberto" valor={moeda(ex.totais.despesasAbertas)} cor="amarelo" />
+          <Indicador rotulo="Despesas realizadas" valor={moeda(ex.totais.despesasRealizadas)} cor="vermelho" />
+          <Indicador rotulo="Totais do período" valor={moeda(ex.totais.saldo)} detalhe={`${ex.totais.qtd} lançamento(s)`} cor="azul" />
+        </div>
+      ) : (
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" data-indicadores-relatorio>
+          <Indicador rotulo="Valor total" valor={moeda(r.totais.total)} detalhe={`${r.totais.qtd} pagamento(s), exceto cancelados`} cor="azul" />
+          <Indicador rotulo="Pago" valor={moeda(r.totais.pago)} cor="verde" />
+          <Indicador rotulo="Em aberto" valor={moeda(r.totais.aberto)} cor="amarelo" />
+          <Indicador rotulo="Vencido" valor={moeda(r.totais.vencido)} cor="vermelho" />
+        </div>
+      )}
 
       <nav className="mb-4 flex flex-wrap gap-1 border-b border-slate-200" aria-label="Visões do relatório" data-abas-relatorio>
         {ABAS.map((a) => (
@@ -322,7 +358,49 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
         ))}
       </nav>
 
-      {r.totais.qtd === 0 ? (
+      {ver === "extrato" ? (
+        ex.linhas.length === 0 ? (
+          <Cartao>
+            <Vazio>Nenhum lançamento neste período com esses filtros. Escolha outro período ou tire algum filtro.</Vazio>
+          </Cartao>
+        ) : (
+          <Cartao titulo={`Extrato (${ex.linhas.length})`} semPadding>
+            <table className="tabela" data-extrato>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Tipo</th>
+                  <th>Descrição</th>
+                  <th>Cliente / fornecedor</th>
+                  <th>Categoria</th>
+                  <th>Centro de custo</th>
+                  <th>Situação</th>
+                  <th className="text-right">Valor (R$)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ex.linhas.slice(0, 300).map((l) => (
+                  <tr key={l.chave} data-extrato-linha={l.tipo}>
+                    <td className="whitespace-nowrap tabular-nums">{l.data ? data(l.data) : "—"}</td>
+                    <td>{l.tipo === "receita" ? "Receita" : "Despesa"}</td>
+                    <td className="max-w-xs">{l.descricao}</td>
+                    <td>{l.parte}</td>
+                    <td>{l.categoria ?? "—"}</td>
+                    <td>{l.obra ?? "—"}</td>
+                    <td className="whitespace-nowrap">{l.situacao}</td>
+                    <td className={cx("whitespace-nowrap text-right font-medium tabular-nums", l.valor < 0 ? "text-red-700" : "text-emerald-700")}>{moeda(l.valor)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {(ex.linhas.length > 300 || ex.truncado) && (
+              <p className="border-t border-slate-200 px-4 py-3 text-xs text-slate-600" data-lista-truncada>
+                Mostrando os primeiros 300 de {ex.linhas.length} lançamentos{ex.truncado ? " (o filtro tem lançamentos demais: reduza o período)" : ""}. A exportação traz tudo o que está no filtro.
+              </p>
+            )}
+          </Cartao>
+        )
+      ) : r.totais.qtd === 0 ? (
         <Cartao>
           <Vazio>Nenhum pagamento neste período. Escolha outro período ou tire algum filtro.</Vazio>
         </Cartao>

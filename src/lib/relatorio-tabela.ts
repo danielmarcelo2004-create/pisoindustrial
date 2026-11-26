@@ -32,8 +32,8 @@ export type RelatorioTabela = {
   linhas: Record<string, Celula>[];
   /** Nome de quem emitiu (rodapé). */
   usuario: string;
-  /** "despesa": valores em vermelho com sinal de menos (como no extrato); "receita": em verde. */
-  natureza?: "despesa" | "receita" | "neutro";
+  /** "despesa": valores positivos mostrados com sinal de menos; "misto" (extrato): o sinal vem do próprio valor (receita +, despesa −). */
+  natureza?: "despesa" | "receita" | "neutro" | "misto";
   /** Soma a coluna de valor no fim da tabela (Excel) quando existir uma coluna "moeda". */
   totalizar?: boolean;
   /** Nome da aba no Excel. */
@@ -48,7 +48,7 @@ const dataBR = (iso: string) => (/^\d{4}-\d{2}-\d{2}/.test(iso) ? `${iso.slice(8
 function textoDe(c: Celula, col: ColunaRel, natureza: RelatorioTabela["natureza"]): string {
   if (c === null || c === undefined || c === "") return "";
   if (ehSelo(c)) return c.texto;
-  if (col.tipo === "moeda" && typeof c === "number") return (natureza === "despesa" && c > 0 ? "- " : "") + brl(c);
+  if (col.tipo === "moeda" && typeof c === "number") return (natureza === "despesa" && c > 0 ? "- " : c < 0 ? "- " : "") + brl(Math.abs(c));
   if (col.tipo === "data" && typeof c === "string") return dataBR(c);
   return String(c);
 }
@@ -353,7 +353,7 @@ export async function gerarExcelRelatorio(relatorios: RelatorioTabela[]): Promis
           cel.alignment = { horizontal: "left", vertical: "top" };
         } else if (c.tipo === "moeda" && typeof v === "number") {
           cel.value = v;
-          cel.numFmt = '"R$" #,##0.00';
+          cel.numFmt = rel.natureza === "misto" ? '"R$" #,##0.00;[Red]-"R$" #,##0.00' : '"R$" #,##0.00';
           cel.alignment = { horizontal: "right", vertical: "top" };
           cel.font = { size: 10, bold: true };
         } else if (c.tipo === "numero" && typeof v === "number") {

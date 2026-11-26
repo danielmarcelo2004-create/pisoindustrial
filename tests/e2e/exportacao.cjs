@@ -122,12 +122,12 @@ async function textoDoPdf(buf) {
     confere(x.status() === 200 && /spreadsheetml/.test(x.headers()['content-type']), `xlsx ${x.status()}`);
     const abas = await lerXlsx(await x.body());
     const nomes = abas.map((a) => a.nome);
-    for (const n of ['Pagamentos', 'Por centro de custo', 'Por categoria', 'Por fornecedor', 'Por mês', 'Por situação']) confere(nomes.includes(n), `falta a aba ${n}: ${nomes}`);
-    dadosDaTabela(abas[0], 'Nº');
+    for (const n of ['Extrato', 'Por centro de custo', 'Por categoria', 'Por fornecedor ou cliente', 'Por mês', 'Despesas (detalhe)']) confere(nomes.includes(n), `falta a aba ${n}: ${nomes}`);
+    dadosDaTabela(abas[0], 'Data');
     const pf = await get(`/relatorios/exportar?${qs}&formato=pdf`);
     confere(pf.status() === 200 && /application\/pdf/.test(pf.headers()['content-type']), `pdf ${pf.status()}`);
     const { texto } = await textoDoPdf(await pf.body());
-    confere(/Relat[oó]rio de pagamentos/.test(texto) && /Total do per[ií]odo/i.test(texto) && /P[aá]gina 1 de/.test(texto), 'PDF do relatório incompleto');
+    confere(/Relat[oó]rio de extrato/.test(texto) && /Totais do per[ií]odo/i.test(texto) && /P[aá]gina 1 de/.test(texto), 'PDF do relatório incompleto');
   });
 
   await passo('regressão: texto com emoji/caracteres fora da fonte não derruba o PDF; "=" no início não vira fórmula no Excel', async () => {
@@ -141,6 +141,122 @@ async function textoDoPdf(buf) {
     const iFav = t.cabecalho.indexOf('Favorecido');
     const linha = t.linhas.find((l) => /SOMA/.test(String(l[iFav])));
     confere(!!linha && !String(linha[iFav]).startsWith('='), `começa com "=" ou não achou: ${linha?.[iFav]}`);
+  });
+
+  // ───────────── Exportação = só o que está dentro do filtro (Contas a pagar, Contas a receber e Relatórios) ─────────────
+  const finCli = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false } });
+  await finCli.auth.signInWithPassword({ email: 'financeiro@demo.local', password: 'Demo-1234' });
+  const obras = await um(admin.from('obras').select('id, nome').order('nome').limit(2));
+  const [obraA, obraB] = obras;
+  const catRec = (await um(admin.from('categorias').insert({ nome: `Rec ${marca}`, tipo: 'receita' }).select('id').single())).id;
+  const catDesp = (await um(admin.from('categorias').insert({ nome: `Desp ${marca}`, tipo: 'despesa' }).select('id').single())).id;
+  const filt = `Filtro${marca}`;
+  // despesas: 3 na obra A (1 com a categoria), 2 na obra B; receitas: 2 na obra A, 1 na obra B
+  const dsp = (obra, i, extra = {}) => ({ obra_id: obra.id, favorecido: `Forn ${filt} ${i}`, descricao: `${filt} despesa ${i}`, valor: 50 + i, vencimento: hoje, forma_pagamento: i === 2 ? 'pix' : 'boleto', status: 'aguardando_pagamento', fluxo: 'C', created_by: fin, ...extra });
+  await um(admin.from('pagamentos').insert([dsp(obraA, 1), dsp(obraA, 2, { categoria_id: catDesp }), dsp(obraA, 3), dsp(obraB, 4), dsp(obraB, 5)]));
+  const vencAmanha = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  for (const [o, d, v] of [[obraA, `${filt} receita A1`, 1000], [obraA, `${filt} receita A2`, 2000], [obraB, `${filt} receita B1`, 4000]]) {
+    await um(finCli.rpc('criar_recebimento', { p_obra_id: o.id, p_categoria_id: catRec, p_cliente: `Cliente ${filt}`, p_descricao: d, p_valor: v, p_vencimento: vencAmanha }));
+  }
+  const xlsx = async (url) => dadosDaTabela((await lerXlsx(await (await get(url)).body()))[0], 'Vencimento');
+  const textoPdf = async (url) => (await textoDoPdf(await (await get(url)).body())).texto;
+  const conta = (texto, re) => (texto.match(re) ?? []).length;
+
+  await passo('Contas a pagar: Excel e PDF trazem só o que está no filtro (busca + centro de custo, categoria, forma de pagamento e situação), igual à lista da tela', async () => {
+    const casos = [
+      [`busca=${filt}`, 5],
+      [`busca=${filt}&obra=${obraA.id}`, 3],
+      [`busca=${filt}&obra=${obraB.id}`, 2],
+      [`busca=${filt}&obra=${obraA.id}&categoria=${catDesp}`, 1],
+      [`busca=${filt}&forma=pix`, 1],
+      [`busca=${filt}&cartao=pagos`, 0],
+      [`busca=${filt}&cartao=hoje`, 5],
+    ];
+    for (const [qs, esperado] of casos) {
+      const url = `/pagamentos/exportar?lista=contas&periodo=todos&${qs}`;
+      const t = await xlsx(url);
+      confere(t.linhas.length === esperado, `Excel (${qs}): ${t.linhas.length} linhas, esperado ${esperado}`);
+      confere(t.linhas.every((l) => l.some((c) => String(c).includes(filt))), `Excel (${qs}): linha fora do filtro`);
+      const pdf = await textoPdf(url + '&formato=pdf');
+      confere(conta(pdf, new RegExp(`Forn ${filt} \\d`, 'g')) === esperado, `PDF (${qs}): ${conta(pdf, new RegExp(`Forn ${filt} \\d`, 'g'))} linhas, esperado ${esperado}`);
+      // a lista da tela mostra a mesma quantidade
+      await p.goto(`${BASE}/pagamentos?periodo=todos&${qs}`); await p.waitForLoadState('networkidle');
+      const naTela = await p.locator('tr[data-linha]').count();
+      confere(naTela === esperado, `tela (${qs}): ${naTela} linhas, esperado ${esperado}`);
+    }
+    // período: um mês sem lançamentos não leva nada
+    const vazio = await xlsx(`/pagamentos/exportar?lista=contas&periodo=personalizado&de=2019-01-01&ate=2019-01-31&busca=${filt}`);
+    confere(vazio.linhas.length === 0, `mês sem lançamento trouxe ${vazio.linhas.length} linhas`);
+  });
+
+  await passo('Contas a receber: Excel e PDF respeitam busca, centro de custo, situação e período', async () => {
+    const casos = [
+      [`busca=${filt}`, 3],
+      [`busca=${filt}&obra=${obraA.id}`, 2],
+      [`busca=${filt}&obra=${obraB.id}`, 1],
+      [`busca=${filt}&cartao=recebidos`, 0],
+      [`busca=${filt}&cartao=avencer`, 3],
+    ];
+    for (const [qs, esperado] of casos) {
+      const url = `/recebimentos/exportar?periodo=todos&${qs}`;
+      const t = await xlsx(url);
+      confere(t.linhas.length === esperado, `Excel (${qs}): ${t.linhas.length} linhas, esperado ${esperado}`);
+      const pdf = await textoPdf(url + '&formato=pdf');
+      confere(conta(pdf, new RegExp(`${filt} receita`, 'g')) === esperado, `PDF (${qs}): ${conta(pdf, new RegExp(`${filt} receita`, 'g'))}, esperado ${esperado}`);
+      await p.goto(`${BASE}/recebimentos?periodo=todos&${qs}`); await p.waitForLoadState('networkidle');
+      const naTela = await p.locator('tr[data-linha]').count();
+      confere(naTela === esperado, `tela (${qs}): ${naTela} linhas, esperado ${esperado}`);
+    }
+  });
+
+  await passo('Relatórios (extrato): receitas e despesas juntas; Excel e PDF só com o filtro (centro de custo, categoria, tipo, busca, situação, período)', async () => {
+    const base = `base=vencimento&de=${hoje}&ate=${vencAmanha}`;
+    const extrato = async (qs) => {
+      const [aba] = await lerXlsx(await (await get(`/relatorios/exportar?${base}&${qs}`)).body());
+      const t = dadosDaTabela(aba, 'Data');
+      return { t, aba, linhas: t.linhas.filter((l) => l.some((c) => String(c).includes(filt))) };
+    };
+    const casos = [
+      [`busca=${filt}`, 8, 3, 5],
+      [`busca=${filt}&obra=${obraA.id}`, 5, 2, 3],
+      [`busca=${filt}&obra=${obraB.id}`, 3, 1, 2],
+      [`busca=${filt}&tipo=receitas`, 3, 3, 0],
+      [`busca=${filt}&tipo=despesas`, 5, 0, 5],
+      [`busca=${filt}&categoria=${catRec}`, 3, 3, 0],
+      [`busca=${filt}&categoria=${catDesp}`, 1, 0, 1],
+      [`busca=${filt}&status=abertos`, 8, 3, 5],
+      [`busca=${filt}&status=realizados`, 0, 0, 0],
+    ];
+    for (const [qs, total, rec, desp] of casos) {
+      const x = await extrato(qs);
+      const iTipo = x.t.cabecalho.indexOf('Tipo');
+      confere(x.linhas.length === total, `Excel (${qs}): ${x.linhas.length} linhas, esperado ${total}`);
+      confere(x.linhas.filter((l) => l[iTipo] === 'Receita').length === rec && x.linhas.filter((l) => l[iTipo] === 'Despesa').length === desp, `Excel (${qs}): receitas/despesas diferentes de ${rec}/${desp}`);
+      // despesa com sinal negativo, receita positivo
+      const iVal = x.t.cabecalho.indexOf('Valor (R$)');
+      confere(x.linhas.every((l) => (l[iTipo] === 'Receita' ? l[iVal] > 0 : l[iVal] < 0)), `Excel (${qs}): sinal do valor errado`);
+      const pdf = await textoPdf(`/relatorios/exportar?${base}&${qs}&formato=pdf`);
+      confere(conta(pdf, new RegExp(`${filt} (despesa|receita)`, 'g')) === total, `PDF (${qs}): ${conta(pdf, new RegExp(`${filt} (despesa|receita)`, 'g'))} linhas, esperado ${total}`);
+    }
+    // resumo do PDF/Excel: receitas e despesas em aberto, realizadas e totais
+    const pdf = await textoPdf(`/relatorios/exportar?${base}&busca=${filt}&formato=pdf`);
+    confere(/Receitas em aberto/i.test(pdf) && /Despesas em aberto/i.test(pdf) && /Totais do per[ií]odo/i.test(pdf), 'resumo do extrato incompleto no PDF');
+    // período fora dos lançamentos: nada
+    const [fora] = await lerXlsx(await (await get(`/relatorios/exportar?base=vencimento&de=2019-01-01&ate=2019-01-31&busca=${filt}`)).body());
+    confere(dadosDaTabela(fora, 'Data').linhas.length === 0, 'período sem lançamentos trouxe linhas');
+  });
+
+  await passo('Relatórios (tela): tem busca e filtros (tipo, centro de custo, categoria, situação, período); o extrato mostra receitas e despesas e respeita a busca', async () => {
+    await p.goto(`${BASE}/relatorios?de=${hoje}&ate=${vencAmanha}&busca=${filt}`); await p.waitForLoadState('networkidle');
+    confere(await p.locator('[data-busca-relatorio] input[name=busca]').count() === 1, 'sem a caixa de busca');
+    confere(await p.locator('[data-extrato-linha="receita"]').count() === 3 && await p.locator('[data-extrato-linha="despesa"]').count() === 5, 'o extrato não mostra 3 receitas e 5 despesas');
+    await p.locator('details summary').first().click();
+    for (const nome of ['tipo', 'obra', 'categoria', 'status', 'busca', 'base', 'de', 'ate']) confere(await p.locator(`form select[name=${nome}], form input[name=${nome}]`).count() >= 1, `sem o filtro ${nome}`);
+    await p.goto(`${BASE}/relatorios?de=${hoje}&ate=${vencAmanha}&busca=${filt}&tipo=receitas&obra=${obraB.id}`); await p.waitForLoadState('networkidle');
+    confere(await p.locator('[data-extrato-linha]').count() === 1, 'filtro combinado (receitas da obra B) deveria dar 1 linha');
+    // a exportação aberta a partir dessa tela leva o mesmo filtro
+    const href = await p.locator('a[href*="/relatorios/exportar"]:not([href*="formato=pdf"])').first().getAttribute('href');
+    confere(/tipo=receitas/.test(href) && /busca=Filtro/.test(href) && href.includes(obraB.id), `link de exportar sem os filtros: ${href}`);
   });
 
   console.log(`\nExportações: ${ok}/${tot} · erros de JavaScript: ${errosJS}`);

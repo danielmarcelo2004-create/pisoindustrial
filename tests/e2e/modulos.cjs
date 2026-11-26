@@ -213,18 +213,18 @@ async function entrar(browser, email) {
   // 5. Relatórios
   const seis = new Date(Date.now() - 200 * 864e5).toISOString().slice(0, 10);
   const hoje = new Date().toISOString().slice(0, 10);
-  await page.goto(`${BASE}/relatorios?base=pago_em&de=${seis}&ate=${hoje}`);
+  await page.goto(`${BASE}/relatorios?base=pago_em&de=${seis}&ate=${hoje}&ver=resumo`);
   await page.getByText('Valor total por mês').waitFor();
   await shot(page, '37-relatorios');
   const xr = await ctx.request.get(`${BASE}/relatorios/exportar?base=pago_em&de=${seis}&ate=${hoje}`);
   const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(await xr.body());
-  const pag = wb2.getWorksheet('Pagamentos');
-  // Abas: Pagamentos, resumos (inclui "Por categoria"). A coluna Valor é localizada pelo cabeçalho.
+  const pag = wb2.getWorksheet('Extrato');
+  // Abas: Extrato (receitas e despesas), resumos (centro de custo, categoria, fornecedor/cliente, mês) e detalhe das despesas
   if (wb2.worksheets.length !== 6 || pag.rowCount < 10) throw new Error('xlsx relatório inválido: ' + wb2.worksheets.map((w) => w.name).join(', '));
-  let colValor = 0;
-  pag.getRow(1).eachCell((c, i) => { if (String(c.value).trim() === 'Valor') colValor = i; });
-  if (!colValor || typeof pag.getRow(2).getCell(colValor).value !== 'number') throw new Error('valor não numérico no Excel');
-  ok(`Relatório por data de pagamento + Excel (${pag.rowCount - 1} pagamentos, 6 abas)`);
+  let colValor = 0, linhaCab = 0;
+  pag.eachRow((row, n) => { if (!linhaCab && String(row.getCell(1).value).trim() === 'Data') { linhaCab = n; row.eachCell((c, i) => { if (String(c.value).trim() === 'Valor (R$)') colValor = i; }); } });
+  if (!colValor || typeof pag.getRow(linhaCab + 1).getCell(colValor).value !== 'number') throw new Error('valor não numérico no Excel');
+  ok(`Relatório por data de pagamento + Excel (${pag.rowCount - linhaCab} linhas, 6 abas)`);
   await page.goto(BASE + '/pagamentos');
   await shot(page, '38-pagamentos-financeiro');
   await ctx.close();

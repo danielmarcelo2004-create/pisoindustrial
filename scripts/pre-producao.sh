@@ -5,13 +5,28 @@
 # Pré-requisito: Docker/Supabase local disponíveis (npx supabase start). Recria o banco LOCAL; nunca toca em produção.
 # Opções:  --rapido  (pula e2e e personas; só lint, tipos, unit, build, integração)
 cd "$(dirname "$0")/.."
-RAPIDO=0; [ "${1:-}" = "--rapido" ] && RAPIDO=1
-LOG=.pre-producao; mkdir -p "$LOG"
+RAPIDO=0; RETOMAR=0
+for a in "$@"; do
+  [ "$a" = "--rapido" ] && RAPIDO=1
+  [ "$a" = "--retomar" ] && RETOMAR=1
+done
+LOG=.pre-producao
+# Impressão digital do código: o progresso salvo só vale se nada mudou desde que ele foi gravado
+VERSAO="$(git rev-parse HEAD 2>/dev/null)-$( (git diff HEAD; git ls-files -o --exclude-standard | grep -v '^\.pre-producao' | xargs -r cat) 2>/dev/null | sha1sum | cut -c1-12)"
+if [ "$RETOMAR" = 1 ] && [ -f "$LOG/progresso.txt" ] && [ "$(head -1 "$LOG/progresso.txt")" = "$VERSAO" ]; then
+  echo "↻ Retomando: o que já passou nesta versão do código não roda de novo."
+else
+  rm -rf "$LOG"; mkdir -p "$LOG"; echo "$VERSAO" > "$LOG/progresso.txt"
+fi
+mkdir -p "$LOG"
+export PROGRESSO="$PWD/$LOG/progresso.txt"
 RES=()
 etapa() { # etapa "nome" comando...
   local nome="$1"; shift
+  # O reset do banco sempre roda (o banco pode ter ficado sujo de antes); as demais etapas pulam o que já passou
+  if [ -z "${SEMPRE:-}" ] && grep -qxF "ok:$nome" "$PROGRESSO" 2>/dev/null; then echo "✔ $nome (já passou)"; RES+=("✔ $nome (já passou nesta versão)"); return; fi
   echo "▶ $nome"
-  if "$@" >"$LOG/$(echo "$nome" | tr ' /' '__').log" 2>&1; then RES+=("✔ $nome"); else RES+=("✘ $nome  (veja $LOG/$(echo "$nome" | tr ' /' '__').log)"); fi
+  if "$@" >"$LOG/$(echo "$nome" | tr ' /' '__').log" 2>&1; then echo "ok:$nome" >> "$PROGRESSO"; RES+=("✔ $nome"); else RES+=("✘ $nome  (veja $LOG/$(echo "$nome" | tr ' /' '__').log)"); fi
 }
 export CRON_SECRET=segredo-teste
 
@@ -21,7 +36,7 @@ etapa "testes unitários" npm run test:unit
 etapa "build" npm run build
 
 npx supabase start >/dev/null 2>&1 || true
-etapa "banco zerado" bash scripts/reset-banco.sh
+SEMPRE=1 etapa "banco zerado" bash scripts/reset-banco.sh
 etapa "testes de integração (banco)" npm run test:integracao
 
 if [ "$RAPIDO" = 0 ]; then
@@ -35,13 +50,14 @@ if [ "$RAPIDO" = 0 ]; then
 
   etapa "testes de tela (e2e)" bash tests/e2e/rodar.sh
   # Personas: um banco zerado, depois cada arquivo em sequência (dados com marca própria)
-  etapa "banco zerado (personas)" bash scripts/reset-banco.sh
+  SEMPRE=1 etapa "banco zerado (personas)" bash scripts/reset-banco.sh
   FALHAS=0
   for f in tests/e2e/personas/*.cjs; do
     case "$f" in */_util.cjs) continue;; esac
     nome="persona $(basename "$f" .cjs)"
+    if grep -qxF "ok:$nome" "$PROGRESSO" 2>/dev/null; then echo "✔ $nome (já passou)"; RES+=("✔ $nome (já passou nesta versão)"); continue; fi
     echo "▶ $nome"
-    if node "$f" >"$LOG/$(basename "$f").log" 2>&1; then RES+=("✔ $nome"); else RES+=("✘ $nome  (veja $LOG/$(basename "$f").log)"); FALHAS=1; fi
+    if node "$f" >"$LOG/$(basename "$f").log" 2>&1; then echo "ok:$nome" >> "$PROGRESSO"; RES+=("✔ $nome"); else RES+=("✘ $nome  (veja $LOG/$(basename "$f").log)"); FALHAS=1; fi
   done
   kill "$SERVIDOR" >/dev/null 2>&1 || true
 fi

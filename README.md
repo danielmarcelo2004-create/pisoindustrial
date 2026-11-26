@@ -114,6 +114,16 @@ O `vercel.json` agenda essa rota uma vez por dia (10h UTC), que é o limite do p
 - **Next.js 16** (App Router, Server Actions) + TypeScript + Tailwind CSS 4
 - **Supabase**: PostgreSQL com RLS, autenticação e armazenamento de arquivos
 
+## Antes de publicar em produção
+
+Rode sempre: `npm run pre-producao` (versão curta, sem telas e personas: `npm run pre-producao:rapido`). A rotina faz, nesta ordem: lint, tipos,
+testes unitários, build, banco local zerado, testes de integração, testes de tela (e2e) e as personas (usuários simulados que usam o sistema:
+engenheiro, Financeiro, administrador, Suprimentos, novata e invasor). No fim mostra o quadro e termina com erro se **qualquer** etapa falhar:
+nesse caso, não publique. Os detalhes de cada etapa ficam em `.pre-producao/`.
+
+Se a máquina reiniciar no meio, `npm run pre-producao -- --retomar` continua de onde parou (só pula o que já passou na mesma versão do código).
+Além disso, confira à mão: migrations novas aplicadas no banco de produção **antes** do código, backup recente e a branch certa.
+
 ## Rodar localmente
 
 Pré-requisitos: Node.js 20+ e Docker.

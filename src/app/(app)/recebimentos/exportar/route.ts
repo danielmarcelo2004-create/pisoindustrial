@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       { titulo: "Categoria", chave: "categoria", largura: 12 },
       { titulo: "Centro de custo", chave: "obra", largura: 14 },
       { titulo: "Conta", chave: "conta", largura: 11 },
-      { titulo: "Situação", chave: "situacao", largura: 9, tipo: "situacao" },
+      { titulo: "Situação", chave: "situacao", largura: 11, tipo: "situacao" },
       { titulo: "Recebido em", chave: "recebidoEm", largura: 8, tipo: "data" },
       { titulo: "Valor (R$)", chave: "valor", largura: 9, tipo: "moeda" },
     ],

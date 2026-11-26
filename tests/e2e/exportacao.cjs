@@ -78,7 +78,8 @@ async function textoDoPdf(buf) {
     confere(cab.cells.getCell(1).fill?.fgColor?.argb === 'FF1F3A5A', 'cabeçalho sem destaque');
     const iSit = t.cabecalho.indexOf('Situação');
     const primeira = aba.linhas[aba.linhas.indexOf(cab) + 1];
-    confere(!!primeira.cells.getCell(iSit + 1).fill?.fgColor?.argb, 'situação sem cor');
+    const fonteSit = primeira.cells.getCell(iSit + 1).font;
+    confere(/^● /.test(String(primeira.vals[iSit])) && !!fonteSit?.color?.argb, 'situação sem marcador/cor');
     const total = aba.linhas.find((l) => String(l.vals[0]) === 'Total');
     confere(total && typeof total.cells.getCell(iVal + 1).value === 'object' && /SUBTOTAL/.test(total.cells.getCell(iVal + 1).value.formula), 'sem a linha de total com soma');
     confere(aba.ws.views[0]?.state === 'frozen' && !!aba.ws.autoFilter, 'sem cabeçalho fixo/filtro');
@@ -94,9 +95,9 @@ async function textoDoPdf(buf) {
     const { texto, paginas } = await textoDoPdf(buf);
     confere(paginas >= 3, `só ${paginas} página(s) para 70 linhas`);
     confere(/Contas a pagar/.test(texto) && /CONSTRUTORA PARCERIA/i.test(texto) && /04\.602\.232\/0001-70/.test(texto), 'sem título/empresa');
-    confere(/Total do per[ií]odo/.test(texto) && /Usu[aá]rio: /.test(texto) && new RegExp(`P[aá]gina 1 de ${paginas}`).test(texto) && new RegExp(`P[aá]gina ${paginas} de ${paginas}`).test(texto), 'sem resumo/rodapé/paginação');
+    confere(/Total do per[ií]odo/i.test(texto) && /emitido por /.test(texto) && new RegExp(`P[aá]gina 1 de ${paginas}`).test(texto) && new RegExp(`P[aá]gina ${paginas} de ${paginas}`).test(texto), 'sem resumo/rodapé/paginação');
     confere(/Fornecedor Exp\d+ 1\b/.test(texto) && /Fornecedor Exp\d+ 70\b/.test(texto), 'faltam linhas no PDF (primeira ou última)');
-    confere(/Filtros aplicados/.test(texto) && /Busca: /.test(texto), 'sem os filtros aplicados na última página');
+    confere(/Filtros aplicados/i.test(texto) && /Busca: /.test(texto), 'sem os filtros aplicados na última página');
     fs.writeFileSync(path.join(DIR, 'contas-a-pagar.pdf'), buf);
     return `${paginas} páginas`;
   });
@@ -110,7 +111,7 @@ async function textoDoPdf(buf) {
     const pf = await get('/recebimentos/exportar?periodo=todos&formato=pdf');
     confere(pf.status() === 200 && /application\/pdf/.test(pf.headers()['content-type']), `pdf ${pf.status()}`);
     const { texto } = await textoDoPdf(await pf.body());
-    confere(/Contas a receber/.test(texto) && /Recebidos \(R\$\)/.test(texto) && /P[aá]gina 1 de/.test(texto), 'PDF de receber incompleto');
+    confere(/Contas a receber/.test(texto) && /Recebidos \(R\$\)/i.test(texto) && /P[aá]gina 1 de/.test(texto), 'PDF de receber incompleto');
     const anon = await (await b.newContext()).request.get(BASE + '/recebimentos/exportar', { maxRedirects: 0 });
     confere([401, 302, 307].includes(anon.status()), `sem login: ${anon.status()}`);
   });
@@ -126,7 +127,7 @@ async function textoDoPdf(buf) {
     const pf = await get(`/relatorios/exportar?${qs}&formato=pdf`);
     confere(pf.status() === 200 && /application\/pdf/.test(pf.headers()['content-type']), `pdf ${pf.status()}`);
     const { texto } = await textoDoPdf(await pf.body());
-    confere(/Relat[oó]rio de pagamentos/.test(texto) && /Total do per[ií]odo/.test(texto) && /P[aá]gina 1 de/.test(texto), 'PDF do relatório incompleto');
+    confere(/Relat[oó]rio de pagamentos/.test(texto) && /Total do per[ií]odo/i.test(texto) && /P[aá]gina 1 de/.test(texto), 'PDF do relatório incompleto');
   });
 
   await passo('regressão: texto com emoji/caracteres fora da fonte não derruba o PDF; "=" no início não vira fórmula no Excel', async () => {

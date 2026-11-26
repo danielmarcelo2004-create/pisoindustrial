@@ -53,13 +53,6 @@ function textoDe(c: Celula, col: ColunaRel, natureza: RelatorioTabela["natureza"
   return String(c);
 }
 
-const CORES_PDF: Record<CorSituacao, { fundo: [number, number, number]; texto: [number, number, number] }> = {
-  verde: { fundo: [0.84, 0.97, 0.86], texto: [0.05, 0.4, 0.17] },
-  vermelho: { fundo: [0.99, 0.87, 0.87], texto: [0.65, 0.1, 0.1] },
-  ambar: { fundo: [1, 0.93, 0.78], texto: [0.6, 0.35, 0.02] },
-  azul: { fundo: [0.86, 0.92, 0.99], texto: [0.1, 0.3, 0.6] },
-  cinza: { fundo: [0.92, 0.93, 0.95], texto: [0.3, 0.33, 0.38] },
-};
 const CORES_XLSX: Record<CorSituacao, { fundo: string; texto: string }> = {
   verde: { fundo: "FFD6F7DC", texto: "FF0D6B2B" },
   vermelho: { fundo: "FFFCDDDD", texto: "FFA61A1A" },
@@ -112,6 +105,20 @@ function quebrar(texto: string, fonte: PDFFont, tamanho: number, larg: number, m
   return linhas.length ? linhas : [""];
 }
 
+// Identidade visual dos relatórios: faixa azul-marinho no topo, resumo em cartões, linhas alternadas e situação com marcador.
+const MARINHO = rgb(0.12, 0.23, 0.35);
+const MARINHO_CLARO = rgb(0.9, 0.93, 0.97);
+const ZEBRA = rgb(0.965, 0.972, 0.985);
+const TEXTO = rgb(0.13, 0.16, 0.21);
+const TEXTO_FRACO = rgb(0.42, 0.46, 0.52);
+const COR_MARCADOR: Record<CorSituacao, [number, number, number]> = {
+  verde: [0.1, 0.6, 0.3],
+  vermelho: [0.8, 0.2, 0.2],
+  ambar: [0.88, 0.58, 0.05],
+  azul: [0.2, 0.45, 0.8],
+  cinza: [0.55, 0.58, 0.63],
+};
+
 export async function gerarPdfRelatorio(rel: RelatorioTabela): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.setTitle(`${rel.titulo} ${rel.periodo}`);
@@ -126,62 +133,65 @@ export async function gerarPdfRelatorio(rel: RelatorioTabela): Promise<Uint8Arra
   const larguras = rel.colunas.map((c) => (c.largura / totalPeso) * larguraUtil);
   const TAM = 7;
   const ALT_LINHA = 9;
-  const PAD = 4;
-  const RODAPE = 30;
-  const cinzaTexto = rgb(0.35, 0.38, 0.43);
-  const linhaFina = rgb(0.88, 0.9, 0.93);
+  const PAD = 5;
+  const RODAPE = 34;
 
   let pagina!: PDFPage;
   let y = 0;
+  let zebra = false;
 
   const cabecalhoTabela = () => {
-    pagina.drawRectangle({ x: M, y: y - 14, width: larguraUtil, height: 16, color: rgb(0.94, 0.96, 0.98) });
+    pagina.drawRectangle({ x: M, y: y - 15, width: larguraUtil, height: 17, color: MARINHO });
     let x = M;
     rel.colunas.forEach((c, i) => {
-      const t = limpar(c.titulo);
-      const w = negrito.widthOfTextAtSize(t, 7.5);
-      const px = c.alinhar === "dir" ? x + larguras[i] - PAD - w : c.alinhar === "centro" ? x + (larguras[i] - w) / 2 : x + PAD;
-      pagina.drawText(t, { x: px, y: y - 9, size: 7.5, font: negrito, color: rgb(0.1, 0.12, 0.16) });
+      const t = limpar(c.titulo).toUpperCase();
+      const w = negrito.widthOfTextAtSize(t, 6.8);
+      const px = c.alinhar === "dir" || c.tipo === "moeda" ? x + larguras[i] - PAD - w : c.alinhar === "centro" ? x + (larguras[i] - w) / 2 : x + PAD;
+      pagina.drawText(t, { x: px, y: y - 9.5, size: 6.8, font: negrito, color: rgb(1, 1, 1) });
       x += larguras[i];
     });
-    y -= 18;
+    y -= 19;
+    zebra = false;
   };
 
   const novaPagina = (primeira: boolean) => {
     pagina = pdf.addPage([L, A]);
-    y = A - M;
+    y = A;
     if (primeira) {
-      // Título e período
-      pagina.drawText(limpar(rel.titulo), { x: M, y: y - 12, size: 14, font: negrito, color: rgb(0.08, 0.09, 0.12) });
-      const wt = negrito.widthOfTextAtSize(limpar(rel.titulo), 14);
-      pagina.drawText(limpar(rel.periodo), { x: M + wt + 8, y: y - 12, size: 9, font: fonte, color: cinzaTexto });
-      // Empresa
-      pagina.drawText(limpar(SISTEMA.empresa), { x: M, y: y - 46, size: 11, font: negrito, color: rgb(0.2, 0.22, 0.27) });
-      pagina.drawText(`CNPJ ${SISTEMA.empresaCnpj}`, { x: M, y: y - 61, size: 8.5, font: fonte, color: cinzaTexto });
-      pagina.drawText(`Emitido em ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}`, { x: M, y: y - 75, size: 8, font: fonte, color: cinzaTexto });
-      // Resumo
-      const linhasResumo = rel.resumo ?? [];
-      if (linhasResumo.length) {
-        const caixaL = 230;
-        const caixaA = linhasResumo.length * 14 + 14;
-        const cx = L - M - caixaL;
-        pagina.drawRectangle({ x: cx, y: y - caixaA + 4, width: caixaL, height: caixaA, color: rgb(0.95, 0.96, 0.98) });
-        linhasResumo.forEach((r, i) => {
-          const ty = y - 10 - i * 14;
-          const f = r.destaque ? negrito : fonte;
-          pagina.drawText(limpar(r.rotulo), { x: cx + 10, y: ty, size: 8.5, font: f, color: rgb(0.2, 0.22, 0.27) });
+      // Faixa do topo: título e período à esquerda, empresa à direita
+      pagina.drawRectangle({ x: 0, y: A - 70, width: L, height: 70, color: MARINHO });
+      pagina.drawText(limpar(rel.titulo), { x: M, y: A - 34, size: 18, font: negrito, color: rgb(1, 1, 1) });
+      pagina.drawText(limpar(rel.periodo), { x: M, y: A - 52, size: 9.5, font: fonte, color: rgb(0.78, 0.85, 0.93) });
+      const emp = limpar(SISTEMA.empresa);
+      const cnpj = `CNPJ ${SISTEMA.empresaCnpj}`;
+      pagina.drawText(emp, { x: L - M - negrito.widthOfTextAtSize(emp, 9), y: A - 34, size: 9, font: negrito, color: rgb(1, 1, 1) });
+      pagina.drawText(cnpj, { x: L - M - fonte.widthOfTextAtSize(cnpj, 8), y: A - 48, size: 8, font: fonte, color: rgb(0.78, 0.85, 0.93) });
+      y = A - 70 - 14;
+      // Resumo em cartões lado a lado
+      const itens = rel.resumo ?? [];
+      if (itens.length) {
+        const gap = 8;
+        const w = (larguraUtil - gap * (itens.length - 1)) / itens.length;
+        itens.forEach((r, i) => {
+          const cx = M + i * (w + gap);
+          pagina.drawRectangle({ x: cx, y: y - 38, width: w, height: 38, color: r.destaque ? MARINHO_CLARO : rgb(1, 1, 1), borderColor: rgb(0.84, 0.87, 0.92), borderWidth: 0.7 });
+          pagina.drawRectangle({ x: cx, y: y - 38, width: 3, height: 38, color: r.destaque ? MARINHO : rgb(0.65, 0.72, 0.82) });
+          pagina.drawText(limpar(r.rotulo).toUpperCase(), { x: cx + 10, y: y - 13, size: 6.3, font: negrito, color: TEXTO_FRACO });
           const v = (r.valor < 0 ? "-" : "") + brl(Math.abs(r.valor));
-          pagina.drawText(v, { x: cx + caixaL - 10 - negrito.widthOfTextAtSize(v, 8.5), y: ty, size: 8.5, font: negrito, color: rgb(0.08, 0.09, 0.12) });
+          pagina.drawText(v, { x: cx + 10, y: y - 30, size: 12, font: negrito, color: r.destaque ? MARINHO : TEXTO });
         });
+        y -= 38 + 10;
       }
-      y -= 96;
       if (rel.filtros?.length) {
-        pagina.drawText("*Há filtros aplicados. Mais detalhes na última página do relatório.", { x: M, y: y + 6, size: 7.5, font: fonte, color: cinzaTexto });
-        y -= 8;
+        pagina.drawText("Há filtros aplicados; veja os detalhes na última página.", { x: M, y: y - 6, size: 7.2, font: fonte, color: TEXTO_FRACO });
+        y -= 14;
+      } else {
+        y -= 4;
       }
     } else {
-      pagina.drawText(`${limpar(rel.titulo)} · ${limpar(rel.periodo)}`, { x: M, y: y - 8, size: 9, font: negrito, color: cinzaTexto });
-      y -= 22;
+      pagina.drawRectangle({ x: 0, y: A - 26, width: L, height: 26, color: MARINHO });
+      pagina.drawText(`${limpar(rel.titulo)}  ·  ${limpar(rel.periodo)}`, { x: M, y: A - 17, size: 9, font: negrito, color: rgb(1, 1, 1) });
+      y = A - 26 - 12;
     }
     cabecalhoTabela();
   };
@@ -189,74 +199,68 @@ export async function gerarPdfRelatorio(rel: RelatorioTabela): Promise<Uint8Arra
   novaPagina(true);
 
   for (const linha of rel.linhas) {
-    // prepara as linhas de cada célula
     const prep = rel.colunas.map((c, i) => {
       const cel = linha[c.chave];
       const texto = textoDe(cel, c, rel.natureza);
-      const maxLarg = larguras[i] - PAD * 2 - (c.tipo === "situacao" ? 8 : 0);
+      const maxLarg = larguras[i] - PAD * 2 - (c.tipo === "situacao" ? 10 : 0);
       return { texto, linhas: quebrar(texto, c.tipo === "moeda" ? negrito : fonte, TAM, maxLarg, 3), cel };
     });
     const nLinhas = Math.max(1, ...prep.map((p) => p.linhas.length));
-    const altura = nLinhas * ALT_LINHA + 7;
-    if (y - altura < RODAPE + 10) novaPagina(false);
+    const altura = nLinhas * ALT_LINHA + 8;
+    if (y - altura < RODAPE + 8) novaPagina(false);
+
+    if (zebra) pagina.drawRectangle({ x: M, y: y - altura + 3, width: larguraUtil, height: altura, color: ZEBRA });
+    zebra = !zebra;
 
     let x = M;
     rel.colunas.forEach((c, i) => {
       const p = prep[i];
       if (c.tipo === "situacao" && ehSelo(p.cel as Celula)) {
+        // marcador colorido + texto da situação
         const selo = p.cel as Selo;
-        const cores = CORES_PDF[selo.cor];
-        const w = larguras[i] - PAD * 2;
-        pagina.drawRectangle({ x: x + PAD, y: y - 11, width: w, height: 11, color: rgb(...cores.fundo) });
-        const t = limpar(p.linhas[0] ?? "");
-        const tw = negrito.widthOfTextAtSize(t, 7);
-        pagina.drawText(t, { x: x + PAD + (w - tw) / 2, y: y - 8.5, size: 7, font: negrito, color: rgb(...cores.texto) });
+        const cor = COR_MARCADOR[selo.cor];
+        pagina.drawCircle({ x: x + PAD + 3, y: y - 5, size: 2.6, color: rgb(...cor) });
+        pagina.drawText(limpar(p.linhas[0] ?? ""), { x: x + PAD + 10, y: y - 7.6, size: TAM, font: negrito, color: rgb(cor[0] * 0.8, cor[1] * 0.8, cor[2] * 0.8) });
       } else {
-        const usaNegrito = c.tipo === "moeda";
-        let cor = rgb(0.2, 0.22, 0.27);
-        if (c.tipo === "moeda") {
-          if (rel.natureza === "despesa") cor = rgb(0.75, 0.15, 0.15);
-          else if (rel.natureza === "receita") cor = rgb(0.05, 0.45, 0.2);
-        }
+        const ehValor = c.tipo === "moeda";
+        const f = ehValor ? negrito : fonte;
         p.linhas.forEach((t, k) => {
-          const f = usaNegrito ? negrito : fonte;
           const w = f.widthOfTextAtSize(t, TAM);
-          const px = c.alinhar === "dir" || c.tipo === "moeda" ? x + larguras[i] - PAD - w : c.alinhar === "centro" ? x + (larguras[i] - w) / 2 : x + PAD;
-          pagina.drawText(t, { x: px, y: y - 8 - k * ALT_LINHA, size: TAM, font: f, color: cor });
+          const px = ehValor || c.alinhar === "dir" ? x + larguras[i] - PAD - w : c.alinhar === "centro" ? x + (larguras[i] - w) / 2 : x + PAD;
+          pagina.drawText(t, { x: px, y: y - 7.6 - k * ALT_LINHA, size: TAM, font: f, color: TEXTO });
         });
       }
       x += larguras[i];
     });
     y -= altura;
-    pagina.drawLine({ start: { x: M, y: y + 2 }, end: { x: L - M, y: y + 2 }, thickness: 0.4, color: linhaFina });
   }
 
   if (!rel.linhas.length) {
-    pagina.drawText("Nenhum lançamento com esses filtros.", { x: M + PAD, y: y - 10, size: 9, font: fonte, color: cinzaTexto });
+    pagina.drawText("Nenhum lançamento com esses filtros.", { x: M + PAD, y: y - 10, size: 9, font: fonte, color: TEXTO_FRACO });
     y -= 24;
   }
+  pagina.drawLine({ start: { x: M, y: y + 1 }, end: { x: L - M, y: y + 1 }, thickness: 0.8, color: MARINHO });
 
-  // Última página: filtros aplicados
+  // Última página: filtros aplicados em uma caixa
   if (rel.filtros?.length) {
-    if (y < RODAPE + 40 + rel.filtros.length * 12) novaPagina(false);
-    y -= 16;
-    pagina.drawText("Filtros aplicados", { x: M, y: y - 6, size: 9, font: negrito, color: rgb(0.2, 0.22, 0.27) });
-    y -= 20;
-    for (const f of rel.filtros) {
-      pagina.drawText(`• ${limpar(f)}`, { x: M + 6, y: y - 6, size: 8, font: fonte, color: cinzaTexto });
-      y -= 12;
-    }
+    const altCaixa = 26 + rel.filtros.length * 12;
+    if (y < RODAPE + altCaixa + 20) novaPagina(false);
+    y -= 18;
+    pagina.drawRectangle({ x: M, y: y - altCaixa, width: larguraUtil, height: altCaixa, color: rgb(0.975, 0.98, 0.99), borderColor: rgb(0.84, 0.87, 0.92), borderWidth: 0.7 });
+    pagina.drawText("FILTROS APLICADOS", { x: M + 10, y: y - 15, size: 7, font: negrito, color: MARINHO });
+    rel.filtros.forEach((f, k) => pagina.drawText(`•  ${limpar(f)}`, { x: M + 10, y: y - 29 - k * 12, size: 8, font: fonte, color: TEXTO }));
   }
 
-  // Rodapé em todas as páginas
+  // Rodapé em todas as páginas: emitido por, sistema e paginação em destaque
   const paginas = pdf.getPages();
+  const emitido = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
   paginas.forEach((p, i) => {
-    p.drawLine({ start: { x: M, y: 26 }, end: { x: L - M, y: 26 }, thickness: 0.4, color: linhaFina });
-    p.drawText(`Usuário: ${limpar(rel.usuario)}`, { x: M, y: 14, size: 7.5, font: fonte, color: cinzaTexto });
-    const centro = limpar(SISTEMA.nome);
-    p.drawText(centro, { x: (L - negrito.widthOfTextAtSize(centro, 8)) / 2, y: 14, size: 8, font: negrito, color: rgb(0.25, 0.3, 0.4) });
+    p.drawLine({ start: { x: M, y: 28 }, end: { x: L - M, y: 28 }, thickness: 0.5, color: rgb(0.84, 0.87, 0.92) });
+    p.drawText(`${limpar(SISTEMA.nome)}  ·  emitido por ${limpar(rel.usuario)} em ${emitido}`, { x: M, y: 15, size: 7.2, font: fonte, color: TEXTO_FRACO });
     const pg = `Página ${i + 1} de ${paginas.length}`;
-    p.drawText(pg, { x: L - M - fonte.widthOfTextAtSize(pg, 7.5), y: 14, size: 7.5, font: fonte, color: cinzaTexto });
+    const w = negrito.widthOfTextAtSize(pg, 7.5) + 14;
+    p.drawRectangle({ x: L - M - w, y: 10, width: w, height: 14, color: MARINHO_CLARO });
+    p.drawText(pg, { x: L - M - w + 7, y: 14.2, size: 7.5, font: negrito, color: MARINHO });
   });
 
   return pdf.save();
@@ -274,17 +278,27 @@ export async function gerarExcelRelatorio(relatorios: RelatorioTabela[]): Promis
     ws.columns = rel.colunas.map((c) => ({ width: Math.max(c.tipo === "situacao" ? 20 : 8, Math.round(c.largura * 1.7)) }));
     const meio = (linha: number) => ws.mergeCells(linha, 1, linha, Math.max(n, 2));
 
+    // Faixa azul-marinho no topo (título, período e empresa)
+    const faixa = (linha: number) => {
+      for (let c = 1; c <= Math.max(n, 2); c++) ws.getCell(linha, c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F3A5A" } };
+    };
+    [1, 2, 3].forEach(faixa);
+    ws.getRow(1).height = 26;
     ws.getCell(1, 1).value = rel.titulo;
-    ws.getCell(1, 1).font = { bold: true, size: 15, color: { argb: "FF14213D" } };
+    ws.getCell(1, 1).font = { bold: true, size: 17, color: { argb: "FFFFFFFF" } };
+    ws.getCell(1, 1).alignment = { vertical: "middle", indent: 1 };
     meio(1);
     ws.getCell(2, 1).value = rel.periodo;
-    ws.getCell(2, 1).font = { size: 10, color: { argb: "FF5A6270" } };
+    ws.getCell(2, 1).font = { size: 10, color: { argb: "FFC7D9EE" } };
+    ws.getCell(2, 1).alignment = { indent: 1 };
     meio(2);
-    ws.getCell(3, 1).value = `${SISTEMA.empresa} · CNPJ ${SISTEMA.empresaCnpj}`;
-    ws.getCell(3, 1).font = { size: 10, bold: true, color: { argb: "FF333B4A" } };
+    ws.getCell(3, 1).value = `${SISTEMA.empresa}  ·  CNPJ ${SISTEMA.empresaCnpj}`;
+    ws.getCell(3, 1).font = { size: 9, bold: true, color: { argb: "FFFFFFFF" } };
+    ws.getCell(3, 1).alignment = { indent: 1 };
     meio(3);
-    ws.getCell(4, 1).value = `Emitido em ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })} por ${rel.usuario}`;
-    ws.getCell(4, 1).font = { size: 9, color: { argb: "FF7A8290" } };
+    ws.getCell(4, 1).value = `Emitido por ${rel.usuario} em ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}`;
+    ws.getCell(4, 1).font = { size: 9, italic: true, color: { argb: "FF7A8290" } };
+    ws.getCell(4, 1).alignment = { indent: 1 };
     meio(4);
 
     let l = 6;
@@ -328,20 +342,18 @@ export async function gerarExcelRelatorio(relatorios: RelatorioTabela[]): Promis
         const cel = ws.getCell(r0, i + 1);
         const v = linha[c.chave];
         cel.font = { size: 10 };
-        cel.border = { bottom: { style: "hair", color: { argb: "FFD0D5DD" } } };
+        if ((r0 - cab) % 2 === 0) cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF4F7FB" } };
         cel.alignment = { vertical: "top", wrapText: c.tipo === "texto" || c.tipo === undefined };
         if (v === null || v === undefined || v === "") return;
         if (ehSelo(v)) {
-          cel.value = v.texto;
-          cel.font = { size: 9, bold: true, color: { argb: CORES_XLSX[v.cor].texto } };
-          cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: CORES_XLSX[v.cor].fundo } };
-          cel.alignment = { horizontal: "center", vertical: "top" };
+          cel.value = `● ${v.texto}`;
+          cel.font = { size: 10, bold: true, color: { argb: CORES_XLSX[v.cor].texto } };
+          cel.alignment = { horizontal: "left", vertical: "top" };
         } else if (c.tipo === "moeda" && typeof v === "number") {
           cel.value = v;
           cel.numFmt = '"R$" #,##0.00';
           cel.alignment = { horizontal: "right", vertical: "top" };
-          if (rel.natureza === "despesa") cel.font = { size: 10, color: { argb: "FFB42323" } };
-          else if (rel.natureza === "receita") cel.font = { size: 10, color: { argb: "FF0D7333" } };
+          cel.font = { size: 10, bold: true };
         } else if (c.tipo === "numero" && typeof v === "number") {
           cel.value = v;
           cel.numFmt = "#,##0.###";

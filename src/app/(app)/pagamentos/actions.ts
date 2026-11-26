@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getUsuario } from "@/lib/auth";
-import { arquivosDoForm, enviarDocumento, validarArquivo } from "@/lib/documentos";
+import { arquivosDoForm, enviarDocumento, validarArquivo, validarArquivoCompleto } from "@/lib/documentos";
 import { mensagemErro, type Estado } from "@/lib/erros";
 import { lerValor } from "@/lib/formato";
 import { FORMAS_PAGAMENTO, TIPOS_DOCUMENTO, type FormaPagamento, type TipoDocumento } from "@/lib/rotulos";
@@ -29,6 +29,11 @@ function lerDadosPagamento(fd: FormData) {
   if (!descricao) return { erro: "Informe a descrição." } as const;
   if (valor === null) return { erro: "Informe um valor válido (ex.: 1.250,00)." } as const;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento)) return { erro: "Informe a data de vencimento." } as const;
+  // Vencimento absurdo (ex.: ano 2999) não é aceito: no máximo 10 anos à frente.
+  const limiteVenc = new Date(Date.now() + 10 * 365 * 86400000).toISOString().slice(0, 10);
+  if (Number.isNaN(new Date(vencimento + "T12:00:00Z").getTime()) || vencimento > limiteVenc) {
+    return { erro: "Data de vencimento inválida: confira o ano (máximo de 10 anos à frente)." } as const;
+  }
   if (!(forma in FORMAS_PAGAMENTO)) return { erro: "Forma de pagamento inválida." } as const;
 
   return {
@@ -94,7 +99,7 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
     ...arquivosDoForm(fd, "outros").map((arquivo) => ({ tipo: "outro" as const, arquivo })),
   ];
   for (const a of anexos) {
-    const e = validarArquivo(a.arquivo);
+    const e = await validarArquivoCompleto(a.arquivo);
     if (e) return { erro: e };
   }
   // O engenheiro assina boleto ou nota fiscal (comprovante não entra na assinatura): sem um deles não há o que aprovar.
@@ -102,44 +107,37 @@ export async function criarPagamento(_: Estado, fd: FormData): Promise<Estado> {
     return { erro: "Anexe um boleto ou nota fiscal para o engenheiro assinar." };
   }
 
-  const supabase = await createClient();
-  const { data: id, error } = await supabase.rpc("criar_pagamento", { p_obra_id: obra, ...lido.dados });
-  if (error || !id) return { erro: mensagemErro(error) };
-
   const competencia = texto(fd, "data_competencia");
-  if (/^\d{4}-\d{2}-\d{2}$/.test(competencia)) {
-    await supabase.rpc("definir_competencia", { p_pagamento_id: id as string, p_data: competencia });
-  }
-  await supabase.rpc("definir_categoria", { p_pagamento_id: id as string, p_categoria_id: categoria });
-  const { error: erroConta } = await supabase.rpc("definir_conta_bancaria", { p_pagamento_id: id as string, p_conta_id: contaBancaria });
-  if (parcelas.length >= 2) {
-    const { error: erroParcelas } = await supabase.rpc("definir_parcelas", {
-      p_pagamento_id: id as string,
-      p_parcelas: parcelas.map((p) => ({ valor: Number(p.valor), vencimento: p.vencimento, multa: 0, juros: 0, desconto: 0, motivo: null })) as never,
-    });
-    if (erroParcelas) {
-      revalidatePath("/", "layout");
-      redirect(`/pagamentos/${id}?aviso=${encodeURIComponent("Pagamento cadastrado, mas as parcelas não foram gravadas: " + mensagemErro(erroParcelas))}`);
-    }
-  }
+  const provisao = texto(fd, "provisao_id");
+  const supabase = await createClient();
+  // Tudo do cadastro (despesa, competência, categoria, conta, parcelas, repetições e a ligação com a provisão) é
+  // gravado numa transação só: se algo for recusado, nada fica pela metade.
+  const { data: id, error } = await supabase.rpc("criar_pagamento_completo", {
+    p_obra_id: obra,
+    p_fornecedor_id: lido.dados.p_fornecedor_id,
+    p_favorecido: lido.dados.p_favorecido,
+    p_descricao: lido.dados.p_descricao,
+    p_valor: lido.dados.p_valor,
+    p_vencimento: lido.dados.p_vencimento,
+    p_forma_pagamento: lido.dados.p_forma_pagamento,
+    p_categoria_id: categoria,
+    p_conta_id: contaBancaria,
+    p_numero_documento: lido.dados.p_numero_documento,
+    p_observacoes: lido.dados.p_observacoes,
+    p_competencia: /^\d{4}-\d{2}-\d{2}$/.test(competencia) ? competencia : (null as unknown as string),
+    p_parcelas: (parcelas.length >= 2 ? parcelas.map((p) => ({ valor: Number(p.valor), vencimento: p.vencimento, multa: 0, juros: 0, desconto: 0, motivo: null })) : null) as never,
+    p_repetir_intervalo: (repIntervalo || null) as number,
+    p_repetir_vezes: (repIntervalo ? repVezes : null) as number,
+    p_provisao_id: (UUID.test(provisao) ? provisao : null) as string,
+  });
+  if (error || !id) return { erro: "Nada foi cadastrado: " + mensagemErro(error) };
 
+  // Só os arquivos vêm depois (upload ao Storage): se algum falhar, a despesa existe e a tela avisa qual anexo falta.
   const falhas: string[] = [];
-  if (erroConta) falhas.push("A conta bancária não foi gravada: " + mensagemErro(erroConta));
-  if (repIntervalo) {
-    const { error: erroRep } = await supabase.rpc("criar_repeticoes", { p_pagamento_id: id as string, p_intervalo: repIntervalo, p_vezes: repVezes });
-    if (erroRep) falhas.push("As repetições não foram criadas: " + mensagemErro(erroRep));
-  }
   for (const a of anexos) {
     const r = await enviarDocumento(supabase, { id, obra_id: obra }, a.tipo, a.arquivo);
-    if (r.erro) falhas.push(r.erro);
+    if (r.erro) falhas.push(`Anexo não enviado, anexe de novo no pagamento: ${r.erro}`);
     if (r.aviso) falhas.push(r.aviso);
-  }
-
-  // Despesa lançada a partir de uma provisão: a provisão é marcada como lançada e fica ligada a ela
-  const provisao = texto(fd, "provisao_id");
-  if (UUID.test(provisao)) {
-    const { error: erroProv } = await supabase.rpc("lancar_provisao", { p_provisao_id: provisao, p_pagamento_id: id as string });
-    if (erroProv) falhas.push("A provisão não foi marcada como lançada: " + mensagemErro(erroProv));
   }
 
   revalidatePath("/", "layout");
@@ -176,44 +174,35 @@ export async function atualizarPagamento(id: string, _: Estado, fd: FormData): P
 
   const [novoBoleto] = arquivosDoForm(fd, "novo_boleto");
   if (novoBoleto) {
-    const e = validarArquivo(novoBoleto);
+    const e = await validarArquivoCompleto(novoBoleto);
     if (e) return { erro: e };
   }
   const supabase = await createClient();
   const { data: antes } = await supabase.from("pagamentos").select("valor, obra_id").eq("id", id).single();
-  // "Editar lançamento (todas as parcelas)": as parcelas são gravadas primeiro (elas acertam o total e o vencimento);
-  // se forem recusadas, nada é salvo.
-  if (parcelasEditadas?.length) {
-    const { error: erroParc } = await supabase.rpc("editar_parcelas", { p_pagamento_id: id, p_parcelas: parcelasEditadas as never, p_motivo: texto(fd, "motivo") || undefined });
-    if (erroParc) return { erro: "Nada foi salvo: " + mensagemErro(erroParc) };
-  }
-  const { error } = await supabase.rpc("atualizar_pagamento", {
-    p_id: id,
-    ...lido.dados,
-    p_motivo: texto(fd, "motivo"),
-    p_obra_id: texto(fd, "obra_id") || undefined,
-  });
-  if (error) return { erro: mensagemErro(error) };
+  // Todas as alterações (parcelas, dados, competência, categoria, conta e reajuste da série) numa transação só:
+  // se algo for recusado, nada é salvo (antes, parte podia ficar gravada mesmo com a mensagem de erro).
   const competencia = texto(fd, "data_competencia");
-  if (/^\d{4}-\d{2}-\d{2}$/.test(competencia)) {
-    const { error: erroComp } = await supabase.rpc("definir_competencia", { p_pagamento_id: id, p_data: competencia });
-    if (erroComp) return { erro: mensagemErro(erroComp) };
-  }
   const categoria = texto(fd, "categoria_id");
-  if (UUID.test(categoria)) {
-    const { error: erroCat } = await supabase.rpc("definir_categoria", { p_pagamento_id: id, p_categoria_id: categoria });
-    if (erroCat) return { erro: mensagemErro(erroCat) };
-  }
   const contaBancaria = texto(fd, "conta_bancaria_id");
-  if (UUID.test(contaBancaria)) {
-    const { error: erroConta } = await supabase.rpc("definir_conta_bancaria", { p_pagamento_id: id, p_conta_id: contaBancaria });
-    if (erroConta) return { erro: mensagemErro(erroConta) };
-  }
-  // "Aplicar o novo valor às próximas": provisões em aberto da repetição
-  if (fd.get("reajustar_serie") === "on") {
-    const { error: erroSerie } = await supabase.rpc("reajustar_serie", { p_pagamento_id: id, p_valor: lido.dados.p_valor });
-    if (erroSerie) return { erro: mensagemErro(erroSerie) };
-  }
+  const { error } = await supabase.rpc("atualizar_pagamento_completo", {
+    p_id: id,
+    p_fornecedor_id: lido.dados.p_fornecedor_id,
+    p_favorecido: lido.dados.p_favorecido,
+    p_descricao: lido.dados.p_descricao,
+    p_valor: lido.dados.p_valor,
+    p_vencimento: lido.dados.p_vencimento,
+    p_forma_pagamento: lido.dados.p_forma_pagamento,
+    p_numero_documento: lido.dados.p_numero_documento,
+    p_observacoes: lido.dados.p_observacoes,
+    p_motivo: texto(fd, "motivo"),
+    p_obra_id: (texto(fd, "obra_id") || null) as string,
+    p_competencia: /^\d{4}-\d{2}-\d{2}$/.test(competencia) ? competencia : (null as unknown as string),
+    p_categoria_id: (UUID.test(categoria) ? categoria : null) as string,
+    p_conta_id: (UUID.test(contaBancaria) ? contaBancaria : null) as string,
+    p_parcelas_editadas: (parcelasEditadas?.length ? parcelasEditadas : null) as never,
+    p_reajustar_serie: fd.get("reajustar_serie") === "on",
+  });
+  if (error) return { erro: "Nada foi salvo: " + mensagemErro(error) };
   // Boleto novo junto com a edição: substitui o boleto ativo (o anterior fica no histórico).
   if (novoBoleto) {
     const { data: boletoAtivo } = await supabase

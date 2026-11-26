@@ -36,6 +36,8 @@ export async function criarProvisao(_: Estado, fd: FormData): Promise<Estado> {
   if (valorTxt && valor === null) return { erro: "Valor estimado inválido." };
 
   // Uma linha por parcela: vencimento mensal a partir do primeiro, com a mesma descrição numerada.
+  // Todas levam o mesmo serie_id: é ele que identifica a série (duas séries com a mesma descrição não se confundem).
+  const serieId = meses > 1 ? crypto.randomUUID() : null;
   const linhas = Array.from({ length: meses }, (_, i) => {
     const vencParcela = venc ? somarMeses(venc, i) : null;
     return {
@@ -45,6 +47,7 @@ export async function criarProvisao(_: Estado, fd: FormData): Promise<Estado> {
       vencimento: vencParcela,
       valor_estimado: valor,
       observacoes: t(fd, "observacoes") || null,
+      serie_id: serieId,
     };
   });
 
@@ -85,7 +88,7 @@ export async function cancelarProximasProvisoes(id: string, _: Estado): Promise<
   const supabase = await createClient();
   const { data: p } = await supabase
     .from("provisoes")
-    .select("id, obra_id, descricao, vencimento, status, created_by, pagamento_origem_id")
+    .select("id, obra_id, descricao, vencimento, status, created_by, pagamento_origem_id, serie_id")
     .eq("id", id)
     .maybeSingle();
   if (!p || p.status !== "provisionada") return { erro: "Provisão não encontrada ou já encerrada." };
@@ -101,21 +104,14 @@ export async function cancelarProximasProvisoes(id: string, _: Estado): Promise<
     if (error) return { erro: mensagemErro(error) };
     qtd = data ?? 0;
   } else {
-    // Provisão de vários meses: mesma descrição-base "(k/N)", mesmo centro de custo e quem cadastrou
-    const m = p.descricao.match(/^(.*) \((\d+)\/(\d+)\)$/);
-    if (!m) return alterarProvisao(id, "cancelada", _);
-    const [, base, , total] = m;
-    const { data: irmas } = await supabase
-      .from("provisoes")
-      .select("id, descricao, vencimento")
-      .eq("obra_id", p.obra_id)
-      .eq("created_by", p.created_by)
-      .eq("status", "provisionada")
-      .like("descricao", `${base.replace(/[%_\\]/g, (c) => "\\" + c)} (%/${total})`);
-    const ids = (irmas ?? [])
-      .filter((x) => x.descricao.match(/ \((\d+)\/\d+\)$/) && (!p.vencimento || !x.vencimento || x.vencimento >= p.vencimento))
-      .map((x) => x.id);
-    if (!ids.includes(p.id)) ids.push(p.id);
+    // Provisão de vários meses: as irmãs são as que têm o mesmo serie_id (e vencimento igual ou posterior a esta)
+    let ids: string[] = [p.id];
+    if (p.serie_id) {
+      const { data: irmas } = await supabase.from("provisoes").select("id, vencimento").eq("serie_id", p.serie_id).eq("status", "provisionada");
+      ids = [...new Set([p.id, ...(irmas ?? []).filter((x) => !p.vencimento || !x.vencimento || x.vencimento >= p.vencimento).map((x) => x.id)])];
+    } else if (!/ \(\d+\/\d+\)$/.test(p.descricao)) {
+      return alterarProvisao(id, "cancelada", _);
+    }
     const { data, error } = await supabase.from("provisoes").update({ status: "cancelada" }).in("id", ids).select("id");
     if (error) return { erro: mensagemErro(error) };
     if (!data?.length) return { erro: "Você só pode alterar as provisões que cadastrou." };

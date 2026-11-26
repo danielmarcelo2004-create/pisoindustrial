@@ -26,7 +26,7 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
   const [{ data: fundos }, { data: aprovados }, { data: pendentes }, { data: obras }, { data: pessoas }] = await Promise.all([
     supabase
       .from("fundos_fixos")
-      .select("id, valor, status, reposicao_pedida_em, fechado_em, reposicao, reembolso, saldo_repassado, obra:obras(id, nome), pessoa:profiles!fundos_fixos_pessoa_id_fkey(id, nome)")
+      .select("id, valor, status, fechamento_solicitado_em, fechado_em, reposicao, reembolso, saldo_repassado, obra:obras(id, nome), pessoa:profiles!fundos_fixos_pessoa_id_fkey(id, nome)")
       .order("created_at", { ascending: false })
       .limit(300),
     supabase.from("fundo_gastos").select("fundo_id, valor").eq("status", "aprovado"),
@@ -74,8 +74,26 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
     <>
       <Cabecalho
         titulo="Fundos fixos"
-        subtitulo="Cada engenheiro ou Suprimentos tem um fundo por obra. Os gastos aprovados abatem o saldo; o Financeiro fecha o fundo quando ele acaba."
+        subtitulo="Cada engenheiro ou Suprimentos tem um fundo por obra. Os gastos aprovados abatem o saldo, sem limite de lançamentos; quem tem o fundo solicita o fechamento e só o Financeiro fecha."
       />
+      {fin && (fundos ?? []).some((f) => f.status !== "fechado" && f.fechamento_solicitado_em) && (
+        <div className="mb-6" data-fechamentos-solicitados>
+          <Aviso tipo="alerta">
+            <strong>Fechamento solicitado:</strong>{" "}
+            {(fundos ?? [])
+              .filter((f) => f.status !== "fechado" && f.fechamento_solicitado_em)
+              .map((f, i) => (
+                <span key={f.id}>
+                  {i > 0 && " · "}
+                  <Link href={`/fundos-fixos/${f.id}`} className="font-medium underline">
+                    {f.pessoa?.nome} ({f.obra?.nome})
+                  </Link>
+                </span>
+              ))}
+            . Abra o fundo para fechar e repor ou encerrar.
+          </Aviso>
+        </div>
+      )}
       {sp.fechado && (
         <div className="mb-6">
           <Aviso tipo="sucesso">
@@ -247,7 +265,7 @@ export default async function FundosFixosPage({ searchParams }: PageProps<"/fund
                                 <td className="hidden text-right tabular-nums sm:table-cell" data-reembolso={reembolso > 0 ? reembolso : undefined}>{reembolso > 0 ? <span className="font-medium text-amber-700">{moeda(reembolso)}</span> : "—"}</td>
                                 <td>
                                   <Selo cor={st.cor}>{st.rotulo}</Selo>
-                                  {f.status !== "fechado" && f.reposicao_pedida_em && <div className="mt-1 text-xs text-amber-700" data-reposicao-pedida>Reposição pedida</div>}
+                                  {f.status !== "fechado" && f.fechamento_solicitado_em && <div className="mt-1 text-xs text-amber-700" data-fechamento-solicitado>Fechamento solicitado</div>}
                                 </td>
                                 <td className="hidden whitespace-nowrap text-xs sm:table-cell">
                                   <Link href={`/fundos-fixos/${f.id}`} className="text-marca-700 hover:underline">Ver fundo</Link>

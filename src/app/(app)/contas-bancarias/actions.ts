@@ -30,16 +30,17 @@ export async function importarExtrato(_: Resultado | null, fd: FormData): Promis
     const { data } = await supabase.from("contas_bancarias_dados").select("banco, agencia, conta, nome").eq("id", contaEsperada).maybeSingle();
     esperada = data;
   }
-  const resumo: string[] = [];
-  let destino = "";
+  // 1) Valida TODOS os arquivos antes de importar qualquer um (formato, tamanho, leitura e conta).
+  type Preparado = { nome: string; ext: ReturnType<typeof lerOfx>; banco: string; agencia: string; conta: string };
+  const preparados: Preparado[] = [];
   for (const f of arquivos) {
-    if (f.size > 5 * 1024 * 1024) return { erro: `${f.name}: arquivo maior que 5 MB.` };
-    if (!/\.ofx$/i.test(f.name)) return { erro: `${f.name}: envie o extrato no formato OFX (exporte do internet banking como OFX/Money).` };
+    if (f.size > 5 * 1024 * 1024) return { erro: `${f.name}: arquivo maior que 5 MB. Nada foi importado.` };
+    if (!/\.ofx$/i.test(f.name)) return { erro: `${f.name}: envie o extrato no formato OFX (exporte do internet banking como OFX/Money). Nada foi importado.` };
     let ext;
     try {
       ext = lerOfx(decodificarOfx(new Uint8Array(await f.arrayBuffer())));
     } catch (e) {
-      return { erro: `${f.name}: ${(e as Error).message}` };
+      return { erro: `${f.name}: ${(e as Error).message} Nada foi importado.` };
     }
     const banco = normalizarBanco(ext.banco);
     const agencia = normalizarConta(ext.agencia);
@@ -48,25 +49,35 @@ export async function importarExtrato(_: Resultado | null, fd: FormData): Promis
     if (esperada && (esperada.banco !== banco || esperada.conta !== conta || (esperada.agencia && agencia && esperada.agencia !== agencia))) {
       return { erro: `${f.name} é de outra conta (banco ${banco}, ${agencia ? `ag. ${agencia}, ` : ""}conta ${conta}), não de “${esperada.nome}”. Nada foi importado.` };
     }
-    if (!ext.linhas.length) {
-      resumo.push(`${f.name}: nenhum lançamento no período`);
+    preparados.push({ nome: f.name, ext, banco, agencia, conta });
+  }
+
+  // 2) Importa um a um. Se um falhar no meio, a mensagem diz exatamente o que já entrou.
+  const resumo: string[] = [];
+  let destino = "";
+  for (const p of preparados) {
+    if (!p.ext.linhas.length) {
+      resumo.push(`${p.nome}: nenhum lançamento no período`);
       continue;
     }
     const { data, error } = await supabase.rpc("importar_extrato", {
-      p_banco: banco,
-      p_agencia: agencia,
-      p_conta: conta,
-      p_arquivo: f.name,
-      p_inicio: ext.inicio as string,
-      p_fim: ext.fim as string,
-      p_saldo: ext.saldo as number,
-      p_saldo_em: ext.saldoEm as string,
-      p_linhas: ext.linhas,
+      p_banco: p.banco,
+      p_agencia: p.agencia,
+      p_conta: p.conta,
+      p_arquivo: p.nome,
+      p_inicio: p.ext.inicio as string,
+      p_fim: p.ext.fim as string,
+      p_saldo: p.ext.saldo as number,
+      p_saldo_em: p.ext.saldoEm as string,
+      p_linhas: p.ext.linhas,
     });
-    if (error) return { erro: `${f.name}: ${mensagemErro(error)}` };
+    if (error) {
+      const jaEntrou = resumo.length ? ` Já importado(s) antes do erro: ${resumo.join(" · ")}. Reenvie só os que faltam.` : " Nada foi importado.";
+      return { erro: `${p.nome}: ${mensagemErro(error)}${jaEntrou}` };
+    }
     const r = data as { conta_id: string; novas: number; repetidas: number };
     destino = r.conta_id;
-    resumo.push(`${f.name}: ${r.novas} lançamento(s) novo(s)${r.repetidas ? `, ${r.repetidas} já importado(s) antes` : ""}`);
+    resumo.push(`${p.nome}: ${r.novas} lançamento(s) novo(s)${r.repetidas ? `, ${r.repetidas} já importado(s) antes` : ""}`);
   }
   revalidatePath("/contas-bancarias");
   redirect(`/contas-bancarias?conta=${destino || contaEsperada}&importado=${encodeURIComponent(resumo.join(" · "))}`);

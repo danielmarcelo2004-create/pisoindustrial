@@ -425,14 +425,14 @@ isOneToOne: false
                   ]
                 },"fundos_fixos": {
                   Row: {
-                    "conta_bancaria_id": string | null,"created_at": string,"criado_por": string,"fechado_em": string | null,"fundo_anterior_id": string | null,"id": string,"obra_id": string,"pagamento_id": string | null,"pagamento_inicial_id": string | null,"pessoa_id": string,"receb_agencia": string | null,"receb_banco": string | null,"receb_chave_pix": string | null,"receb_conta": string | null,"receb_favorecido": string | null,"receb_forma": string | null,"receb_informado_em": string | null,"recebimento_devolucao_id": string | null,"reembolso": number | null,"reposicao": number | null,"reposicao_pedida_em": string | null,"saldo_repassado": number | null,"status": Database["public"]['Enums']["status_fundo"],"valor": number,"_dados_bancarios_fundo": string | null
+                    "conta_bancaria_id": string | null,"created_at": string,"criado_por": string,"fechado_em": string | null,"fechamento_solicitado_em": string | null,"fundo_anterior_id": string | null,"id": string,"obra_id": string,"pagamento_id": string | null,"pagamento_inicial_id": string | null,"pessoa_id": string,"receb_agencia": string | null,"receb_banco": string | null,"receb_chave_pix": string | null,"receb_conta": string | null,"receb_favorecido": string | null,"receb_forma": string | null,"receb_informado_em": string | null,"recebimento_devolucao_id": string | null,"reembolso": number | null,"reposicao": number | null,"saldo_repassado": number | null,"status": Database["public"]['Enums']["status_fundo"],"valor": number,"_dados_bancarios_fundo": string | null
                   }
                   ComputedFields: "_dados_bancarios_fundo"
                   Insert: {
-                    "conta_bancaria_id"?: string | null,"created_at"?: string,"criado_por"?: string,"fechado_em"?: string | null,"fundo_anterior_id"?: string | null,"id"?: string,"obra_id": string,"pagamento_id"?: string | null,"pagamento_inicial_id"?: string | null,"pessoa_id": string,"receb_agencia"?: string | null,"receb_banco"?: string | null,"receb_chave_pix"?: string | null,"receb_conta"?: string | null,"receb_favorecido"?: string | null,"receb_forma"?: string | null,"receb_informado_em"?: string | null,"recebimento_devolucao_id"?: string | null,"reembolso"?: number | null,"reposicao"?: number | null,"reposicao_pedida_em"?: string | null,"saldo_repassado"?: number | null,"status"?: Database["public"]['Enums']["status_fundo"],"valor": number
+                    "conta_bancaria_id"?: string | null,"created_at"?: string,"criado_por"?: string,"fechado_em"?: string | null,"fechamento_solicitado_em"?: string | null,"fundo_anterior_id"?: string | null,"id"?: string,"obra_id": string,"pagamento_id"?: string | null,"pagamento_inicial_id"?: string | null,"pessoa_id": string,"receb_agencia"?: string | null,"receb_banco"?: string | null,"receb_chave_pix"?: string | null,"receb_conta"?: string | null,"receb_favorecido"?: string | null,"receb_forma"?: string | null,"receb_informado_em"?: string | null,"recebimento_devolucao_id"?: string | null,"reembolso"?: number | null,"reposicao"?: number | null,"saldo_repassado"?: number | null,"status"?: Database["public"]['Enums']["status_fundo"],"valor": number
                   }
                   Update: {
-                    "conta_bancaria_id"?: string | null,"created_at"?: string,"criado_por"?: string,"fechado_em"?: string | null,"fundo_anterior_id"?: string | null,"id"?: string,"obra_id"?: string,"pagamento_id"?: string | null,"pagamento_inicial_id"?: string | null,"pessoa_id"?: string,"receb_agencia"?: string | null,"receb_banco"?: string | null,"receb_chave_pix"?: string | null,"receb_conta"?: string | null,"receb_favorecido"?: string | null,"receb_forma"?: string | null,"receb_informado_em"?: string | null,"recebimento_devolucao_id"?: string | null,"reembolso"?: number | null,"reposicao"?: number | null,"reposicao_pedida_em"?: string | null,"saldo_repassado"?: number | null,"status"?: Database["public"]['Enums']["status_fundo"],"valor"?: number
+                    "conta_bancaria_id"?: string | null,"created_at"?: string,"criado_por"?: string,"fechado_em"?: string | null,"fechamento_solicitado_em"?: string | null,"fundo_anterior_id"?: string | null,"id"?: string,"obra_id"?: string,"pagamento_id"?: string | null,"pagamento_inicial_id"?: string | null,"pessoa_id"?: string,"receb_agencia"?: string | null,"receb_banco"?: string | null,"receb_chave_pix"?: string | null,"receb_conta"?: string | null,"receb_favorecido"?: string | null,"receb_forma"?: string | null,"receb_informado_em"?: string | null,"recebimento_devolucao_id"?: string | null,"reembolso"?: number | null,"reposicao"?: number | null,"saldo_repassado"?: number | null,"status"?: Database["public"]['Enums']["status_fundo"],"valor"?: number
                   }
                   Relationships: [
                     {
@@ -613,14 +613,14 @@ isOneToOne: false
                   ]
                 },"notas_medicao": {
                   Row: {
-                    "criada_em": string,"criada_por": string,"data_emissao": string | null,"descricao": string | null,"id": string,"mime_type": string | null,"nome_arquivo": string,"numero": string | null,"obra_id": string,"prestador_documento": string | null,"prestador_nome": string | null,"sha256": string,"storage_path": string,"valor": number,"valor_liquido": number
+                    "aliquota_aplicada": number | null,"criada_em": string,"criada_por": string,"data_emissao": string | null,"descricao": string | null,"devido_lancado": number | null,"id": string,"impostos_lancados_em": string | null,"mime_type": string | null,"nome_arquivo": string,"numero": string | null,"obra_id": string,"prestador_documento": string | null,"prestador_nome": string | null,"retido_lancado": number | null,"sha256": string,"storage_path": string,"valor": number,"valor_liquido": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "criada_em"?: string,"criada_por"?: string,"data_emissao"?: string | null,"descricao"?: string | null,"id"?: string,"mime_type"?: string | null,"nome_arquivo": string,"numero"?: string | null,"obra_id": string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"sha256": string,"storage_path": string,"valor": number,"valor_liquido": number
+                    "aliquota_aplicada"?: number | null,"criada_em"?: string,"criada_por"?: string,"data_emissao"?: string | null,"descricao"?: string | null,"devido_lancado"?: number | null,"id"?: string,"impostos_lancados_em"?: string | null,"mime_type"?: string | null,"nome_arquivo": string,"numero"?: string | null,"obra_id": string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"retido_lancado"?: number | null,"sha256": string,"storage_path": string,"valor": number,"valor_liquido": number
                   }
                   Update: {
-                    "criada_em"?: string,"criada_por"?: string,"data_emissao"?: string | null,"descricao"?: string | null,"id"?: string,"mime_type"?: string | null,"nome_arquivo"?: string,"numero"?: string | null,"obra_id"?: string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"sha256"?: string,"storage_path"?: string,"valor"?: number,"valor_liquido"?: number
+                    "aliquota_aplicada"?: number | null,"criada_em"?: string,"criada_por"?: string,"data_emissao"?: string | null,"descricao"?: string | null,"devido_lancado"?: number | null,"id"?: string,"impostos_lancados_em"?: string | null,"mime_type"?: string | null,"nome_arquivo"?: string,"numero"?: string | null,"obra_id"?: string,"prestador_documento"?: string | null,"prestador_nome"?: string | null,"retido_lancado"?: number | null,"sha256"?: string,"storage_path"?: string,"valor"?: number,"valor_liquido"?: number
                   }
                   Relationships: [
                     {
@@ -645,14 +645,14 @@ isOneToOne: false
                   ]
                 },"notificacoes": {
                   Row: {
-                    "created_at": string,"email_enviado_em": string | null,"email_erro": string | null,"email_status": string | null,"id": string,"lida_em": string | null,"link": string | null,"mensagem": string | null,"pagamento_id": string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em": string | null,"whatsapp_erro": string | null,"whatsapp_status": string | null
+                    "created_at": string,"email_enviado_em": string | null,"email_erro": string | null,"email_proxima_em": string | null,"email_reservado_em": string | null,"email_status": string | null,"email_tentativas": number,"id": string,"lida_em": string | null,"link": string | null,"mensagem": string | null,"pagamento_id": string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em": string | null,"whatsapp_erro": string | null,"whatsapp_proxima_em": string | null,"whatsapp_reservado_em": string | null,"whatsapp_status": string | null,"whatsapp_tentativas": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"email_enviado_em"?: string | null,"email_erro"?: string | null,"email_status"?: string | null,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_status"?: string | null
+                    "created_at"?: string,"email_enviado_em"?: string | null,"email_erro"?: string | null,"email_proxima_em"?: string | null,"email_reservado_em"?: string | null,"email_status"?: string | null,"email_tentativas"?: number,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo": string,"user_id": string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_proxima_em"?: string | null,"whatsapp_reservado_em"?: string | null,"whatsapp_status"?: string | null,"whatsapp_tentativas"?: number
                   }
                   Update: {
-                    "created_at"?: string,"email_enviado_em"?: string | null,"email_erro"?: string | null,"email_status"?: string | null,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo"?: string,"user_id"?: string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_status"?: string | null
+                    "created_at"?: string,"email_enviado_em"?: string | null,"email_erro"?: string | null,"email_proxima_em"?: string | null,"email_reservado_em"?: string | null,"email_status"?: string | null,"email_tentativas"?: number,"id"?: string,"lida_em"?: string | null,"link"?: string | null,"mensagem"?: string | null,"pagamento_id"?: string | null,"titulo"?: string,"user_id"?: string,"whatsapp_enviado_em"?: string | null,"whatsapp_erro"?: string | null,"whatsapp_proxima_em"?: string | null,"whatsapp_reservado_em"?: string | null,"whatsapp_status"?: string | null,"whatsapp_tentativas"?: number
                   }
                   Relationships: [
                     {
@@ -1043,14 +1043,14 @@ isOneToOne: false
                   ]
                 },"provisoes": {
                   Row: {
-                    "categoria_id": string | null,"created_at": string,"created_by": string,"descricao": string,"id": string,"mes_referencia": string | null,"obra_id": string,"observacoes": string | null,"pagamento_id": string | null,"pagamento_origem_id": string | null,"status": string,"updated_at": string,"valor_estimado": number | null,"vencimento": string | null,"_pode_agir_provisao": boolean | null
+                    "categoria_id": string | null,"created_at": string,"created_by": string,"descricao": string,"id": string,"mes_referencia": string | null,"obra_id": string,"observacoes": string | null,"pagamento_id": string | null,"pagamento_origem_id": string | null,"serie_id": string | null,"status": string,"updated_at": string,"valor_estimado": number | null,"vencimento": string | null,"_pode_agir_provisao": boolean | null
                   }
                   ComputedFields: "_pode_agir_provisao"
                   Insert: {
-                    "categoria_id"?: string | null,"created_at"?: string,"created_by"?: string,"descricao": string,"id"?: string,"mes_referencia"?: string | null,"obra_id": string,"observacoes"?: string | null,"pagamento_id"?: string | null,"pagamento_origem_id"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
+                    "categoria_id"?: string | null,"created_at"?: string,"created_by"?: string,"descricao": string,"id"?: string,"mes_referencia"?: string | null,"obra_id": string,"observacoes"?: string | null,"pagamento_id"?: string | null,"pagamento_origem_id"?: string | null,"serie_id"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
                   }
                   Update: {
-                    "categoria_id"?: string | null,"created_at"?: string,"created_by"?: string,"descricao"?: string,"id"?: string,"mes_referencia"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"pagamento_id"?: string | null,"pagamento_origem_id"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
+                    "categoria_id"?: string | null,"created_at"?: string,"created_by"?: string,"descricao"?: string,"id"?: string,"mes_referencia"?: string | null,"obra_id"?: string,"observacoes"?: string | null,"pagamento_id"?: string | null,"pagamento_origem_id"?: string | null,"serie_id"?: string | null,"status"?: string,"updated_at"?: string,"valor_estimado"?: number | null,"vencimento"?: string | null
                   }
                   Relationships: [
                     {
@@ -1387,11 +1387,19 @@ isOneToOne: false
 "arquivar_linhas":
 { Args: { "p_classificacao": string,"p_ids": (string)[],"p_observacao"?: string }; Returns: number
                            },
+"arquivos_orfaos":
+{ Args: { "p_dias"?: number }; Returns: {
+              "caminho": string,"enviado_em": string,"tamanho": number
+            }[]
+                           },
 "atualizar_categoria":
 { Args: { "p_ativo": boolean,"p_id": string,"p_nome": string }; Returns: undefined
                            },
 "atualizar_pagamento":
 { Args: { "p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_id": string,"p_motivo"?: string,"p_numero_documento": string,"p_obra_id"?: string,"p_observacoes": string,"p_valor": number,"p_vencimento": string }; Returns: undefined
+                           },
+"atualizar_pagamento_completo":
+{ Args: { "p_categoria_id"?: string,"p_competencia"?: string,"p_conta_id"?: string,"p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_id": string,"p_motivo"?: string,"p_numero_documento": string,"p_obra_id"?: string,"p_observacoes": string,"p_parcelas_editadas"?: Json,"p_reajustar_serie"?: boolean,"p_valor": number,"p_vencimento": string }; Returns: undefined
                            },
 "cancelar_pagamento":
 { Args: { "p_id": string,"p_motivo": string }; Returns: undefined
@@ -1451,6 +1459,12 @@ isOneToOne: false
                            },
 "criar_pagamento":
 { Args: { "p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_numero_documento"?: string,"p_obra_id": string,"p_observacoes"?: string,"p_valor": number,"p_vencimento": string }; Returns: string
+                           },
+"criar_pagamento_completo":
+{ Args: { "p_categoria_id": string,"p_competencia"?: string,"p_conta_id": string,"p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_fornecedor_id": string,"p_numero_documento"?: string,"p_obra_id": string,"p_observacoes"?: string,"p_parcelas"?: Json,"p_provisao_id"?: string,"p_repetir_intervalo"?: number,"p_repetir_vezes"?: number,"p_valor": number,"p_vencimento": string }; Returns: string
+                           },
+"criar_perfil_completo":
+{ Args: { "p_email": string,"p_id": string,"p_nome": string,"p_obras": (string)[],"p_perfil": Database["public"]['Enums']["perfil_usuario"],"p_telefone": string }; Returns: undefined
                            },
 "criar_recebimento":
 { Args: { "p_categoria_id": string,"p_cliente": string,"p_competencia"?: string,"p_conta_id"?: string,"p_descricao": string,"p_nota_id"?: string,"p_obra_id": string,"p_observacoes"?: string,"p_valor": number,"p_vencimento": string }; Returns: string
@@ -1614,8 +1628,13 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
-"pedir_reposicao_fundo":
-{ Args: { "p_fundo_id": string }; Returns: undefined
+"notas_fiscais_pendentes":
+{ Args: { "p_limite"?: number,"p_somente_pdf"?: boolean }; Returns: {
+              "documento_id": string,"favorecido": string,"mime_type": string,"nome_arquivo": string,"obra_nome": string,"pagamento_numero": number,"storage_path": string
+            }[]
+                           },
+"notas_fiscais_pendentes_total":
+{ Args: Record<PropertyKey, never>; Returns: number
                            },
 "pode_atuar_obra":
 { Args: { "p_obra_id": string }; Returns: boolean
@@ -1631,6 +1650,9 @@ isOneToOne: false
                            },
 "reajustar_serie":
 { Args: { "p_pagamento_id": string,"p_valor": number }; Returns: number
+                           },
+"recusar_fechamento_fundo":
+{ Args: { "p_fundo_id": string,"p_motivo"?: string }; Returns: undefined
                            },
 "reenviar_pagamento":
 { Args: { "p_id": string,"p_observacao"?: string }; Returns: undefined
@@ -1665,6 +1687,9 @@ isOneToOne: false
 "registrar_nota_medicao":
 { Args: { "p_dados": Json,"p_mime": string,"p_nome": string,"p_obra_id": string,"p_sha256": string,"p_storage_path": string }; Returns: string
                            },
+"registrar_resultado_aviso":
+{ Args: { "p_canal": string,"p_erro"?: string,"p_id": string,"p_ok": boolean }; Returns: string
+                           },
 "remover_anexo_gasto":
 { Args: { "p_anexo_id": string }; Returns: undefined
                            },
@@ -1677,6 +1702,9 @@ isOneToOne: false
 "renomear_conta_bancaria":
 { Args: { "p_id": string,"p_nome": string }; Returns: undefined
                            },
+"reservar_avisos":
+{ Args: { "p_canal": string,"p_limite": number }; Returns: string[]
+                           },
 "restaurar_linha":
 { Args: { "p_id": string }; Returns: undefined
                            },
@@ -1687,6 +1715,9 @@ isOneToOne: false
                            },
 "salvar_op":
 { Args: { "p_cpf_cnpj": string,"p_dados_bancarios": string,"p_desconto"?: number,"p_descricao": string,"p_favorecido": string,"p_forma_pagamento": Database["public"]['Enums']["forma_pagamento"],"p_id": string,"p_itens": Json,"p_numero_nf"?: string,"p_obra_id": string,"p_observacoes": string,"p_referencia"?: string,"p_vencimento": string }; Returns: string
+                           },
+"solicitar_fechamento_fundo":
+{ Args: { "p_fundo_id": string }; Returns: undefined
                            },
 "verificar_duplicidade":
 { Args: { "p_favorecido": string,"p_hashes": (string)[],"p_valor": number,"p_vencimento": string }; Returns: {

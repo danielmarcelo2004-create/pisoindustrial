@@ -200,9 +200,9 @@ export function Indicador({
 
 export function Dado({ rotulo, children }: { rotulo: string; children: ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-xs font-medium tracking-wide text-slate-500 uppercase">{rotulo}</dt>
-      <dd className="mt-0.5 text-sm text-slate-900">{children ?? "—"}</dd>
+      <dd className="mt-0.5 text-sm break-words text-slate-900 [overflow-wrap:anywhere]">{children ?? "—"}</dd>
     </div>
   );
 }

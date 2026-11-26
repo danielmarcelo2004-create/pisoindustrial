@@ -79,7 +79,7 @@ export default async function ObraPage({ params, searchParams }: PageProps<"/obr
             </Cartao>
           ) : (
             <Cartao titulo="Dados do centro de custo">
-              <dl className="grid gap-4 sm:grid-cols-2">
+              <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Dado rotulo="Cliente">{o.cliente}</Dado>
                 <Dado rotulo="Endereço">{o.endereco}</Dado>
                 <Dado rotulo="Engenheiro responsável">{o.engenheiro?.nome}</Dado>

@@ -36,7 +36,7 @@ export default async function ProvisoesPage({ searchParams }: PageProps<"/provis
   const u = await getUsuario();
   const supabase = await createClient();
   const [{ data: provisoes }, { data: obras }, categorias] = await Promise.all([
-    supabase.from("provisoes").select("id, descricao, mes_referencia, vencimento, valor_estimado, status, categoria_id, created_by, pagamento_origem_id, pagamento_id, pagamento:pagamentos!provisoes_pagamento_id_fkey(numero), obra:obras(id, nome)").order("vencimento", { ascending: true, nullsFirst: false }).limit(300),
+    supabase.from("provisoes").select("id, descricao, mes_referencia, vencimento, valor_estimado, status, categoria_id, created_by, pagamento_origem_id, serie_id, pagamento_id, pagamento:pagamentos!provisoes_pagamento_id_fkey(numero), obra:obras(id, nome)").order("vencimento", { ascending: true, nullsFirst: false }).limit(300),
     supabase.from("obras").select("id, nome").order("nome"),
     categoriasAtivas(),
   ]);

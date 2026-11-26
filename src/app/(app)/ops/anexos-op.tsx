@@ -111,8 +111,18 @@ export function AnexosOP({
       setErro("Envie um PDF, PNG ou JPG.");
       return;
     }
+    if (arquivo.size === 0) {
+      setErro("O arquivo está vazio.");
+      return;
+    }
     if (arquivo.size > 10 * 1024 * 1024) {
       setErro("O arquivo passa de 10 MB.");
+      return;
+    }
+    const inicio = new Uint8Array(await arquivo.slice(0, 1024).arrayBuffer());
+    const cab = String.fromCharCode(...inicio);
+    if ((arquivo.type === "application/pdf" && !cab.includes("%PDF-")) || (arquivo.type === "image/png" && !cab.startsWith("\x89PNG")) || (arquivo.type === "image/jpeg" && !cab.startsWith("\xff\xd8"))) {
+      setErro("O conteúdo do arquivo não confere com o formato. Envie o arquivo original.");
       return;
     }
     setOcupado(true);

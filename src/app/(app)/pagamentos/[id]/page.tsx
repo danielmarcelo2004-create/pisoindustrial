@@ -1,3 +1,4 @@
+import { gerarPdfDaOP } from "../../ops/actions";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -231,7 +232,7 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-6 lg:col-span-2">
           <Cartao titulo={parcelas && parcelas.length > 1 ? `Informações do lançamento · parcelado em ${parcelas.length}x` : "Informações do lançamento"}>
-            <dl className="grid gap-4 sm:grid-cols-3">
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Dado rotulo="Valor">
                 <span className="text-lg font-semibold tabular-nums">{moeda(p.valor)}</span>
               </Dado>
@@ -387,6 +388,14 @@ export default async function PagamentoPage({ params, searchParams }: PageProps<
             );
           })()}
 
+          {p.ordem_id && p.status !== "cancelado" && !ativos.some((d) => d.tipo === "ordem_pagamento") && (u.perfil === "financeiro" || u.perfil === "suprimentos" || p.created_by === u.id) && (
+            <Cartao titulo="PDF da OP pendente">
+              <div data-pdf-op-pendente>
+                <p className="mb-3 text-sm text-slate-700">Esta despesa vem de uma OP, mas o PDF oficial não foi anexado (a geração falhou no envio). Gere de novo: se já existir, nada é duplicado.</p>
+                <FormAcao action={gerarPdfDaOP.bind(null, p.ordem_id)} enviar="Gerar PDF da OP" pendente="Gerando…" />
+              </div>
+            </Cartao>
+          )}
           <Cartao titulo={`Documentos (${ativos.length})`} semPadding>
             {ativos.length === 0 ? (
               <Vazio>Nenhum documento anexado.</Vazio>

@@ -111,23 +111,39 @@ const hoje = new Date().toISOString().slice(0, 10);
   await adminPage.getByText('Esgotado').first().waitFor({ timeout: 60000 });
   console.log('✔ fundo esgotado após o segundo gasto');
 
-  // Esgotado: o responsável não consegue lançar outro gasto (antes só aparecia o aviso e o formulário continuava)
+  // Sem limite: mesmo esgotado, o responsável continua podendo lançar gastos e pode solicitar o fechamento ao Financeiro
   await engPage.goto(`${APP}/fundos-fixos`);
   await engPage.click('a:visible:has-text("Ver fundo")');
-  await engPage.locator('[data-fundo-esgotado]').waitFor({ timeout: 30000 });
-  if (await engPage.locator('button:has-text("Lançar gasto")').count()) throw new Error('regressão: fundo esgotado ainda mostra o botão "Lançar gasto"');
-  console.log('✔ fundo esgotado não permite lançar novo gasto');
-  // Pedir reposição: o responsável pede, o Financeiro vê o pedido na lista e no fundo
-  await engPage.click('button:has-text("Pedir reposição ao Financeiro")');
-  await engPage.locator('[data-reposicao-pedida]').waitFor({ timeout: 30000 });
+  await engPage.locator('button:has-text("Lançar gasto")').first().waitFor({ timeout: 30000 });
+  console.log('✔ fundo esgotado continua aceitando novo gasto');
+  engPage.on('dialog', (d) => d.accept());
+  await engPage.click('button:has-text("Solicitar fechamento do fundo")');
+  await engPage.locator('[data-fechamento-solicitado]').waitFor({ timeout: 30000 });
   await fin.goto(`${APP}/fundos-fixos`);
-  await fin.locator('[data-reposicao-pedida]').first().waitFor({ timeout: 30000 });
-  console.log('✔ fundo esgotado: pedido de reposição visível para o Financeiro');
+  await fin.locator('[data-fechamentos-solicitados]').waitFor({ timeout: 30000 });
+  await fin.locator('[data-fechamento-solicitado]').first().waitFor({ timeout: 30000 });
+  console.log('✔ pedido de fechamento visível para o Financeiro (aviso na lista)');
+  // Depois de solicitar: a pessoa não lança novos gastos (o formulário some)
+  await engPage.reload();
+  await engPage.locator('[data-fechamento-solicitado]').waitFor({ timeout: 30000 });
+  if (await engPage.locator('button:has-text("Lançar gasto")').count()) throw new Error('regressão: depois de solicitar o fechamento ainda aparece "Lançar gasto"');
+  console.log('✔ depois de solicitar o fechamento, não dá para lançar novo gasto');
+  // O Financeiro recusa o pedido: a pessoa volta a lançar gastos e pode solicitar de novo
+  fin.on('dialog', (d) => d.accept());
+  await fin.click('a:visible:has-text("Ver fundo")');
+  await fin.fill('input[name=motivo]', 'Ainda tem saldo');
+  await fin.click('button:has-text("Recusar pedido de fechamento")');
+  await fin.locator('[data-fechamento-solicitado]').waitFor({ state: 'detached', timeout: 30000 });
+  await engPage.reload();
+  await engPage.locator('button:has-text("Lançar gasto")').first().waitFor({ timeout: 30000 });
+  if (await engPage.locator('[data-fechamento-solicitado]').count()) throw new Error('o pedido continua marcado depois da recusa');
+  await engPage.click('button:has-text("Solicitar fechamento do fundo")');
+  await engPage.locator('[data-fechamento-solicitado]').waitFor({ timeout: 30000 });
+  console.log('✔ Financeiro recusou o pedido: a pessoa voltou a lançar gastos e solicitou de novo');
 
   // 5. Financeiro fecha o fundo: reposição R$ 100,00 + reembolso R$ 20,00 num único pagamento
   await fin.goto(`${APP}/fundos-fixos`);
   await fin.click('a:visible:has-text("Ver fundo")');
-  fin.on('dialog', (d) => d.accept());
   await fin.click('button:has-text("Fechar e repor")');
   await fin.getByText(/Fundo reposto/).waitFor({ timeout: 60000 });
   const { data: ini } = await sb.from('pagamentos').select('valor, status').like('descricao', '%desembolso inicial').single();

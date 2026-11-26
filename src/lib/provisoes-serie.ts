@@ -8,6 +8,8 @@ type ProvisaoSerie = {
   vencimento: string | null;
   created_by: string;
   pagamento_origem_id: string | null;
+  /** Identificador próprio da série (as antigas sem ele são agrupadas pelo texto). */
+  serie_id?: string | null;
   obra?: { id: string; nome?: string } | null;
 };
 
@@ -29,7 +31,7 @@ export function analisarSeries<T extends ProvisaoSerie>(lista: T[]) {
   for (const p of lista) {
     const n = numeroParcela(p.descricao);
     if (!n) continue;
-    const chave = [p.obra?.id ?? "", p.created_by, p.pagamento_origem_id ?? "", n.base, n.total].join("|");
+    const chave = p.serie_id ?? [p.obra?.id ?? "", p.created_by, p.pagamento_origem_id ?? "", n.base, n.total].join("|");
     const g = grupos.get(chave) ?? { itens: [], total: n.total, base: n.base };
     g.itens.push({ p, k: n.k });
     grupos.set(chave, g);

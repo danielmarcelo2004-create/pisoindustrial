@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { Cabecalho } from "@/components/ui";
+import { Aviso, Cabecalho } from "@/components/ui";
 import { exigirPerfil } from "@/lib/auth";
 import { carregarOP } from "@/lib/consultas/ops";
 import { obrasParaOP } from "@/lib/consultas/obras-op";
@@ -14,7 +14,8 @@ import { contasBancariasAtivas } from "@/lib/consultas/contas-bancarias";
 
 export const metadata: Metadata = { title: "Editar solicitação de OP" };
 
-export default async function EditarOPPage({ params }: PageProps<"/ops/[id]/editar">) {
+export default async function EditarOPPage({ params, searchParams }: PageProps<"/ops/[id]/editar">) {
+  const aviso = (await searchParams).aviso;
   const u = await exigirPerfil("engenheiro", "financeiro", "suprimentos");
   const { id } = await params;
   const op = await carregarOP(id);
@@ -38,6 +39,11 @@ export default async function EditarOPPage({ params }: PageProps<"/ops/[id]/edit
   return (
     <>
       <Cabecalho titulo="Ordem de Pagamento (rascunho)" voltar={{ href: "/pagamentos", rotulo: "Contas a pagar" }} />
+      {typeof aviso === "string" && aviso && (
+        <div className="mb-4">
+          <Aviso tipo="alerta">{aviso}</Aviso>
+        </div>
+      )}
       <FormOP
         action={salvarOP.bind(null, id)}
         obras={obras}

@@ -7,7 +7,7 @@ import { getUsuario } from "@/lib/auth";
 import { STATUS_FUNDO, STATUS_GASTO, saldoDoFundo } from "@/lib/fundos";
 import { data, moeda } from "@/lib/formato";
 import { createClient } from "@/lib/supabase/server";
-import { decidirGasto, excluirGasto, fecharFundo, informarDadosBancarios, lancarGasto, pedirReposicao } from "../actions";
+import { decidirGasto, excluirGasto, fecharFundo, informarDadosBancarios, lancarGasto, recusarFechamento, solicitarFechamento } from "../actions";
 import { CamposDadosBancarios } from "@/components/campos-dados-bancarios";
 import { AnexosGasto, type AnexoGasto } from "./anexos";
 
@@ -23,7 +23,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
 
   const { data: f } = await supabase
     .from("fundos_fixos")
-    .select("id, valor, status, pessoa_id, receb_forma, receb_favorecido, receb_banco, receb_agencia, receb_conta, receb_chave_pix, receb_informado_em, reposicao_pedida_em, fechado_em, reposicao, reembolso, saldo_repassado, pagamento_id, pagamento_inicial_id, recebimento_devolucao_id, obra:obras(id, nome), pessoa:profiles!fundos_fixos_pessoa_id_fkey(nome)")
+    .select("id, valor, status, pessoa_id, receb_forma, receb_favorecido, receb_banco, receb_agencia, receb_conta, receb_chave_pix, receb_informado_em, fechamento_solicitado_em, fechado_em, reposicao, reembolso, saldo_repassado, pagamento_id, pagamento_inicial_id, recebimento_devolucao_id, obra:obras(id, nome), pessoa:profiles!fundos_fixos_pessoa_id_fkey(nome)")
     .eq("id", id)
     .maybeSingle();
   if (!f) notFound();
@@ -65,10 +65,6 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
   const aprovados = (gastos ?? []).filter((g) => g.status === "aprovado").map((g) => g.valor);
   const gastoAprovado = aprovados.reduce((s, v) => s + v, 0);
   const saldo = saldoDoFundo(f.valor, aprovados);
-  // Quanto ainda dá para lançar: valor menos o aprovado e o que aguarda aprovação/assinatura
-  const comprometidos = (gastos ?? []).filter((g) => g.status === "aprovado" || g.status === "pendente").map((g) => g.valor);
-  const disponivel = saldoDoFundo(f.valor, comprometidos);
-  const semSaldo = f.status === "esgotado" || disponivel <= 0;
   const st = STATUS_FUNDO[f.status] ?? STATUS_FUNDO.em_andamento;
   const reposicaoPrevista = Math.min(gastoAprovado, f.valor);
   const reembolsoPrevisto = Math.max(gastoAprovado - f.valor, 0);
@@ -104,9 +100,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
           <p className="text-sm" data-pode-gastar>
             {fechado
               ? "Fundo fechado"
-              : semSaldo
-                ? "Não: fundo esgotado. O Financeiro precisa fechar e repor."
-                : admin
+              : admin
                   ? "Acompanhe e decida os gastos"
                   : minhas && !assinaturaUrl
                     ? "Só depois de cadastrar sua assinatura"
@@ -189,21 +183,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
         </div>
 
         <div className="space-y-6">
-          {minhas && !fechado && semSaldo && (
-            <Cartao titulo="Lançar gasto">
-              <Aviso tipo="alerta">
-                <span data-fundo-esgotado>Fundo esgotado: os gastos já lançados cobrem todo o valor do fundo. Não dá para lançar novos gastos até o Financeiro fechar e repor o fundo; o novo fundo abre na hora, com o mesmo valor.</span>
-              </Aviso>
-              {f.reposicao_pedida_em ? (
-                <p className="mt-3 text-sm text-slate-600" data-reposicao-pedida>Reposição solicitada ao Financeiro em {data(f.reposicao_pedida_em.slice(0, 10))}. Assim que ele repuser, o novo fundo aparece aqui.</p>
-              ) : (
-                <div className="mt-3">
-                  <FormAcao action={pedirReposicao.bind(null, f.id)} enviar="Pedir reposição ao Financeiro" pendente="Pedindo…" />
-                </div>
-              )}
-            </Cartao>
-          )}
-          {minhas && !fechado && !semSaldo && !assinaturaUrl && (
+          {minhas && !fechado && !f.fechamento_solicitado_em && !assinaturaUrl && (
             <Cartao titulo="Lançar gasto">
               <Aviso tipo="alerta">
                 <span data-sem-assinatura>
@@ -213,7 +193,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
               </Aviso>
             </Cartao>
           )}
-          {minhas && !fechado && !semSaldo && !!assinaturaUrl && !informados && (
+          {minhas && !fechado && !f.fechamento_solicitado_em && !!assinaturaUrl && !informados && (
             <Cartao titulo="Seus dados bancários">
               <p className="mb-3 text-sm text-slate-600" data-dados-bancarios-obrigatorio>
                 Antes do primeiro gasto, informe como você recebe o reembolso e a reposição deste fundo: conta bancária ou PIX.
@@ -255,7 +235,7 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
               <p className="text-sm text-slate-600">A pessoa ainda não informou os dados bancários. Ela informa antes do primeiro gasto; eles vão na OP e no pagamento do fechamento.</p>
             </Cartao>
           )}
-          {minhas && !fechado && !semSaldo && !!assinaturaUrl && informados && (
+          {minhas && !fechado && !f.fechamento_solicitado_em && !!assinaturaUrl && informados && (
             <Cartao titulo="Lançar gasto">
               <FormAcao action={lancarGasto.bind(null, f.id)} enviar="Lançar gasto" pendente="Lançando…">
                 <Campo rotulo="Descrição" obrigatorio>
@@ -271,17 +251,41 @@ export default async function FundoFixoPage({ params }: PageProps<"/fundos-fixos
                 </div>
               </FormAcao>
               <p className="mt-3 text-xs text-slate-500">
-                O gasto só abate o saldo depois do comprovante assinado{f.obra?.id && " e, com administrador na obra, da aprovação"}. O último gasto pode passar do valor do fundo; depois dele o fundo fica esgotado.
+                O gasto só abate o saldo depois do comprovante assinado{f.obra?.id && " e, com administrador na obra, da aprovação"}. Não há limite de gastos: o que passar do valor do fundo vira reembolso quando o Financeiro fechar o fundo.
               </p>
+            </Cartao>
+          )}
+
+          {minhas && !fechado && (
+            <Cartao titulo="Fechar o fundo">
+              {f.fechamento_solicitado_em ? (
+                <p className="text-sm text-slate-600" data-fechamento-solicitado>
+                  Fechamento solicitado ao Financeiro em {data(f.fechamento_solicitado_em.slice(0, 10))}. Enquanto isso você não lança novos gastos: só o Financeiro fecha o fundo (e abre um novo) ou recusa o pedido.
+                </p>
+              ) : (
+                <>
+                  <p className="mb-3 text-sm text-slate-600">
+                    Acabou a necessidade do fundo ou os gastos passaram do valor? Solicite o fechamento: o Financeiro é avisado, fecha o fundo e paga o reembolso, se houver. Depois de solicitar, você não lança novos gastos até ele fechar o fundo ou recusar o pedido.
+                  </p>
+                  <FormAcao action={solicitarFechamento.bind(null, f.id)} enviar="Solicitar fechamento do fundo" pendente="Solicitando…" confirmar="Solicitar ao Financeiro o fechamento deste fundo?" />
+                </>
+              )}
             </Cartao>
           )}
 
           {fin && !fechado && (
             <Cartao titulo="Fechar fundo">
-              {f.reposicao_pedida_em && (
-                <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900" data-reposicao-pedida>
-                  {f.pessoa?.nome} pediu a reposição em {data(f.reposicao_pedida_em.slice(0, 10))}: use &ldquo;Repor e continuar&rdquo; para ele seguir lançando gastos.
+              {f.fechamento_solicitado_em && (
+                <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900" data-fechamento-solicitado>
+                  {f.pessoa?.nome} solicitou o fechamento deste fundo em {data(f.fechamento_solicitado_em.slice(0, 10))}: use &ldquo;Repor e continuar&rdquo; para o fundo seguir ou &ldquo;Encerrar&rdquo; se acabou. Enquanto o pedido estiver aberto, a pessoa não lança novos gastos.
                 </p>
+              )}
+              {f.fechamento_solicitado_em && (
+                <FormAcao action={recusarFechamento.bind(null, f.id)} enviar="Recusar pedido de fechamento" variante="secundario" pendente="Recusando…" className="mb-4 space-y-2 rounded-md border border-slate-200 p-3" confirmar="Recusar o pedido? A pessoa volta a poder lançar gastos.">
+                  <p className="font-medium text-slate-800">Recusar o pedido</p>
+                  <p className="text-sm text-slate-600">Use quando o pedido foi feito por engano ou o fundo ainda tem saldo. A pessoa é avisada e volta a lançar gastos.</p>
+                  <input name="motivo" className="campo" maxLength={300} placeholder="Motivo (opcional)" aria-label="Motivo da recusa" />
+                </FormAcao>
               )}
               <div className="space-y-4 text-sm text-slate-700">
                 <FormAcao action={fecharFundo.bind(null, f.id)} enviar="Fechar e repor" pendente="Fechando…" className="space-y-2 rounded-md border border-slate-200 p-3" confirmar="Fechar e repor este fundo?">

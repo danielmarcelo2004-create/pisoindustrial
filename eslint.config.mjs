@@ -19,6 +19,12 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "src/lib/database.types.ts",
+    // Arquivos de terceiros (OCR, pdf.js), scripts de teste e saídas das rotinas não entram no lint
+    "public/**",
+    "tests/**",
+    "scripts/**",
+    ".pre-producao/**",
+    ".claude/**",
   ]),
 ]);
 

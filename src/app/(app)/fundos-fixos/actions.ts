@@ -1,5 +1,6 @@
 "use server";
 
+import { descartarArquivoEnviado } from "@/lib/storage-limpeza";
 import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -54,15 +55,15 @@ export async function lancarGasto(fundoId: string, _: Estado, fd: FormData): Pro
   return { ok: "Gasto lançado. Agora anexe o comprovante e assine: o gasto só conta no saldo com o comprovante assinado." };
 }
 
-/** Fundo esgotado: a pessoa pede a reposição ao Financeiro (avisa na hora; um pedido por fundo). */
-export async function pedirReposicao(fundoId: string, _: Estado, __: FormData): Promise<Estado> {
+/** A pessoa do fundo solicita o fechamento ao Financeiro (avisa na hora; um pedido por fundo). Só o Financeiro fecha. */
+export async function solicitarFechamento(fundoId: string, _: Estado, __: FormData): Promise<Estado> {
   await exigirPerfil("engenheiro", "suprimentos", "administrador", "administrador_master", "financeiro");
   if (!UUID.test(fundoId)) return { erro: "Fundo não encontrado." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("pedir_reposicao_fundo", { p_fundo_id: fundoId });
+  const { error } = await supabase.rpc("solicitar_fechamento_fundo", { p_fundo_id: fundoId });
   if (error) return { erro: mensagemErro(error) };
   revalidar(fundoId);
-  return { ok: "Reposição solicitada ao Financeiro." };
+  return { ok: "Fechamento solicitado ao Financeiro." };
 }
 
 /** A pessoa do fundo informa instituição e conta (agência + conta) ou chave PIX, antes do primeiro gasto. */
@@ -139,7 +140,10 @@ async function anexarOpDoFundo(fundoId: string, pagamentoId: string) {
     p_tamanho: bytes.length,
     p_sha256: createHash("sha256").update(bytes).digest("hex"),
   });
-  if (reg.error) throw reg.error;
+  if (reg.error) {
+    await descartarArquivoEnviado(caminho);
+    throw reg.error;
+  }
 }
 
 export async function decidirGasto(fundoId: string, gastoId: string, aprovar: boolean, _: Estado, fd: FormData): Promise<Estado> {
@@ -155,6 +159,17 @@ export async function decidirGasto(fundoId: string, gastoId: string, aprovar: bo
   revalidar(fundoId);
   // Após decidir, volta à lista: o formulário do gasto some e a confirmação aparece lá.
   redirect(`/fundos-fixos?decidido=${aprovar ? "aprovado" : "recusado"}`);
+}
+
+/** O Financeiro recusa o pedido de fechamento: a pessoa do fundo volta a poder lançar gastos. */
+export async function recusarFechamento(fundoId: string, _: Estado, fd: FormData): Promise<Estado> {
+  await exigirPerfil("financeiro");
+  if (!UUID.test(fundoId)) return { erro: "Fundo não encontrado." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("recusar_fechamento_fundo", { p_fundo_id: fundoId, p_motivo: t(fd, "motivo") || undefined });
+  if (error) return { erro: mensagemErro(error) };
+  revalidar(fundoId);
+  return { ok: "Pedido de fechamento recusado: a pessoa já pode lançar gastos de novo." };
 }
 
 export async function fecharFundo(fundoId: string, _: Estado, fd: FormData): Promise<Estado> {

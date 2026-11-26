@@ -61,8 +61,57 @@ input[type="file"].campo {
 .tabela tbody td {
   @apply border-b border-slate-100 px-3 py-2.5 align-top;
 }
+/* Telas de notebook: células mais justas para as tabelas largas caberem sem rolagem lateral */
+@media (min-width: 768px) and (max-width: 1439px) {
+  .tabela thead th, .tabela tbody td { padding-left: 0.375rem; padding-right: 0.375rem; }
+}
 .tabela tbody tr:hover {
   @apply bg-slate-50/70;
+}
+
+/* Celular: a tabela de Contas a pagar vira uma lista de cartões (sem rolagem lateral). */
+@media (max-width: 767px) {
+  .tabela-cartoes,
+  .tabela-cartoes tbody { display: block; width: 100%; }
+  .tabela-cartoes thead { display: none; }
+  .tabela-cartoes tbody tr {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+    padding: 12px; border-bottom: 1px solid var(--color-slate-100, #f1f5f9);
+  }
+  .tabela-cartoes tbody td { display: block; border: 0; padding: 0; min-width: 0 !important; }
+  .tabela-cartoes .c-marcar { order: 0; }
+  .tabela-cartoes .c-venc { order: 1; }
+  .tabela-cartoes .c-situacao { order: 2; margin-left: auto; }
+  .tabela-cartoes .c-resumo { order: 3; flex: 1 0 100%; overflow-wrap: anywhere; }
+  .tabela-cartoes .c-valor { order: 4; }
+  .tabela-cartoes .c-apagar { order: 5; }
+  .tabela-cartoes .c-pago-em { order: 6; }
+  .tabela-cartoes .c-acoes { order: 7; margin-left: auto; }
+  .tabela-cartoes td[data-rotulo]::before {
+    content: attr(data-rotulo) " "; font-size: 11px; font-weight: 400; color: #64748b; text-transform: uppercase;
+  }
+}
+
+/* Celular: qualquer outra tabela do sistema também vira lista de cartões (cada célula com o título da coluna). */
+@media (max-width: 767px) {
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]),
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]) tbody,
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]) tfoot { display: block; width: 100%; min-width: 0 !important; }
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]) thead { display: none; }
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]) tr { display: block; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]) td,
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]) th {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    border: 0 !important; padding: 3px 12px !important; min-width: 0 !important; width: auto !important;
+    overflow-wrap: anywhere; text-align: right;
+  }
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]) td:empty { display: none; }
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]) td[data-rotulo-auto]::before {
+    content: attr(data-rotulo-auto); flex: none; max-width: 45%; text-align: left;
+    font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase;
+  }
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]) td > input,
+  main table:not(.tabela-cartoes):not([data-sem-cartoes]) td > select { max-width: 60%; }
 }
 
 /* Janelas (role="dialog") nunca herdam "sem quebra de linha" da célula de onde foram abertas

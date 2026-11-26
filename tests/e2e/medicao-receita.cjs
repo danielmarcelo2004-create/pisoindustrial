@@ -76,6 +76,16 @@ const ir = async (p, url) => { await p.goto(BASE + url); await p.waitForLoadStat
     await p.screenshot({ path: path.join(DIR, 'med-recebimento.png'), fullPage: true });
   });
 
+  await passo('regressão: o resumo de Notas de medição mostra o imposto devido LANÇADO (750,00 editado), não os 14% fixos (800,00)', async () => {
+    await ir(p, '/notas-medicao');
+    const cel = p.locator('td[data-imposto-devido="lancado"]').first();
+    await cel.waitFor({ timeout: 15000 });
+    const t = (await cel.innerText()).replace(/\s+/g, ' ');
+    confere(/750,00/.test(t) && !/800,00/.test(t) && /lançado/.test(t), t);
+    const resumo = (await p.locator('[data-resumo-devido]').innerText()).replace(/\s+/g, ' ');
+    confere(/1 lançada\(s\)/.test(resumo), resumo);
+  });
+
   await passo('Conciliação: entrada de R$ 9.400 sugerida como "receita − retido" › Conciliar › receita recebida e retido pago', async () => {
     const imp = (await um(admin.from('extrato_importacoes').insert({ conta_id: bb, arquivo: 'e2e.ofx', created_by: fin }).select('id').single())).id;
     await um(admin.from('extrato_linhas').insert({ conta_id: bb, importacao_id: imp, data: hoje, valor: 9400, tipo: 'CREDIT', descricao: 'TED RECEBIDA MEDICAO 12', fitid: 'M1' }));

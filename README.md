@@ -34,8 +34,25 @@ Sistema web interno para centralizar a rotina financeira das obras: pagamentos e
 - **Isolamento por obra no banco de dados.** Todas as tabelas usam *Row Level Security* (RLS) do PostgreSQL. Um engenheiro ou administrador só enxerga as obras em que é responsável ou foi vinculado, mesmo que altere o endereço da página ou chame a API diretamente. Os arquivos no Storage seguem a mesma regra.
 - **Regras de negócio dentro do banco.** Pagamentos, documentos e assinaturas só mudam por funções (`criar_pagamento`, `decidir_aprovacao`, `registrar_baixa` etc.). Cada função confere a permissão, grava a auditoria e dispara as notificações na mesma transação. Ninguém grava direto nessas tabelas.
 - **Assinatura eletrônica.** Exige confirmar que conferiu os documentos e redigitar a senha. Fica vinculada ao usuário, à **versão** do pagamento e ao **SHA-256** do conteúdo (dados mais o hash de cada arquivo), com data, hora, IP e navegador. A assinatura em lote gera um registro por documento e é atômica: se um item falhar, nenhum é assinado.
-- **Nada é alterado em silêncio.** Mudar valor, vencimento, favorecido ou descrição, ou substituir um documento, gera nova versão. Se já havia assinatura, o fluxo recomeça. Os arquivos antigos ficam preservados.
+- **Nada é alterado em silêncio.** Mudar valor, vencimento, favorecido ou descrição, ou substituir um documento, gera nova versão. Se a alteração acontece durante as assinaturas, o fluxo recomeça. Depois da assinatura final (pagamento liberado), o Financeiro e Suprimentos podem corrigir com motivo, a mudança fica na auditoria e quem aprovou é avisado, sem nova aprovação. Os arquivos antigos ficam preservados.
 - **Auditoria imutável.** Triggers impedem alterar ou apagar o histórico, inclusive com a chave administrativa.
+
+### Quem vê e faz o quê
+
+| Área | Engenheiro | Administrador | Suprimentos | Financeiro | Administrador master |
+|---|---|---|---|---|---|
+| Obras | só as suas | só as suas | todas (leitura) | todas | todas |
+| Criar despesa / OP | OP (suas obras) | não | despesa e OP | despesa e OP | não |
+| Assinar / aprovar | etapa dele | etapa dele | não | não assina como engenheiro | etapa dele |
+| Baixa, conciliação, contas bancárias | não | não | não | sim | conciliação e dados da conta |
+| Contas a receber, notas de medição | leitura | leitura | leitura | lança e edita | lança e edita |
+| Compras (preços e histórico) | leitura, CNPJ oculto | leitura, CNPJ oculto | completo | completo | completo |
+| Fornecedores (CPF/CNPJ, PIX, banco) | só nomes | só nomes | completo | completo | completo |
+| E-mail e telefone dos usuários | só o próprio | só o próprio | só o próprio | todos | só o próprio |
+| Usuários e perfis | não | não | não | sim (somente o Financeiro cria e gerencia) | não |
+| Fundo fixo | só o seu | aprova os gastos das suas obras | só o seu | todos (só ele fecha e repõe) | aprova os gastos das suas obras |
+
+Os dados pessoais e bancários só saem por visões do banco que devolvem linhas apenas para quem pode ver (`profiles_completo`, `fornecedores_dados`, `contas_bancarias_dados`); a tela esconder o menu não é a proteção. Na dúvida, o banco é a fonte da verdade (`supabase/migrations`).
 
 > A validade jurídica da modalidade de assinatura deve ser confirmada com o jurídico da empresa (seção 6 da especificação).
 
@@ -96,6 +113,16 @@ O `vercel.json` agenda essa rota uma vez por dia (10h UTC), que é o limite do p
 
 - **Next.js 16** (App Router, Server Actions) + TypeScript + Tailwind CSS 4
 - **Supabase**: PostgreSQL com RLS, autenticação e armazenamento de arquivos
+
+## Antes de publicar em produção
+
+Rode sempre: `npm run pre-producao` (versão curta, sem telas e personas: `npm run pre-producao:rapido`). A rotina faz, nesta ordem: lint, tipos,
+testes unitários, build, banco local zerado, testes de integração, testes de tela (e2e) e as personas (usuários simulados que usam o sistema:
+engenheiro, Financeiro, administrador, Suprimentos, novata e invasor). No fim mostra o quadro e termina com erro se **qualquer** etapa falhar:
+nesse caso, não publique. Os detalhes de cada etapa ficam em `.pre-producao/`.
+
+Se a máquina reiniciar no meio, `npm run pre-producao -- --retomar` continua de onde parou (só pula o que já passou na mesma versão do código).
+Além disso, confira à mão: migrations novas aplicadas no banco de produção **antes** do código, backup recente e a branch certa.
 
 ## Rodar localmente
 

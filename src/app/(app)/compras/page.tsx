@@ -45,19 +45,15 @@ export default async function ComprasPage({ searchParams }: PageProps<"/compras"
   const grupoSel = s("grupo");
 
   const supabase = await createClient();
-  const [todos, { data: obrasItens }, { data: docsNf }] = await Promise.all([
+  const [todos, { data: obrasItens }] = await Promise.all([
     itensCompras(filtros),
     // O filtro de obra lista as obras que têm notas na análise (de todas as obras, não só as do usuário)
     supabase.from("compras_itens").select("obra_id, obra_nome").limit(20000),
-    podeLer ? supabase.from("documentos").select("id").eq("tipo", "nota_fiscal").eq("ativo", true).limit(2000) : Promise.resolve({ data: [] as { id: string }[] }),
   ]);
   const obras = [...new Map((obrasItens ?? []).map((o) => [o.obra_id, { id: o.obra_id, nome: o.obra_nome }])).values()].sort((a, b) => a.nome.localeCompare(b.nome));
-  // Notas anexadas às despesas que ainda não entraram na análise (nem como NF-e, nem como nota de serviço)
-  const idsNf = (docsNf ?? []).map((d) => d.id);
-  const [{ data: nfLidas }, { data: nfServico }] = idsNf.length
-    ? await Promise.all([supabase.from("nf_notas").select("documento_id").in("documento_id", idsNf), supabase.from("notas_contabeis").select("documento_id").in("documento_id", idsNf)])
-    : [{ data: [] }, { data: [] }];
-  const naoLidas = idsNf.length - new Set([...(nfLidas ?? []), ...(nfServico ?? [])].map((x) => x.documento_id)).size;
+  // Notas anexadas às despesas que ainda não entraram na análise (nem como NF-e, nem como nota de serviço): contagem exata
+  const { data: totalNaoLidas } = podeLer ? await supabase.rpc("notas_fiscais_pendentes_total") : { data: 0 };
+  const naoLidas = totalNaoLidas ?? 0;
   const itens = grupoSel ? todos.filter((i) => chaveMaterial(i) === grupoSel) : todos;
   const grupos = agruparMateriais(todos);
   const alertas = alertasPreco(todos, grupos);
@@ -188,7 +184,7 @@ export default async function ComprasPage({ searchParams }: PageProps<"/compras"
                   <tbody>
                     {grupos.slice(0, 200).map((g) => (
                       <tr key={g.chave}>
-                        <td className="min-w-60">
+                        <td className="min-w-44">
                           <Link href={linkGrupo(g.chave)} className="font-medium text-marca-700 hover:underline">
                             {g.descricao}
                           </Link>

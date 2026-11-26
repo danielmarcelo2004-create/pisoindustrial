@@ -1,3 +1,4 @@
+import { descartarArquivoEnviado } from "@/lib/storage-limpeza";
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -28,6 +29,27 @@ export function arquivosDoForm(fd: FormData, campo: string): File[] {
     .filter((f): f is File => typeof f === "object" && f !== null && "size" in f && (f as File).size > 0);
 }
 
+/** Confere os primeiros bytes do arquivo. Devolve a mensagem de erro, ou null quando o conteúdo combina com a extensão. */
+export function conteudoCombinaComExtensao(ext: string, b: Uint8Array): string | null {
+  if (b.length === 0) return "o arquivo está vazio.";
+  const inicio = (...x: number[]) => x.every((v, i) => b[i] === v);
+  const texto = (s: string) => Buffer.from(b.subarray(0, 1024)).toString("latin1").includes(s);
+  if (ext === "pdf" && !texto("%PDF-")) return "o conteúdo não é um PDF válido.";
+  if (ext === "png" && !inicio(0x89, 0x50, 0x4e, 0x47)) return "o conteúdo não é uma imagem PNG válida.";
+  if ((ext === "jpg" || ext === "jpeg") && !inicio(0xff, 0xd8)) return "o conteúdo não é uma imagem JPG válida.";
+  if (ext === "xml" && !texto("<")) return "o conteúdo não é um XML válido.";
+  return null;
+}
+
+/** Confere extensão, tamanho e o conteúdo (primeiros bytes) do arquivo, antes de gravar qualquer coisa. */
+export async function validarArquivoCompleto(f: File): Promise<string | null> {
+  const simples = validarArquivo(f);
+  if (simples) return simples;
+  const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+  const erro = conteudoCombinaComExtensao(ext, new Uint8Array(await f.slice(0, 1024).arrayBuffer()));
+  return erro ? `${f.name}: ${erro}` : null;
+}
+
 export function validarArquivo(f: File): string | null {
   const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
   if (!MIME_POR_EXTENSAO[ext]) return `Formato não aceito: ${f.name}. Envie PDF, imagem (PNG/JPG/WEBP/HEIC) ou XML.`;
@@ -52,6 +74,9 @@ export async function enviarDocumento(
   const ext = arquivo.name.split(".").pop()!.toLowerCase();
   const mime = MIME_POR_EXTENSAO[ext];
   const bytes = Buffer.from(await arquivo.arrayBuffer());
+  // O conteúdo precisa combinar com a extensão (um .txt renomeado para .pdf não é aceito).
+  const assinaturaInvalida = conteudoCombinaComExtensao(ext, bytes);
+  if (assinaturaInvalida) return { erro: `${arquivo.name}: ${assinaturaInvalida}` };
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const caminho = `${pagamento.obra_id}/${pagamento.id}/${randomUUID()}.${ext}`;
 
@@ -69,7 +94,10 @@ export async function enviarDocumento(
     p_substitui_id: substitui?.id ?? undefined,
     p_motivo: substitui?.motivo ?? undefined,
   });
-  if (error) return { erro: mensagemErro(error) };
+  if (error) {
+    await descartarArquivoEnviado(caminho); // o arquivo já subiu: não deixa órfão no Storage
+    return { erro: mensagemErro(error) };
+  }
   const id = data as string;
 
   if (tipo === "nota_fiscal" && ext === "xml") {

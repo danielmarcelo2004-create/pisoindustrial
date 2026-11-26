@@ -32,24 +32,20 @@ export async function criarUsuario(_: Estado, fd: FormData): Promise<Estado> {
     return { erro: mensagemErro(error) };
   }
 
-  // O perfil é gravado com a sessão do Financeiro: o RLS confere a permissão e a
-  // auditoria registra quem criou.
+  // Perfil e acessos às obras entram numa transação só, com a sessão do Financeiro (o banco confere a permissão e
+  // a auditoria registra quem criou). Se falhar, o login recém-criado é removido: nada fica pela metade.
   const supabase = await createClient();
-  const { error: e2 } = await supabase.from("profiles").insert({
-    id: criado.user.id,
-    nome,
-    email,
-    telefone: t(fd, "telefone") || null,
-    perfil,
-    troca_senha_pendente: true,
+  const { error: e2 } = await supabase.rpc("criar_perfil_completo", {
+    p_id: criado.user.id,
+    p_nome: nome,
+    p_email: email,
+    p_telefone: t(fd, "telefone"),
+    p_perfil: perfil,
+    p_obras: obras,
   });
   if (e2) {
     await admin.auth.admin.deleteUser(criado.user.id);
-    return { erro: mensagemErro(e2) };
-  }
-  if (obras.length) {
-    const { error: e3 } = await supabase.from("obra_acessos").insert(obras.map((obra_id) => ({ obra_id, user_id: criado.user.id })));
-    if (e3) return { erro: `Usuário criado, mas houve erro ao conceder acessos: ${mensagemErro(e3)}` };
+    return { erro: `Usuário não criado: ${mensagemErro(e2)}` };
   }
 
   revalidatePath("/usuarios");
@@ -77,7 +73,11 @@ export async function atualizarUsuario(id: string, _: Estado, fd: FormData): Pro
 
   if (antes && antes.ativo !== ativo) {
     const { error: e2 } = await createAdminClient().auth.admin.updateUserById(id, { ban_duration: ativo ? "none" : BLOQUEIO });
-    if (e2) return { erro: `Dados salvos, mas houve erro ao ${ativo ? "liberar" : "bloquear"} o login: ${e2.message}` };
+    if (e2) {
+      // O login não acompanhou: devolve a situação anterior para o cadastro não ficar diferente do acesso real
+      await supabase.from("profiles").update({ ativo: antes.ativo }).eq("id", id);
+      return { erro: `Não foi possível ${ativo ? "liberar" : "bloquear"} o login (${e2.message}). A situação do usuário continua como estava; os demais dados foram salvos.` };
+    }
   }
   revalidatePath("/usuarios", "layout");
   return { ok: ativo === antes?.ativo ? "Usuário atualizado." : ativo ? "Usuário reativado." : "Usuário desativado: o acesso foi bloqueado." };

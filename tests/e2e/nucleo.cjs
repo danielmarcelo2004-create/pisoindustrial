@@ -140,10 +140,11 @@ const shot = (page, nome) => page.screenshot({ path: path.join(DIR, nome + '.png
   ok('Agenda, listas, auditoria, obras, usuários, notificações e fornecedores abrem');
 
   // exportação CSV
-  const csv = await ctx.request.get(BASE + '/pagamentos/exportar');
-  const corpo = await csv.text();
-  if (!corpo.includes('Favorecido') || !corpo.includes('Concreteira')) throw new Error('CSV inválido');
-  ok('Exportação para planilha (CSV)');
+  const xl = await ctx.request.get(BASE + '/pagamentos/exportar');
+  const { lerXlsx, textoDoXlsx } = require('./_xlsx.cjs');
+  const corpo = textoDoXlsx(await lerXlsx(await xl.body()));
+  if (!corpo.includes('Favorecido') || !corpo.includes('Concreteira')) throw new Error('planilha inválida');
+  ok('Exportação para planilha (Excel)');
 
   // 6. Financeiro cria usuário
   await page.goto(BASE + '/usuarios/novo');

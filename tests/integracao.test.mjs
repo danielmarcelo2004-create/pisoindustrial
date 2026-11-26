@@ -550,6 +550,89 @@ test('administrador master pode ser responsável pela obra', async () => {
 // Alteração de pagamento liberado ou pago (sem nova aprovação, com motivo)
 // -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
+// Cadastro e edição de despesa numa única transação (auditoria A-05 e A-06)
+// -----------------------------------------------------------------------------
+test('regressão: despesa cadastrada/editada numa transação só: se algo for recusado, nada fica pela metade', async () => {
+  const cat = await rpc('fin', 'criar_categoria', { p_nome: `Cat completo ${sufixo}` })
+  const conta = await rpc('fin', 'criar_conta_bancaria', { p_nome: `Conta completo ${sufixo}`, p_banco: '237', p_agencia: '8', p_conta: String(Date.now()).slice(-8) })
+  const { data: prov } = await u.fin.client.from('provisoes').insert({ obra_id: obraC.id, descricao: `Prov completo ${sufixo}`, vencimento: '2027-01-10', valor_estimado: 1000 }).select().single()
+  const base = {
+    p_obra_id: obraC.id, p_fornecedor_id: null, p_favorecido: `Fornecedor completo ${sufixo}`, p_descricao: `Despesa completa ${sufixo}`, p_valor: 1000,
+    p_vencimento: '2026-12-10', p_forma_pagamento: 'pix', p_categoria_id: cat, p_conta_id: conta, p_numero_documento: '', p_observacoes: '',
+  }
+  const contar = async (desc) => (await admin.from('pagamentos').select('id').eq('descricao', desc)).data.length
+  // Recusada no meio (categoria que não existe): antes a despesa já tinha sido criada; agora nada é criado
+  await rpcFalha('fin', 'criar_pagamento_completo', { ...base, p_descricao: `Rejeitada ${sufixo}`, p_categoria_id: randomUUID() })
+  assert.equal(await contar(`Rejeitada ${sufixo}`), 0, 'nada foi criado')
+  // Parcelas que não somam o valor também desfazem tudo
+  await rpcFalha('fin', 'criar_pagamento_completo', { ...base, p_descricao: `Rejeitada ${sufixo}`, p_parcelas: [{ valor: 100, vencimento: '2026-12-10' }, { valor: 100, vencimento: '2027-01-10' }] })
+  assert.equal(await contar(`Rejeitada ${sufixo}`), 0, 'parcelas inválidas também não deixam resíduo')
+  // Caminho feliz: competência, categoria, conta, parcelas, repetições e provisão juntas
+  const id = await rpc('fin', 'criar_pagamento_completo', { ...base, p_competencia: '2026-11-30', p_parcelas: [{ valor: 600, vencimento: '2026-12-10' }, { valor: 400, vencimento: '2027-01-10' }], p_repetir_intervalo: 1, p_repetir_vezes: 3, p_provisao_id: prov.id })
+  const p = await pagamento(id)
+  assert.deepEqual([p.categoria_id, p.conta_bancaria_id, p.data_competencia], [cat, conta, '2026-11-30'])
+  assert.equal((await admin.from('pagamento_parcelas').select('id').eq('pagamento_id', id)).data.length, 2)
+  assert.equal((await admin.from('provisoes').select('id').eq('pagamento_origem_id', id)).data.length, 2, 'duas repetições')
+  const { data: pv } = await admin.from('provisoes').select('status, pagamento_id').eq('id', prov.id).single()
+  assert.deepEqual([pv.status, pv.pagamento_id], ['convertida', id], 'provisão ligada')
+
+  // Edição: recusada no meio, o valor NÃO pode ter mudado (antes o valor era gravado e só depois vinha o erro)
+  const ed = await novoPagamento('fin', obraC.id, 500)
+  await rpcFalha('fin', 'atualizar_pagamento_completo', { p_id: ed, p_fornecedor_id: null, p_favorecido: 'Concreteira Teste', p_descricao: 'Concreto usinado', p_valor: 777, p_vencimento: '2026-12-10', p_forma_pagamento: 'boleto', p_numero_documento: '', p_observacoes: '', p_motivo: 'teste', p_categoria_id: randomUUID() })
+  assert.equal(Number((await pagamento(ed)).valor), 500, 'a edição recusada não alterou o valor')
+  await rpc('fin', 'atualizar_pagamento_completo', { p_id: ed, p_fornecedor_id: null, p_favorecido: 'Concreteira Teste', p_descricao: 'Concreto usinado', p_valor: 777, p_vencimento: '2026-12-10', p_forma_pagamento: 'boleto', p_numero_documento: '', p_observacoes: '', p_motivo: 'teste', p_categoria_id: cat, p_conta_id: conta, p_competencia: '2026-11-15' })
+  const e2 = await pagamento(ed)
+  assert.deepEqual([Number(e2.valor), e2.categoria_id, e2.conta_bancaria_id, e2.data_competencia], [777, cat, conta, '2026-11-15'])
+})
+
+test('regressão: usuário novo = perfil + acessos numa transação só (se os acessos falharem, o perfil não fica)', async () => {
+  const novoLogin = async () => {
+    const { data, error } = await admin.auth.admin.createUser({ email: `novo-${randomUUID().slice(0, 8)}@teste.local`, password: SENHA, email_confirm: true })
+    if (error) throw error
+    return { id: data.user.id, email: data.user.email }
+  }
+  const ok = await novoLogin()
+  await rpcFalha('sup', 'criar_perfil_completo', { p_id: ok.id, p_nome: 'Sem permissão', p_email: ok.email, p_telefone: '', p_perfil: 'engenheiro', p_obras: [] }, /Somente o Financeiro/)
+  await rpc('fin', 'criar_perfil_completo', { p_id: ok.id, p_nome: 'Usuário Atômico', p_email: ok.email.toUpperCase(), p_telefone: '71988887777', p_perfil: 'suprimentos', p_obras: [obraA.id, obraB.id, obraA.id] })
+  const { data: pf } = await admin.from('profiles').select('nome, email, perfil, troca_senha_pendente').eq('id', ok.id).single()
+  assert.deepEqual([pf.nome, pf.email, pf.perfil, pf.troca_senha_pendente], ['Usuário Atômico', ok.email, 'suprimentos', true])
+  assert.equal((await admin.from('obra_acessos').select('obra_id').eq('user_id', ok.id)).data.length, 2, 'dois acessos (o repetido é ignorado)')
+
+  // Acesso a uma obra que não existe: o perfil NÃO pode ter ficado (antes o usuário ficava criado sem os acessos)
+  const falha = await novoLogin()
+  await rpcFalha('fin', 'criar_perfil_completo', { p_id: falha.id, p_nome: 'Não deve existir', p_email: falha.email, p_telefone: '', p_perfil: 'engenheiro', p_obras: [obraA.id, randomUUID()] })
+  assert.equal((await admin.from('profiles').select('id').eq('id', falha.id)).data.length, 0, 'nenhum perfil ficou pela metade')
+  await admin.auth.admin.deleteUser(falha.id)
+})
+
+test('regressão: duas séries de provisões com a mesma descrição e o mesmo total não se confundem (auditoria A-11)', async () => {
+  const mes = (i) => `2027-${String(i).padStart(2, '0')}`
+  const serie = async (sid) => {
+    const linhas = [1, 2, 3].map((k) => ({ obra_id: obraC.id, descricao: `Aluguel igual ${sufixo} (${k}/3)`, mes_referencia: mes(k), vencimento: `${mes(k)}-10`, valor_estimado: 1000, serie_id: sid }))
+    const { data, error } = await u.fin.client.from('provisoes').insert(linhas).select('id, descricao').order('descricao')
+    if (error) throw error
+    return data
+  }
+  const [s1, s2] = [randomUUID(), randomUUID()]
+  const a = await serie(s1)
+  const b = await serie(s2)
+  // Estende só a série A (a partir da última parcela dela): +2 parcelas
+  assert.equal(await rpc('fin', 'estender_serie_provisao', { p_provisao_id: a[2].id, p_quantidade: 2 }), 2)
+  const { data: linhasA } = await admin.from('provisoes').select('descricao').eq('serie_id', s1)
+  const { data: linhasB } = await admin.from('provisoes').select('descricao').eq('serie_id', s2)
+  assert.equal(linhasA.length, 5, 'a série A ganhou 2 parcelas')
+  assert.ok(linhasA.every((x) => /\(\d\/5\)$/.test(x.descricao)), 'a série A foi renumerada (k/5)')
+  assert.equal(linhasB.length, 3, 'a série B não foi tocada')
+  assert.ok(linhasB.every((x) => /\(\d\/3\)$/.test(x.descricao)), 'a série B continua (k/3)')
+  // Repetição de despesa: cada chamada cria uma série própria (serie_id) para as suas provisões
+  const pag = await novoPagamento('fin', obraC.id, 300)
+  await rpc('fin', 'criar_repeticoes', { p_pagamento_id: pag, p_intervalo: 1, p_vezes: 3 })
+  const { data: rep } = await admin.from('provisoes').select('serie_id').eq('pagamento_origem_id', pag)
+  assert.equal(rep.length, 2)
+  assert.ok(rep[0].serie_id && rep.every((x) => x.serie_id === rep[0].serie_id), 'as repetições da despesa compartilham um serie_id')
+})
+
+// -----------------------------------------------------------------------------
 // Inteligência de Compras aberta a todos (só leitura), com o CPF/CNPJ do fornecedor mascarado
 // -----------------------------------------------------------------------------
 test('regressão: engenheiro e administrador comparam preços de TODAS as obras (só leitura) sem ver o CNPJ do fornecedor', async () => {
@@ -579,6 +662,27 @@ test('regressão: engenheiro e administrador comparam preços de TODAS as obras 
     const { error: eIns } = await u[chave].client.from('nf_notas').insert({ obra_id: obraC.id, chave: 'x'.repeat(44), emitente_nome: 'x', emitente_cnpj: '1' })
     assert.ok(eIns, `${chave}: não grava notas`)
   }
+})
+
+test('regressão: notas sem leitura vêm de consulta exata (sem janela fixa) só para Financeiro/Suprimentos; arquivos órfãos só para o Financeiro', async () => {
+  const nova = async () => anexar('sup', await pagamento(await novoPagamento('sup', obraA.id)), 'nota_fiscal')
+  const [lida, pendente1, pendente2] = [await nova(), await nova(), await nova()]
+  const chave = ('2926111234567800019055001' + Date.now() + '0000000001').slice(0, 44)
+  await rpc('sup', 'registrar_nf', { p_documento_id: lida, p_nota: { chave, numero: '55', serie: '1', data_emissao: '2026-11-03', emitente_cnpj: '12.345.678/0001-90', emitente_nome: 'Fornecedor X', emitente_uf: 'BA', valor_total: 10 }, p_itens: [{ numero_item: 1, descricao: 'Item X', descricao_normalizada: 'item x', unidade: 'un', quantidade: 1, valor_unitario: 10, valor_total: 10 }], p_origem: 'xml' })
+  for (const k of ['sup', 'fin']) {
+    const pend = await rpc(k, 'notas_fiscais_pendentes', { p_limite: 500 })
+    const ids = pend.map((x) => x.documento_id)
+    assert.ok(ids.includes(pendente1) && ids.includes(pendente2) && !ids.includes(lida), `${k}: lista só as notas ainda sem leitura`)
+    assert.ok((await rpc(k, 'notas_fiscais_pendentes_total')) >= 2)
+    assert.equal((await rpc(k, 'notas_fiscais_pendentes', { p_limite: 1 })).length, 1, `${k}: respeita o limite`)
+  }
+  for (const k of ['eng', 'adm']) {
+    assert.equal((await rpc(k, 'notas_fiscais_pendentes', { p_limite: 500 })).length, 0, `${k}: não vê a fila de leitura`)
+    assert.equal(await rpc(k, 'notas_fiscais_pendentes_total'), 0)
+  }
+  // Arquivos órfãos: só o Financeiro enxerga a lista (nada é apagado automaticamente)
+  assert.ok(Array.isArray(await rpc('fin', 'arquivos_orfaos', { p_dias: 2 })))
+  for (const k of ['eng', 'adm', 'sup']) assert.equal((await rpc(k, 'arquivos_orfaos', { p_dias: 2 })).length, 0, `${k}: sem acesso à lista de órfãos`)
 })
 
 // -----------------------------------------------------------------------------
@@ -850,31 +954,44 @@ test('regressão: gasto de fundo fixo sem comprovante assinado não conta nem po
   await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: fundoC, p_vencimento: '2026-11-20', p_modo: 'encerrar' })
 })
 
-test('regressão: fundo esgotado não aceita novos gastos; o último pode passar do valor (antes dava para lançar sem limite)', async () => {
+test('regressão: fundo fixo não limita novos gastos (passa do valor vira reembolso); a pessoa solicita o fechamento, só o Financeiro fecha (antes bloqueava o gasto e só dava "pedir reposição")', async () => {
   const fundo = await rpc('fin', 'criar_fundo_fixo', { p_obra_id: obraA.id, p_pessoa_id: u.sup.id, p_valor: 100 })
-  // 60 + 20 + 70: o último passa de 100, mas ainda havia saldo (20) quando foi lançado
   const g1 = await gastoFundo('sup', fundo, 'Um', '2026-11-06', 60)
-  await rpcFalha('sup', 'pedir_reposicao_fundo', { p_fundo_id: fundo }, /ainda tem saldo/)
-  await gastoFundo('sup', fundo, 'Dois', '2026-11-06', 20)
-  const g3 = await gastoFundo('sup', fundo, 'Três (passa do valor)', '2026-11-06', 70)
-  // Já cobriu o fundo (mesmo com tudo aguardando aprovação): bloqueia
-  await rpcFalha('sup', 'lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Quatro', p_data: '2026-11-06', p_valor: 5 }, /Fundo esgotado/)
-  // Pedir reposição: só a pessoa do fundo, só esgotado, uma vez; avisa o Financeiro
-  await rpcFalha('adm', 'pedir_reposicao_fundo', { p_fundo_id: fundo }, /Somente a pessoa do fundo/)
-  await rpc('sup', 'pedir_reposicao_fundo', { p_fundo_id: fundo })
-  await rpcFalha('sup', 'pedir_reposicao_fundo', { p_fundo_id: fundo }, /já foi solicitada/)
-  const { data: pedido } = await admin.from('notificacoes').select('mensagem').eq('user_id', u.fin.id).eq('titulo', 'Reposição de fundo fixo solicitada')
+  const g2 = await gastoFundo('sup', fundo, 'Dois (passa do valor)', '2026-11-06', 70)
+  // Já cobriu o fundo, mas continua podendo lançar (sem limite)
+  const g3 = await gastoFundo('sup', fundo, 'Três (depois de passar)', '2026-11-06', 30)
+  assert.ok(g1 && g2 && g3)
+  // Solicitar fechamento: só a pessoa do fundo, uma vez; avisa o Financeiro; quem não é do fundo não pede
+  await rpcFalha('adm', 'solicitar_fechamento_fundo', { p_fundo_id: fundo }, /Somente a pessoa do fundo/)
+  await rpcFalha('fin', 'solicitar_fechamento_fundo', { p_fundo_id: fundo }, /Somente a pessoa do fundo/)
+  await rpc('sup', 'solicitar_fechamento_fundo', { p_fundo_id: fundo })
+  await rpcFalha('sup', 'solicitar_fechamento_fundo', { p_fundo_id: fundo }, /já foi solicitado/)
+  const { data: pedido } = await admin.from('notificacoes').select('mensagem').eq('user_id', u.fin.id).eq('titulo', 'Fechamento de fundo fixo solicitado')
   assert.ok(pedido.length >= 1, 'Financeiro avisado')
-  // Recusado libera o saldo de novo
-  await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g3, p_aprovar: false, p_motivo: 'não era do fundo' })
-  const g4 = await gastoFundo('sup', fundo, 'Quatro', '2026-11-06', 15)
+  const { data: marcado } = await admin.from('fundos_fixos').select('fechamento_solicitado_em').eq('id', fundo).single()
+  assert.ok(marcado.fechamento_solicitado_em, 'pedido registrado no fundo')
+  // Depois de solicitar, a pessoa não lança mais gastos (até o Financeiro recusar ou fechar)
+  await rpcFalha('sup', 'lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Depois do pedido', p_data: '2026-11-06', p_valor: 5 }, /solicitou o fechamento/)
+  // Só o Financeiro recusa; a recusa avisa a pessoa e libera os gastos; dá para solicitar de novo
+  await rpcFalha('sup', 'recusar_fechamento_fundo', { p_fundo_id: fundo, p_motivo: 'x' }, /Somente o Financeiro/)
+  await rpcFalha('adm', 'recusar_fechamento_fundo', { p_fundo_id: fundo }, /Somente o Financeiro/)
+  await rpc('fin', 'recusar_fechamento_fundo', { p_fundo_id: fundo, p_motivo: 'ainda tem saldo' })
+  await rpcFalha('fin', 'recusar_fechamento_fundo', { p_fundo_id: fundo }, /Não há pedido/)
+  const { data: aviso } = await admin.from('notificacoes').select('mensagem').eq('user_id', u.sup.id).eq('titulo', 'Pedido de fechamento do fundo recusado')
+  assert.ok(aviso.length >= 1 && /ainda tem saldo/.test(aviso[0].mensagem), 'pessoa avisada com o motivo')
+  const g4 = await gastoFundo('sup', fundo, 'Quatro (depois da recusa)', '2026-11-06', 5)
+  assert.ok(g4)
+  await rpc('sup', 'solicitar_fechamento_fundo', { p_fundo_id: fundo })
+  // Só o Financeiro fecha: a pessoa do fundo e o administrador não
+  await rpcFalha('sup', 'fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: '2026-11-20', p_modo: 'encerrar' }, /Financeiro/)
   await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g1, p_aprovar: true })
-  await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g4, p_aprovar: true })
-  // Aprovados 75: ainda tem saldo e um gasto 2 aguardando; esgota quando passa de 100
-  const g5 = await gastoFundo('sup', fundo, 'Cinco', '2026-11-06', 5)
-  assert.ok(g5)
-  await rpcFalha('sup', 'lancar_gasto_fundo', { p_fundo_id: fundo, p_descricao: 'Seis', p_data: '2026-11-06', p_valor: 5 }, /Fundo esgotado/)
+  await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g2, p_aprovar: true })
+  await rpc('adm', 'decidir_gasto_fundo', { p_gasto_id: g3, p_aprovar: true })
   await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: '2026-11-20', p_modo: 'encerrar' })
+  const { data: f } = await admin.from('fundos_fixos').select('status, reembolso').eq('id', fundo).single()
+  assert.equal(f.status, 'fechado')
+  assert.equal(Number(f.reembolso), 60, 'gastos aprovados 160 num fundo de 100 = reembolso de 60 (o gasto de 5 da recusa ficou pendente)')
+  await rpcFalha('sup', 'solicitar_fechamento_fundo', { p_fundo_id: fundo }, /já foi fechado/)
 })
 
 test('regressão: fundo fixo exige os dados bancários antes do primeiro gasto; o pagamento do fechamento nasce com a forma e os dados', async () => {
@@ -1755,6 +1872,12 @@ describe('conciliação bancária', () => {
     const rec2 = await rpc('fin', 'lancar_medicao', { ...args, p_nota_id: nota2.id, p_retido: 1150, p_devido: 1630.5 })
     const { data: imp2b } = await admin.from('pagamentos').select('imposto_medicao, valor').eq('recebimento_id', rec2)
     assert.deepEqual(imp2b.map((i) => `${i.imposto_medicao}:${Number(i.valor)}`).sort(), ['devido:1630.5', 'retido:1150'])
+    // A nota guarda o que foi de fato lançado (alíquota e valores editados): o resumo da tela não usa mais só 14% fixos
+    const { data: gravada } = await admin.from('notas_medicao').select('aliquota_aplicada, retido_lancado, devido_lancado, impostos_lancados_em').eq('id', nota2.id).single()
+    assert.deepEqual([Number(gravada.aliquota_aplicada), Number(gravada.retido_lancado), Number(gravada.devido_lancado)], [14, 1150, 1630.5])
+    assert.ok(gravada.impostos_lancados_em, 'data do lançamento dos impostos')
+    const { data: gravada1 } = await admin.from('notas_medicao').select('retido_lancado, devido_lancado').eq('id', nota.id).single()
+    assert.deepEqual([Number(gravada1.retido_lancado), Number(gravada1.devido_lancado)], [600, 800], 'sem edição: guarda o calculado')
     await falha('fin', 'lancar_medicao', { ...args, p_nota_id: (await admin.from('notas_medicao').insert({ obra_id: obraA.id, storage_path: `${obraA.id}/medicoes/${randomUUID()}.pdf`, nome_arquivo: 'm3.pdf', sha256: '1'.repeat(64), valor: 100, valor_liquido: 90, criada_por: u.fin.id }).select('id').single()).data.id, p_retido: 100 }, 'Imposto retido inválido')
     // Conciliação: entra o líquido (9.400)
     await importar('fin', [L('2026-12-22', 9400, 'TED RECEBIDA MEDICAO 12', 'MD1'), L('2026-12-22', 9999, 'TED OUTRA', 'MD2')])
@@ -1792,4 +1915,82 @@ describe('conciliação bancária', () => {
     const { data: cb } = await admin.from('contas_bancarias').select('nome').eq('id', conta).single(); assert.equal(cb.nome, 'Caixa Parceria 4')
     await falha('sup', 'renomear_conta_bancaria', { p_id: conta, p_nome: 'X' }, 'Somente o Financeiro')
   })
+
+  test('regressão: fila de avisos — duas reservas não pegam o mesmo aviso; falha volta para a fila com espera e vira "falhou" na 4ª; só o serviço executa', async () => {
+    const mk = async (titulo) => (await admin.from('notificacoes').insert({ user_id: u.fin.id, titulo, mensagem: 'x', email_status: 'pendente', whatsapp_status: 'pendente' }).select('id').single()).data.id
+    const ids = [await mk(`Fila A ${sufixo}`), await mk(`Fila B ${sufixo}`)]
+    // Quem não é o serviço não reserva nem registra resultado
+    const semAcesso = await u.fin.client.rpc('reservar_avisos', { p_canal: 'email', p_limite: 5 })
+    assert.ok(semAcesso.error, 'usuário comum reservou avisos')
+    const [r1, r2] = await Promise.all([admin.rpc('reservar_avisos', { p_canal: 'email', p_limite: 1000 }), admin.rpc('reservar_avisos', { p_canal: 'email', p_limite: 1000 })])
+    assert.ifError(r1.error); assert.ifError(r2.error)
+    const a = new Set(r1.data), b = new Set(r2.data)
+    for (const id of ids) assert.equal([a.has(id), b.has(id)].filter(Boolean).length, 1, 'o mesmo aviso foi reservado duas vezes (ou nenhuma)')
+    const { data: est } = await admin.from('notificacoes').select('email_status').eq('id', ids[0]).single()
+    assert.equal(est.email_status, 'processando')
+    // Falhas: 1ª a 3ª voltam para "pendente" com espera; a 4ª vira "falhou"
+    for (let n = 1; n <= 4; n++) {
+      await admin.from('notificacoes').update({ email_status: 'processando', email_proxima_em: null }).eq('id', ids[0])
+      const { data: res, error } = await admin.rpc('registrar_resultado_aviso', { p_canal: 'email', p_id: ids[0], p_ok: false, p_erro: 'provedor fora do ar' })
+      assert.ifError(error)
+      assert.equal(res, n < 4 ? 'pendente' : 'falhou', `tentativa ${n}`)
+      const { data: x } = await admin.from('notificacoes').select('email_status, email_tentativas, email_proxima_em').eq('id', ids[0]).single()
+      assert.equal(x.email_tentativas, n)
+      if (n < 4) assert.ok(new Date(x.email_proxima_em) > new Date(), 'sem espera antes da nova tentativa')
+    }
+    // Aviso com espera ainda não é reservado; sucesso marca enviado
+    await admin.from('notificacoes').update({ email_status: 'pendente', email_proxima_em: new Date(Date.now() + 3600e3).toISOString() }).eq('id', ids[1])
+    const r3 = await admin.rpc('reservar_avisos', { p_canal: 'email', p_limite: 1000 })
+    assert.ok(!r3.data.includes(ids[1]), 'reservou aviso que ainda está em espera')
+    await admin.from('notificacoes').update({ email_proxima_em: null }).eq('id', ids[1])
+    const r4 = await admin.rpc('reservar_avisos', { p_canal: 'email', p_limite: 1000 })
+    assert.ok(r4.data.includes(ids[1]))
+    await admin.rpc('registrar_resultado_aviso', { p_canal: 'email', p_id: ids[1], p_ok: true })
+    const { data: ok } = await admin.from('notificacoes').select('email_status, email_enviado_em').eq('id', ids[1]).single()
+    assert.equal(ok.email_status, 'enviado'); assert.ok(ok.email_enviado_em)
+    // Reserva esquecida há mais de 15 minutos volta para a fila (execução que caiu no meio)
+    await admin.from('notificacoes').update({ whatsapp_status: 'processando', whatsapp_reservado_em: new Date(Date.now() - 20 * 60e3).toISOString() }).eq('id', ids[0])
+    const w = await admin.rpc('reservar_avisos', { p_canal: 'whatsapp', p_limite: 1000 })
+    assert.ok(w.data.includes(ids[0]), 'reserva esquecida não voltou para a fila')
+  })
+
+  test('regressão: fornecedor não aceita autor forjado (created_by = quem cadastrou) e função interna de receita não é chamável sem login', async () => {
+    const { data, error } = await u.sup.client.from('fornecedores').insert({ nome: `Forn autor ${sufixo}`, created_by: u.fin.id }).select('id, created_by').single()
+    assert.ifError(error)
+    assert.equal(data.created_by, u.sup.id, 'o autor foi forjado')
+    const anon = createClient(URL, PUB, { auth: { persistSession: false, autoRefreshToken: false } })
+    const r = await anon.rpc('_validar_receita', { p_obra_id: randomUUID(), p_categoria_id: randomUUID(), p_cliente: 'x', p_descricao: 'x', p_valor: 1, p_vencimento: '2026-12-01' })
+    assert.ok(r.error, 'anônimo conseguiu chamar a função interna')
+  })
+})
+
+test('regressão: fundo fixo só do dono (engenheiro/Suprimentos não leem o fundo do colega); Financeiro e administrador da obra leem', async () => {
+  const fundo = await rpc('fin', 'criar_fundo_fixo', { p_obra_id: obraA.id, p_pessoa_id: u.sup.id, p_valor: 80 })
+  const ver = async (chave) => (await u[chave].client.from('fundos_fixos').select('id').eq('id', fundo)).data.length
+  assert.equal(await ver('sup'), 1, 'o dono lê o próprio fundo')
+  assert.equal(await ver('fin'), 1, 'o Financeiro lê')
+  assert.equal(await ver('eng'), 0, 'engenheiro da obra leu o fundo do colega (antes lia: RLS usava pode_ver_obra)')
+  const g = await gastoFundo('sup', fundo, 'Privado', '2026-11-06', 10)
+  assert.equal((await u.eng.client.from('fundo_gastos').select('id').eq('id', g)).data.length, 0, 'engenheiro leu o gasto do colega')
+  assert.equal((await u.adm.client.from('fundo_gastos').select('id').eq('id', g)).data.length, 1, 'administrador da obra lê os gastos (para aprovar)')
+  await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: '2026-11-20', p_modo: 'encerrar' })
+})
+
+test('regressão: senha provisória não dá acesso a dados pela API antes da troca (antes só a tela exigia)', async () => {
+  const antes = (await u.eng.client.from('obras').select('id')).data.length
+  assert.ok(antes > 0, 'o engenheiro enxerga obras normalmente')
+  await admin.from('profiles').update({ troca_senha_pendente: true }).eq('id', u.eng.id)
+  try {
+    const durante = await u.eng.client.from('obras').select('id')
+    assert.equal(durante.data.length, 0, 'com a troca pendente a API ainda devolveu obras')
+    const rpcPend = await u.eng.client.rpc('minhas_pendencias')
+    assert.ok(rpcPend.error || (rpcPend.data ?? []).length === 0, 'RPC liberada com troca de senha pendente')
+    const proprio = await u.eng.client.from('profiles_completo').select('id').eq('id', u.eng.id)
+    assert.equal(proprio.data.length, 1, 'precisa ler o próprio perfil para a tela de troca de senha')
+    const { error } = await u.eng.client.rpc('confirmar_troca_senha')
+    assert.ifError(error)
+  } finally {
+    await admin.from('profiles').update({ troca_senha_pendente: false }).eq('id', u.eng.id)
+  }
+  assert.equal((await u.eng.client.from('obras').select('id')).data.length, antes, 'depois da troca o acesso volta')
 })

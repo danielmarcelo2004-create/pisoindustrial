@@ -25,12 +25,14 @@ export async function GET(request: NextRequest) {
   const limite = new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString();
   await admin.from("notificacoes").update({ whatsapp_status: "ignorado", whatsapp_erro: "expirado" }).eq("whatsapp_status", "pendente").lt("created_at", limite);
 
+  // Reserva os avisos antes de enviar: duas execuções ao mesmo tempo não mandam o mesmo aviso duas vezes.
+  const { data: reservados, error: erroReserva } = await admin.rpc("reservar_avisos", { p_canal: "whatsapp", p_limite: 50 });
+  if (erroReserva) return NextResponse.json({ erro: erroReserva.message }, { status: 500 });
   const { data: fila, error } = await admin
     .from("notificacoes")
     .select("id, titulo, mensagem, link, usuario:profiles!notificacoes_user_id_fkey(telefone, ativo)")
-    .eq("whatsapp_status", "pendente")
-    .order("created_at")
-    .limit(50);
+    .in("id", (reservados as string[] | null) ?? [])
+    .order("created_at");
   if (error) return NextResponse.json({ erro: error.message }, { status: 500 });
 
   let enviados = 0;
@@ -43,10 +45,10 @@ export async function GET(request: NextRequest) {
     }
     try {
       await enviarWhatsapp(para, n.titulo, n.mensagem ?? "", `${appUrl}${n.link ?? "/notificacoes"}`);
-      await admin.from("notificacoes").update({ whatsapp_status: "enviado", whatsapp_enviado_em: new Date().toISOString(), whatsapp_erro: null }).eq("id", n.id);
+      await admin.rpc("registrar_resultado_aviso", { p_canal: "whatsapp", p_id: n.id, p_ok: true });
       enviados++;
     } catch (e) {
-      await admin.from("notificacoes").update({ whatsapp_status: "falhou", whatsapp_erro: String((e as Error).message).slice(0, 500) }).eq("id", n.id);
+      await admin.rpc("registrar_resultado_aviso", { p_canal: "whatsapp", p_id: n.id, p_ok: false, p_erro: String((e as Error).message) });
       falhas++;
     }
   }

@@ -14,7 +14,12 @@ const num = (s: string) => (s.includes(",") ? Number(s.replace(/\./g, "").replac
 export async function lancarNF(documentoId: string, pagamentoId: string, _: Estado, fd: FormData): Promise<Estado> {
   await exigirPerfil("financeiro", "suprimentos");
   const emissao = t(fd, "data_emissao");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(emissao)) return { erro: "Informe a data de emissão." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(emissao) || Number.isNaN(new Date(emissao + "T12:00:00Z").getTime())) return { erro: "Informe a data de emissão." };
+  // Data de emissão plausível: de 2000 até amanhã (nota com data absurda estraga o histórico e a evolução mensal).
+  const amanha = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  if (emissao < "2000-01-01" || emissao > amanha) return { erro: "A data de emissão está fora do período aceito (de 2000 até hoje)." };
+  const chaveDigitada = t(fd, "chave");
+  if (chaveDigitada && !/^\d{44}$/.test(chaveDigitada.replace(/\s/g, ""))) return { erro: "A chave da nota deve ter 44 números (ou deixe em branco)." };
   if (!t(fd, "emitente_nome")) return { erro: "Informe o fornecedor (emitente)." };
   let brutos: Record<string, string>[];
   try {
@@ -44,6 +49,7 @@ export async function lancarNF(documentoId: string, pagamentoId: string, _: Esta
   }
   if (!itens.length) return { erro: "Informe ao menos um item." };
   const frete = t(fd, "valor_frete") ? num(t(fd, "valor_frete")) : null;
+  if (frete !== null && !(frete >= 0)) return { erro: "Valor do frete inválido." };
   const produtos = itens.reduce((s, i) => s + i.valor_total, 0);
 
   const supabase = await createClient();
@@ -52,7 +58,7 @@ export async function lancarNF(documentoId: string, pagamentoId: string, _: Esta
     p_origem: "manual",
     p_itens: itens,
     p_nota: {
-      chave: t(fd, "chave") || null,
+      chave: chaveDigitada.replace(/\s/g, "") || null,
       numero: t(fd, "numero") || null,
       serie: null,
       data_emissao: emissao,
@@ -88,35 +94,24 @@ export async function lerNotasPendentes(_: Estado, __: FormData): Promise<Estado
   const { extrairTextoPdf } = await import("@/lib/pdf-texto");
   const { lerNotaTexto } = await import("@/lib/ocr/nota-fiscal");
   const supabase = await createClient();
-  const { data: docs } = await supabase
-    .from("documentos")
-    .select("id, storage_path, pagamento:pagamentos(favorecido)")
-    .eq("tipo", "nota_fiscal")
-    .eq("ativo", true)
-    .eq("mime_type", "application/pdf")
-    .order("created_at", { ascending: false })
-    .limit(500);
-  const ids = (docs ?? []).map((d) => d.id);
-  const [{ data: lidas }, { data: contabeis }] = await Promise.all([
-    supabase.from("nf_notas").select("documento_id").in("documento_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
-    supabase.from("notas_contabeis").select("documento_id").in("documento_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
-  ]);
-  const feitas = new Set([...(lidas ?? []), ...(contabeis ?? [])].map((x) => x.documento_id));
+  // Consulta exata no banco: PDFs ainda sem leitura (as mais recentes primeiro), sem janela fixa que esconda as antigas
+  const { data: docs } = await supabase.rpc("notas_fiscais_pendentes", { p_somente_pdf: true, p_limite: 200 });
   let ok = 0;
   let semLeitura = 0;
-  for (const d of (docs ?? []).filter((x) => !feitas.has(x.id)).slice(0, 60)) {
+  for (const d of docs ?? []) {
     const arq = await supabase.storage.from("documentos").download(d.storage_path);
     if (arq.error || !arq.data) { semLeitura++; continue; }
     const texto = await extrairTextoPdf(Buffer.from(await arq.data.arrayBuffer()));
     const lida = texto ? lerNotaTexto(texto) : null;
     if (!lida?.confiavel || !lida.itens.length) { semLeitura++; continue; }
-    if (!lida.nota.emitente_nome) lida.nota.emitente_nome = ((Array.isArray(d.pagamento) ? d.pagamento[0] : d.pagamento) as { favorecido: string } | null)?.favorecido ?? "Fornecedor";
-    const { error } = await supabase.rpc("registrar_nf", { p_documento_id: d.id, p_nota: lida.nota as never, p_itens: lida.itens as never, p_origem: "ocr" });
+    if (!lida.nota.emitente_nome) lida.nota.emitente_nome = d.favorecido ?? "Fornecedor";
+    const { error } = await supabase.rpc("registrar_nf", { p_documento_id: d.documento_id, p_nota: lida.nota as never, p_itens: lida.itens as never, p_origem: "ocr" });
     if (error) semLeitura++;
     else ok++;
   }
   revalidatePath("/compras", "layout");
+  const { data: restam } = await supabase.rpc("notas_fiscais_pendentes_total");
   return {
-    ok: `${ok} nota(s) lida(s) e incluída(s) na análise.${semLeitura ? ` ${semLeitura} não puderam ser lidas automaticamente (imagem, PDF escaneado ou nota de serviço): use "Ler notas (PDF)".` : ""}`,
+    ok: `${ok} nota(s) lida(s) e incluída(s) na análise.${restam ? ` Ainda há ${restam} nota(s) sem leitura no total.` : ""}${semLeitura ? ` ${semLeitura} não puderam ser lidas automaticamente (imagem, PDF escaneado ou nota de serviço): use "Ler notas (PDF)".` : ""}`,
   };
 }

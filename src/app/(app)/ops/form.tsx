@@ -232,7 +232,7 @@ export function FormOP({
   );
 
   return (
-    <FormAcao action={action} semBotao className="space-y-6">
+    <FormAcao action={action} semBotao className="space-y-6" aoResponder={(e) => { const novo = e?.dados?.ordem_id; if (novo) setOrdemId(novo); }}>
       <input type="hidden" name="itens" value={itensJson} />
       <Cartao titulo="Dados da solicitação">
         <div className="grid gap-4 sm:grid-cols-2">

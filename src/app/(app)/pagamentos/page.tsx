@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Aviso, Cabecalho, LinkBotao, Selo, Vazio, classeBotao, cx } from "@/components/ui";
 import { getUsuario } from "@/lib/auth";
-import { listarContas, type FiltroCartao, type LinhaConta } from "@/lib/consultas/contas-a-pagar";
+import { LIMITE_CONSULTA, listarContas, type FiltroCartao, type LinhaConta } from "@/lib/consultas/contas-a-pagar";
 import { categoriasAtivas } from "@/lib/consultas/categorias";
 import { contasBancariasAtivas } from "@/lib/consultas/contas-bancarias";
 import { data, hojeISO, moeda } from "@/lib/formato";
@@ -73,7 +73,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
   };
 
   const supabase = await createClient();
-  const [{ linhas, totais }, { data: obras }, categorias, { data: fornecedores }, { data: rascunhos }, contasBanc] = await Promise.all([
+  const [{ linhas, totais, truncado }, { data: obras }, categorias, { data: fornecedores }, { data: rascunhos }, contasBanc] = await Promise.all([
     listarContas({ ...filtros, mes: periodo.tipo === "todos" ? "todos" : periodo.de.slice(0, 7), cartao }),
     supabase.from("obras").select("id, nome").order("nome"),
     categoriasAtivas(),
@@ -132,6 +132,9 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
             <a href={`/pagamentos/exportar?${exportQs}`} className={classeBotao("secundario")}>
               Exportar planilha
             </a>
+            <a href={`/pagamentos/exportar?${exportQs}&formato=pdf`} target="_blank" rel="noopener" className={classeBotao("secundario")}>
+              Imprimir
+            </a>
             {podeCadastrar && <LinkBotao href="/pagamentos/novo">+ Nova despesa</LinkBotao>}
           </>
         }
@@ -140,6 +143,11 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
       {typeof sp.baixados === "string" && (
         <div className="mb-4">
           <Aviso tipo="sucesso">{sp.baixados} conta(s) baixada(s) com sucesso.</Aviso>
+        </div>
+      )}
+      {truncado && (
+        <div className="mb-4" data-lista-truncada>
+          <Aviso tipo="alerta">A lista mostra só os primeiros {LIMITE_CONSULTA} lançamentos do filtro: os totais podem estar incompletos. Reduza o período ou use os filtros (obra, fornecedor, busca).</Aviso>
         </div>
       )}
       {sp.excluida && (
@@ -211,7 +219,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
         {visiveis.length === 0 ? (
           <Vazio>Nenhuma conta neste período com esses filtros.</Vazio>
         ) : (
-          <table className="tabela">
+          <table className="tabela tabela-cartoes">
             <thead>
               <tr>
                 <th className="w-8">
@@ -233,7 +241,7 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
                 const faixa = atrasada ? "shadow-[inset_4px_0_0_#dc2626]" : "";
                 return (
                   <tr key={l.chave} data-linha={l.chave} className={cx(l.tipo === "provisao" && "text-slate-400")}>
-                    <td className={faixa}>
+                    <td className={cx("c-marcar", faixa)}>
                       {l.tipo !== "provisao" && (
                         <input
                           type="checkbox"
@@ -249,9 +257,9 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
                         />
                       )}
                     </td>
-                    <td className={cx("whitespace-nowrap tabular-nums", atrasada && "font-medium text-red-700")}>{data(l.vencimento)}</td>
-                    <td className="whitespace-nowrap tabular-nums text-slate-600">{l.pagoEm ? data(l.pagoEm) : "—"}</td>
-                    <td className="min-w-64">
+                    <td className={cx("c-venc whitespace-nowrap tabular-nums", atrasada && "font-medium text-red-700")} data-rotulo="Vence">{data(l.vencimento)}</td>
+                    <td className={cx("c-pago-em whitespace-nowrap tabular-nums text-slate-600", !l.pagoEm && "max-md:hidden")} data-rotulo="Pago em">{l.pagoEm ? data(l.pagoEm) : "—"}</td>
+                    <td className="c-resumo min-w-48">
                       <div className="font-medium text-slate-800">
                         {l.parcela && (
                           <span className="mr-1.5 font-normal text-slate-500">
@@ -276,12 +284,12 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
                         ))}
                       </div>
                     </td>
-                    <td className="text-right tabular-nums">{l.tipo === "provisao" ? (l.valor ? `≈ ${semRS(l.valor)}` : "a definir") : semRS(l.valor)}</td>
-                    <td className="text-right font-medium tabular-nums">{l.tipo === "provisao" ? "—" : semRS(l.aPagar)}</td>
-                    <td>
+                    <td className="c-valor text-right tabular-nums" data-rotulo="Valor">{l.tipo === "provisao" ? (l.valor ? `≈ ${semRS(l.valor)}` : "a definir") : semRS(l.valor)}</td>
+                    <td className="c-apagar text-right font-medium tabular-nums" data-rotulo="A pagar">{l.tipo === "provisao" ? "—" : semRS(l.aPagar)}</td>
+                    <td className="c-situacao">
                       <Situacao l={l} />
                     </td>
-                    <td className="text-right whitespace-nowrap">
+                    <td className="c-acoes text-right whitespace-nowrap">
                       {l.temAnexo && (
                         <span className="mr-2 text-slate-400" title="Tem anexo">
                           📎

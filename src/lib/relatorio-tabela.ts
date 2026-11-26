@@ -203,7 +203,7 @@ export async function gerarPdfRelatorio(rel: RelatorioTabela): Promise<Uint8Arra
       const cel = linha[c.chave];
       const texto = textoDe(cel, c, rel.natureza);
       const maxLarg = larguras[i] - PAD * 2 - (c.tipo === "situacao" ? 10 : 0);
-      return { texto, linhas: quebrar(texto, c.tipo === "moeda" ? negrito : fonte, TAM, maxLarg, 3), cel };
+      return { texto, linhas: quebrar(texto, c.tipo === "moeda" || c.tipo === "situacao" ? negrito : fonte, TAM, maxLarg, c.tipo === "situacao" ? 2 : 3), cel };
     });
     const nLinhas = Math.max(1, ...prep.map((p) => p.linhas.length));
     const altura = nLinhas * ALT_LINHA + 8;
@@ -220,7 +220,9 @@ export async function gerarPdfRelatorio(rel: RelatorioTabela): Promise<Uint8Arra
         const selo = p.cel as Selo;
         const cor = COR_MARCADOR[selo.cor];
         pagina.drawCircle({ x: x + PAD + 3, y: y - 5, size: 2.6, color: rgb(...cor) });
-        pagina.drawText(limpar(p.linhas[0] ?? ""), { x: x + PAD + 10, y: y - 7.6, size: TAM, font: negrito, color: rgb(cor[0] * 0.8, cor[1] * 0.8, cor[2] * 0.8) });
+        // situação com nome longo (ex.: "Liberado p/ pagamento") quebra em até 2 linhas
+        const partes = quebrar(selo.texto, negrito, TAM, larguras[i] - PAD * 2 - 10, 2);
+        partes.forEach((t, k) => pagina.drawText(t, { x: x + PAD + 10, y: y - 7.6 - k * ALT_LINHA, size: TAM, font: negrito, color: rgb(cor[0] * 0.8, cor[1] * 0.8, cor[2] * 0.8) }));
       } else {
         const ehValor = c.tipo === "moeda";
         const f = ehValor ? negrito : fonte;

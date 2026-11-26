@@ -272,15 +272,19 @@ rodar('Segurança — invasor (web)', async ({ b, passo, entrar }) => {
     confere((await textoDe(adminP)).includes('<img src=x'), 'o texto do favorecido não apareceu escapado (devia aparecer como texto)');
   });
 
-  await passo('injeção de fórmula na planilha: favorecido começando com = + - @ não pode virar fórmula ao abrir o CSV no Excel', async () => {
+  await passo('injeção de fórmula na planilha: favorecido começando com = + - @ não pode virar fórmula ao abrir a planilha no Excel', async () => {
     const f = `=HYPERLINK("http://evil.example","clique")${M.replace(/\W/g, '')}`;
     const id = await novo(obraEng.id, f, 'teste de fórmula');
     const finP = await entrar('financeiro');
     const r = await finP.request.get(BASE + `/pagamentos/exportar?periodo=todos&busca=${encodeURIComponent(M.replace(/\W/g, ''))}&cancelados=1`);
-    const csv = await r.text();
-    const linha = csv.split('\n').find((l) => l.includes('HYPERLINK'));
-    confere(linha, 'o pagamento de teste não apareceu no CSV');
-    confere(!/(^|;)"?=HYPERLINK/.test(linha), `o CSV traz célula começando com "=" (fórmula executável no Excel): ${linha.slice(0, 120)}`);
+    const { lerXlsx } = require('../_xlsx.cjs');
+    const abas = await lerXlsx(await r.body());
+    const celulas = abas.flatMap((a) => a.linhas.flatMap((l) => l.vals.map((v) => ({ v, l }))));
+    const achada = celulas.find((c) => String(c.v).includes('HYPERLINK'));
+    confere(achada, 'o pagamento de teste não apareceu na planilha');
+    // fórmula executável = célula do tipo "formula" no arquivo, ou texto que começa com "="
+    const comoFormula = abas.some((a) => a.linhas.some((l) => { let achou = false; l.cells.eachCell((c) => { if ((c.value && typeof c.value === 'object' && 'formula' in c.value && String(c.value.formula).includes('HYPERLINK'))) achou = true; }); return achou; }));
+    confere(!comoFormula && !String(achada.v).startsWith('='), `a planilha traz célula executável como fórmula: ${String(achada.v).slice(0, 120)}`);
     void id;
   });
 

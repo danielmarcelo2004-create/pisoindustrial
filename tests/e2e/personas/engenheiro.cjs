@@ -1151,7 +1151,8 @@ rodar('Persona Engenheiro (Carlos)', async ({ b, passo, entrar }) => {
     for (const o of alheias) confere(!txt.includes(o.nome), `o relatório mostra a obra de outro vínculo: ${o.nome}`);
     const csv = await p.request.get(BASE + '/pagamentos/exportar?periodo=todos');
     confere(csv.status() === 200, `exportar planilha: ${csv.status()}`);
-    const corpo = await csv.text();
+    const { lerXlsx, textoDoXlsx } = require('../_xlsx.cjs');
+    const corpo = textoDoXlsx(await lerXlsx(await csv.body()));
     for (const o of alheias) confere(!corpo.includes(o.nome), `a planilha traz a obra de outro vínculo: ${o.nome}`);
     confere(corpo.includes(obra.nome), 'a planilha não traz a obra dele');
   });

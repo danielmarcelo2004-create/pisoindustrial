@@ -363,15 +363,17 @@ rodar('Persona Marina — Contas a pagar completo', async ({ b, passo, entrar })
 
   const paLayout = await nova({ fav: 'Parc3Layout', valor: 90, venc: hoje, parcelas: [30, 30, 30].map((x, i) => ({ valor: x, vencimento: mais(hoje, i), multa: 0, juros: 0, desconto: 0, motivo: null })) });
   // ───────────── Exportação ─────────────
-  await passo('exportar planilha: segue a lista da tela (busca + cartão), centavos com vírgula e BOM/CSV legível; selecionadas por ids', async () => {
-    const todas = await (await p.request.get(`${BASE}/pagamentos/exportar?lista=contas&periodo=todos&busca=${encodeURIComponent('Lote')}`)).text();
-    const so = await (await p.request.get(`${BASE}/pagamentos/exportar?lista=contas&periodo=todos&busca=${encodeURIComponent('Centavo ' + M)}`)).text();
-    const n = (csv) => csv.trim().split('\n').length - 1;
-    confere(n(so) === 1 && n(todas) >= 1, `linhas: busca específica=${n(so)}`);
-    confere(/0,01/.test(so), 'centavo não aparece no CSV: ' + so.slice(0, 300));
+  await passo('exportar planilha: segue a lista da tela (busca + cartão), valores numéricos (centavos exatos) em Excel organizado; selecionadas por ids', async () => {
+    const { lerXlsx, dadosDaTabela } = require('../_xlsx.cjs');
+    const tabela = async (url, titulo) => dadosDaTabela((await lerXlsx(await (await p.request.get(`${BASE}${url}`)).body()))[0], titulo);
+    const todas = await tabela(`/pagamentos/exportar?lista=contas&periodo=todos&busca=${encodeURIComponent('Lote')}`, 'Vencimento');
+    const so = await tabela(`/pagamentos/exportar?lista=contas&periodo=todos&busca=${encodeURIComponent('Centavo ' + M)}`, 'Vencimento');
+    confere(so.linhas.length === 1 && todas.linhas.length >= 1, `linhas: busca específica=${so.linhas.length}`);
+    const iValor = so.cabecalho.indexOf('Valor (R$)');
+    confere(so.linhas[0][iValor] === 0.01, `o valor deveria ser o número 0,01 (veio ${JSON.stringify(so.linhas[0][iValor])})`);
     const ids = [lote[0], lote[1]].join(',');
-    const sel = await (await p.request.get(`${BASE}/pagamentos/exportar?ids=${ids}`)).text();
-    confere(n(sel) === 2, `selecionadas: ${n(sel)}`);
+    const sel = await tabela(`/pagamentos/exportar?ids=${ids}`, 'Nº');
+    confere(sel.linhas.length === 2, `selecionadas: ${sel.linhas.length}`);
   });
 
   // ───────────── Tela: janelas e celular ─────────────

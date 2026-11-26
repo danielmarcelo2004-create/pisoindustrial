@@ -183,9 +183,14 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
         titulo="Relatórios"
         subtitulo={`Despesas por ${baseRotulo} · ${data(f.de)} a ${data(f.ate)}`}
         acoes={
-          <a href={`/relatorios/exportar?${exportar}`} className={classeBotao("secundario")}>
-            Exportar para Excel
-          </a>
+          <>
+            <a href={`/relatorios/exportar?${exportar}`} className={classeBotao("secundario")}>
+              Exportar para Excel
+            </a>
+            <a href={`/relatorios/exportar?${exportar}&formato=pdf`} target="_blank" rel="noopener" className={classeBotao("secundario")}>
+              Imprimir
+            </a>
+          </>
         }
       />
 

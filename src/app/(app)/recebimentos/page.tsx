@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Cabecalho, Selo, Vazio, cx } from "@/components/ui";
+import { Cabecalho, Selo, Vazio, classeBotao, cx } from "@/components/ui";
 import { getUsuario } from "@/lib/auth";
 import { listarRecebimentos, type FiltroCartaoReceber, type LinhaReceber } from "@/lib/consultas/contas-a-receber";
 import { categoriasAtivas } from "@/lib/consultas/categorias";
@@ -89,16 +89,20 @@ export default async function ContasAReceberPage({ searchParams }: PageProps<"/r
         titulo="Contas a receber"
         subtitulo={`${periodo.rotulo} · ${linhas.filter((l) => l.tipo === "recebimento").length} recebimento(s)`}
         acoes={
-          veBanco ? (
             <div className="flex flex-wrap gap-2">
+              <a href={`/recebimentos/exportar?${consulta}`} className={classeBotao("secundario")}>
+                Exportar planilha
+              </a>
+              <a href={`/recebimentos/exportar?${consulta}&formato=pdf`} target="_blank" rel="noopener" className={classeBotao("secundario")}>
+                Imprimir
+              </a>
               {u.perfil === "financeiro" && (
                 <Link href="/contas-bancarias?tipo=entradas" className="rounded-md border border-sky-300 bg-white px-3 py-2 text-sm font-medium text-sky-800 hover:bg-sky-50">
                   Lançar pela conciliação
                 </Link>
               )}
-              <NovaReceita obras={(obras ?? []).map((o) => ({ id: o.id, nome: o.nome, cliente: o.cliente }))} categorias={categorias} contas={contas ?? []} />
+              {veBanco && <NovaReceita obras={(obras ?? []).map((o) => ({ id: o.id, nome: o.nome, cliente: o.cliente }))} categorias={categorias} contas={contas ?? []} />}
             </div>
-          ) : undefined
         }
       />
 

@@ -394,8 +394,9 @@ rodar('Persona Marina — Receber, medição, fundos, relatórios, usuários', a
   // ───────────── Exportações ─────────────
   await passo('exportações: planilhas de pagamentos (lista) e de compras abrem para o Financeiro (200, CSV/Excel) e exigem login (401 sem sessão)', async () => {
     const csv = await p.request.get(`${BASE}/pagamentos/exportar?lista=contas&periodo=todos&busca=${encodeURIComponent('Relat ' + M)}`);
-    const txt = await csv.text();
-    confere(csv.status() === 200 && /33,33/.test(txt), `pagamentos: ${csv.status()} ${txt.slice(0, 200)}`);
+    const { lerXlsx, textoDoXlsx } = require('../_xlsx.cjs');
+    const txt = csv.status() === 200 ? textoDoXlsx(await lerXlsx(await csv.body())) : '';
+    confere(csv.status() === 200 && /33\.33/.test(txt), `pagamentos: ${csv.status()} ${txt.slice(0, 200)}`);
     const compras = await p.request.get(`${BASE}/compras/exportar`);
     confere(compras.status() === 200, `compras: ${compras.status()}`);
     const ctx = await b.newContext();

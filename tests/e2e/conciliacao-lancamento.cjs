@@ -174,11 +174,11 @@ async function importar(p, arquivo) {
   });
 
   await passo('regressão: a planilha exportada respeita o filtro "Conta bancária" (antes ignorava)', async () => {
-    const todas = await (await fin.request.get(`${BASE}/pagamentos/exportar?lista=contas&periodo=todos`)).text();
-    const daConta = await (await fin.request.get(`${BASE}/pagamentos/exportar?lista=contas&periodo=todos&conta=${cOrigem}`)).text();
-    const n = (csv) => csv.trim().split('\n').length - 1;
-    confere(n(daConta) === 1 && n(todas) > n(daConta), `todas=${n(todas)} da conta=${n(daConta)}`);
-    return `todas=${n(todas)} · só da conta=${n(daConta)}`;
+    const { lerXlsx, dadosDaTabela } = require('./_xlsx.cjs');
+    const linhasDe = async (qs) => dadosDaTabela((await lerXlsx(await (await fin.request.get(`${BASE}/pagamentos/exportar?lista=contas&periodo=todos${qs}`)).body()))[0], 'Vencimento').linhas.length;
+    const todas = await linhasDe(''), daConta = await linhasDe(`&conta=${cOrigem}`);
+    confere(daConta === 1 && todas > daConta, `todas=${todas} da conta=${daConta}`);
+    return `todas=${todas} · só da conta=${daConta}`;
   });
 
   console.log(`\nConciliação (novo lançamento e transferência): ${ok}/${tot} · erros de JavaScript: ${errosJS}`);

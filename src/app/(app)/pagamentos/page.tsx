@@ -132,6 +132,9 @@ export default async function ContasAPagarPage({ searchParams }: PageProps<"/pag
             <a href={`/pagamentos/exportar?${exportQs}`} className={classeBotao("secundario")}>
               Exportar planilha
             </a>
+            <a href={`/pagamentos/exportar?${exportQs}&formato=pdf`} target="_blank" rel="noopener" className={classeBotao("secundario")}>
+              Imprimir
+            </a>
             {podeCadastrar && <LinkBotao href="/pagamentos/novo">+ Nova despesa</LinkBotao>}
           </>
         }

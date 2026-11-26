@@ -21,7 +21,7 @@ etapa "testes unitários" npm run test:unit
 etapa "build" npm run build
 
 npx supabase start >/dev/null 2>&1 || true
-etapa "banco zerado" bash -c "npx supabase db reset && npm run seed:demo"
+etapa "banco zerado" bash scripts/reset-banco.sh
 etapa "testes de integração (banco)" npm run test:integracao
 
 if [ "$RAPIDO" = 0 ]; then
@@ -35,7 +35,7 @@ if [ "$RAPIDO" = 0 ]; then
 
   etapa "testes de tela (e2e)" bash tests/e2e/rodar.sh
   # Personas: um banco zerado, depois cada arquivo em sequência (dados com marca própria)
-  etapa "banco zerado (personas)" bash -c "npx supabase db reset && npm run seed:demo"
+  etapa "banco zerado (personas)" bash scripts/reset-banco.sh
   FALHAS=0
   for f in tests/e2e/personas/*.cjs; do
     case "$f" in */_util.cjs) continue;; esac

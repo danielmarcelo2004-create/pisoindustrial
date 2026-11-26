@@ -1963,3 +1963,34 @@ describe('conciliação bancária', () => {
     assert.ok(r.error, 'anônimo conseguiu chamar a função interna')
   })
 })
+
+test('regressão: fundo fixo só do dono (engenheiro/Suprimentos não leem o fundo do colega); Financeiro e administrador da obra leem', async () => {
+  const fundo = await rpc('fin', 'criar_fundo_fixo', { p_obra_id: obraA.id, p_pessoa_id: u.sup.id, p_valor: 80 })
+  const ver = async (chave) => (await u[chave].client.from('fundos_fixos').select('id').eq('id', fundo)).data.length
+  assert.equal(await ver('sup'), 1, 'o dono lê o próprio fundo')
+  assert.equal(await ver('fin'), 1, 'o Financeiro lê')
+  assert.equal(await ver('eng'), 0, 'engenheiro da obra leu o fundo do colega (antes lia: RLS usava pode_ver_obra)')
+  const g = await gastoFundo('sup', fundo, 'Privado', '2026-11-06', 10)
+  assert.equal((await u.eng.client.from('fundo_gastos').select('id').eq('id', g)).data.length, 0, 'engenheiro leu o gasto do colega')
+  assert.equal((await u.adm.client.from('fundo_gastos').select('id').eq('id', g)).data.length, 1, 'administrador da obra lê os gastos (para aprovar)')
+  await rpc('fin', 'fechar_fundo_fixo', { p_fundo_id: fundo, p_vencimento: '2026-11-20', p_modo: 'encerrar' })
+})
+
+test('regressão: senha provisória não dá acesso a dados pela API antes da troca (antes só a tela exigia)', async () => {
+  const antes = (await u.eng.client.from('obras').select('id')).data.length
+  assert.ok(antes > 0, 'o engenheiro enxerga obras normalmente')
+  await admin.from('profiles').update({ troca_senha_pendente: true }).eq('id', u.eng.id)
+  try {
+    const durante = await u.eng.client.from('obras').select('id')
+    assert.equal(durante.data.length, 0, 'com a troca pendente a API ainda devolveu obras')
+    const rpcPend = await u.eng.client.rpc('minhas_pendencias')
+    assert.ok(rpcPend.error || (rpcPend.data ?? []).length === 0, 'RPC liberada com troca de senha pendente')
+    const proprio = await u.eng.client.from('profiles_completo').select('id').eq('id', u.eng.id)
+    assert.equal(proprio.data.length, 1, 'precisa ler o próprio perfil para a tela de troca de senha')
+    const { error } = await u.eng.client.rpc('confirmar_troca_senha')
+    assert.ifError(error)
+  } finally {
+    await admin.from('profiles').update({ troca_senha_pendente: false }).eq('id', u.eng.id)
+  }
+  assert.equal((await u.eng.client.from('obras').select('id')).data.length, antes, 'depois da troca o acesso volta')
+})

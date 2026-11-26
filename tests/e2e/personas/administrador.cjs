@@ -350,14 +350,15 @@ const dep = async (q) => { const r = await q; if (r.error) throw new Error(r.err
       const av = await dep(admin.from('notificacoes').select('titulo, mensagem').eq('pagamento_id', p.id).eq('user_id', ID.hel).eq('titulo', 'Valor alterado após a sua aprovação'));
       confere(av.length === 1 && /600,00/.test(av[0].mensagem) && /650,00/.test(av[0].mensagem), 'administradora não foi avisada do novo valor');
     });
-    await passo('README: valor alterado depois da assinatura final reinicia o fluxo (nova versão, assina de novo) e bloqueia a baixa', async () => {
+    await passo('decisão do produto: valor alterado depois da assinatura final NÃO reinicia o fluxo (só avisa quem aprovou); a baixa segue liberada e a mudança fica na auditoria', async () => {
       const p = await novoPag(obraB, 600);
       await dep(decidirRPC(hel, p.id, 1));
       await dep(upd(p.id, { descricao: p.desc, valor: 6000, motivo: 'valor alterado após assinatura' }));
       const r = await pag(p.id);
-      confere(r.status === 'aguardando_administrador' && r.versao === 2, `o valor mudou de 600 para 6000 e o pagamento segue "${r.status}" na versão ${r.versao}, sem nova assinatura (assinatura vale para o conteúdo antigo)`);
-      const e = await erroDe(fin.rpc('registrar_baixa', { p_id: p.id, p_pago_em: hoje }));
-      confere(e && /não está liberado/.test(e), 'baixa devia ser bloqueada: ' + e);
+      confere(r.status === 'aguardando_pagamento' && Number(r.valor) === 6000, `esperado liberado com o valor novo; veio "${r.status}" / ${r.valor}`);
+      const av = await dep(admin.from('notificacoes').select('mensagem').eq('pagamento_id', p.id).eq('user_id', ID.hel).eq('titulo', 'Valor alterado após a sua aprovação'));
+      confere(av.length === 1 && /6\.000,00/.test(av[0].mensagem), 'a administradora que aprovou não foi avisada do novo valor');
+      confere((await audit(p.id)).some((x) => x.acao === 'alterou' && /valor alterado após assinatura/.test(x.descricao)), 'a alteração não ficou na auditoria');
     });
     await passo('só observação alterada não reinicia o fluxo nem muda a versão', async () => {
       const p = await novoPag(obraB, 333);

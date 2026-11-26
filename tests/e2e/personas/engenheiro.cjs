@@ -714,7 +714,10 @@ rodar('Persona Engenheiro (Carlos)', async ({ b, passo, entrar }) => {
     confere(gastosAlheios.length === 0, 'Carlos enxerga gastos do fundo de colega');
     await ir(p, '/fundos-fixos');
     const links = await p.locator('main a[href^="/fundos-fixos/"]').evaluateAll((as) => [...new Set(as.map((a) => a.getAttribute('href')))]);
-    confere(links.every((h) => h.endsWith(fundoId)) , `a lista mostra fundos de outras pessoas: ${links.join(' ')}`);
+    // Fundos anteriores do próprio Carlos (fechados) também aparecem; o que não pode é aparecer fundo de outra pessoa
+    const ids = links.map((h) => h.split('/').pop());
+    const donos = ids.length ? await um(admin.from('fundos_fixos').select('id, pessoa_id').in('id', ids)) : [];
+    confere(donos.every((d) => d.pessoa_id === euId), `a lista mostra fundos de outras pessoas: ${links.join(' ')}`);
     const r = await p.goto(BASE + `/fundos-fixos/${fundoSup}`);
     confere(r.status() === 404, `/fundos-fixos/[id] do colega: ${r.status()}`);
   });
@@ -1271,6 +1274,8 @@ rodar('Persona Engenheiro (Carlos)', async ({ b, passo, entrar }) => {
       } else {
         throw new Error('a tela do pagamento não oferece "Abrir e posicionar a assinatura" ao engenheiro da etapa');
       }
+      // O fundo teve o fechamento solicitado em outro passo (e quem solicita não lança): o Financeiro recusa o pedido
+      await fin.rpc('recusar_fechamento_fundo', { p_fundo_id: fundoId, p_motivo: 'teste de janelas' });
       const descJan = marca('Jan-gasto');
       const g = await um(eng.rpc('lancar_gasto_fundo', { p_fundo_id: fundoId, p_descricao: descJan, p_data: hoje, p_valor: 1 }));
       if (g) {

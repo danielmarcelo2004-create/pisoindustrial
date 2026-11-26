@@ -34,7 +34,7 @@ Sistema web interno para centralizar a rotina financeira das obras: pagamentos e
 - **Isolamento por obra no banco de dados.** Todas as tabelas usam *Row Level Security* (RLS) do PostgreSQL. Um engenheiro ou administrador só enxerga as obras em que é responsável ou foi vinculado, mesmo que altere o endereço da página ou chame a API diretamente. Os arquivos no Storage seguem a mesma regra.
 - **Regras de negócio dentro do banco.** Pagamentos, documentos e assinaturas só mudam por funções (`criar_pagamento`, `decidir_aprovacao`, `registrar_baixa` etc.). Cada função confere a permissão, grava a auditoria e dispara as notificações na mesma transação. Ninguém grava direto nessas tabelas.
 - **Assinatura eletrônica.** Exige confirmar que conferiu os documentos e redigitar a senha. Fica vinculada ao usuário, à **versão** do pagamento e ao **SHA-256** do conteúdo (dados mais o hash de cada arquivo), com data, hora, IP e navegador. A assinatura em lote gera um registro por documento e é atômica: se um item falhar, nenhum é assinado.
-- **Nada é alterado em silêncio.** Mudar valor, vencimento, favorecido ou descrição, ou substituir um documento, gera nova versão. Se já havia assinatura, o fluxo recomeça. Os arquivos antigos ficam preservados.
+- **Nada é alterado em silêncio.** Mudar valor, vencimento, favorecido ou descrição, ou substituir um documento, gera nova versão. Se a alteração acontece durante as assinaturas, o fluxo recomeça. Depois da assinatura final (pagamento liberado), o Financeiro e Suprimentos podem corrigir com motivo, a mudança fica na auditoria e quem aprovou é avisado, sem nova aprovação. Os arquivos antigos ficam preservados.
 - **Auditoria imutável.** Triggers impedem alterar ou apagar o histórico, inclusive com a chave administrativa.
 
 ### Quem vê e faz o quê
@@ -50,7 +50,7 @@ Sistema web interno para centralizar a rotina financeira das obras: pagamentos e
 | Fornecedores (CPF/CNPJ, PIX, banco) | só nomes | só nomes | completo | completo | completo |
 | E-mail e telefone dos usuários | só o próprio | só o próprio | só o próprio | todos | só o próprio |
 | Usuários e perfis | não | não | não | sim (somente o Financeiro cria e gerencia) | não |
-| Fundo fixo | o seu | o seu | o seu | todos (fecha e repõe) | leitura |
+| Fundo fixo | só o seu | aprova os gastos das suas obras | só o seu | todos (só ele fecha e repõe) | aprova os gastos das suas obras |
 
 Os dados pessoais e bancários só saem por visões do banco que devolvem linhas apenas para quem pode ver (`profiles_completo`, `fornecedores_dados`, `contas_bancarias_dados`); a tela esconder o menu não é a proteção. Na dúvida, o banco é a fonte da verdade (`supabase/migrations`).
 

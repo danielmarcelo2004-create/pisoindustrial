@@ -410,6 +410,8 @@ async function clienteEmail(email, senha) {
     });
     await passo('vínculos obra x usuário: marcar libera Suprimentos a lançar na obra; desmarcar tira; auditoria registra os dois', async () => {
       const u = novo.alterado;
+      // Fixture: este usuário já passou da troca obrigatória de senha (a API só libera dados depois dela)
+      await admin.from('profiles').update({ troca_senha_pendente: false }).eq('id', u.id);
       const base = { p_obra_id: obraC.id, p_fornecedor_id: null, p_favorecido: 'X', p_descricao: 'vínculo', p_valor: 10, p_vencimento: somarDias(hoje, 3), p_forma_pagamento: 'pix' };
       const c0 = await clienteEmail(u.email, u.senha);
       confere(await erroDe(c0.rpc('criar_pagamento', base)), 'lançou sem vínculo');
